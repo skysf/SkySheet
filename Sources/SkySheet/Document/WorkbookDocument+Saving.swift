@@ -23,7 +23,7 @@ extension WorkbookDocument {
     /// ⌘S，以及关窗口、退出时选「存」，都从这里进来。文件被别的程序改过就先问（第六道保险）：
     /// 要赶在 NSDocument 自己的检查之前，它那个提示只有「存 / 不存」两个选择（2026-10-08 实测）。
     override func save(withDelegate delegate: Any?, didSave didSaveSelector: Selector?,
-                               contextInfo: UnsafeMutableRawPointer?) {
+                       contextInfo: UnsafeMutableRawPointer?) {
         session?.commitEditing()
         checkExternalChange { proceed in
             if proceed {
