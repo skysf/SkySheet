@@ -5,12 +5,13 @@
 
 ## 现在在哪
 
-- M0 完成（仓库、样例、设计），下一步 M1 核心库。里程碑见设计第十三节；每完成一个就改这一行。
+- M1 完成（zip、读 xlsx、公式引擎 62 个函数、数字格式、自检和 CI），下一步 M2 查看器。里程碑见设计第十三节；每完成一个就改这一行。
 
 ## 常用命令
 
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
-- 自检：`scripts/check-all.sh`（M1 起）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks` 可执行程序。
+- 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，6 秒左右）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
+  可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
 - 打包：`VERSION=x.y.z scripts/build-app.sh`（M2 起）。
 
 ## 硬规矩
