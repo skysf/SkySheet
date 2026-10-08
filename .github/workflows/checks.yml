@@ -1,0 +1,40 @@
+# 每个 PR（以及合进 main 之后）跑全部自检：scripts/check-all.sh，和本机跑的是同一个。
+# main 禁止直推、必须走 PR，这个检查名叫 check-all，是 main 的保护规则要求必须通过的那一项（设计第十一节）。
+#
+# 只开 1 个 job：仓库是公开的，GitHub 托管的 macOS runner 免费，但免费档同时最多 5 台 macOS，
+# 是整个账号共用的，SrtFlow 的 CI 一跑就占满 5 台。整套自检本机 6 秒左右，一台足够。
+name: checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 同一个 PR 推了新提交，旧的那一轮直接取消，别占着 macOS 机器。main 上的每一次都跑完。
+concurrency:
+  group: checks-${{ github.event.pull_request.number || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  check-all:
+    name: check-all
+    # 和本机的工具链（macOS 26、Swift 6.x）保持一致。
+    runs-on: macos-26
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain versions (diagnostics)
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Cache SwiftPM build products
+        uses: actions/cache@v4
+        with:
+          path: .build
+          key: swiftpm-${{ runner.os }}-${{ hashFiles('Package.swift') }}
+          restore-keys: swiftpm-${{ runner.os }}-
+
+      - name: Run all checks
+        run: scripts/check-all.sh
