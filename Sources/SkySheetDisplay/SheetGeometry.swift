@@ -99,9 +99,9 @@ public struct SheetGeometry: Sendable {
         (8.43 * digitWidth).rounded(.down) + 5
     }
 
-    /// 没写默认行高时按默认字号估：11 磅是 15 磅高，10 磅是 13.5 磅高（Excel 的默认值），四舍五入到 0.75 磅。
+    /// 没写默认行高时按默认字号估（规则在 StyleTable.rowHeight(forFontSize:)，保存时也用它）。
     public static func defaultRowHeight(fontSize: Double) -> Double {
-        max(12.75, (fontSize * 1.36 / 0.75).rounded() * 0.75)
+        StyleTable.rowHeight(forFontSize: fontSize)
     }
 
     public var totalWidth: Double { columns.offset(columnCount) }

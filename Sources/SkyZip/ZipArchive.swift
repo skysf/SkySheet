@@ -71,6 +71,18 @@ public struct ZipArchive: Sendable {
         return Data(output)
     }
 
+    /// 条目压缩后的原始字节（不解压）。保存时没改过的部件按这个原样拷进新包：连压缩结果都不变（设计 7.2 节）。
+    public func compressedData(of entry: ZipEntry) throws(ZipError) -> Data {
+        let reader = LittleEndianBytes(bytes)
+        let header = entry.localHeaderOffset
+        guard try reader.u32(header) == 0x0403_4B50 else {
+            throw ZipError.corrupt("missing local header for \(entry.name)")
+        }
+        let start = header + 30 + (try reader.u16(header + 26)) + (try reader.u16(header + 28))
+        guard start + entry.compressedSize <= bytes.count else { throw ZipError.truncated }
+        return Data(bytes[start..<start + entry.compressedSize])
+    }
+
     public func contents(ofEntryNamed name: String) throws(ZipError) -> Data? {
         guard let entry = entry(named: name) else { return nil }
         return try contents(of: entry)

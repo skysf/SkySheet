@@ -10,7 +10,10 @@ import SkySheetCore
 /// - 共享公式（`<f t="shared" si="0">`，Excel 大量使用）：跟随者用 ReferenceShift 从主公式平移出来。
 final class WorksheetPart: XMLScanHandler {
     private(set) var sheet: Sheet
+    /// 用了富文本共用字符串的格子 → 那条的编号。保存时这些格子文字没变就接着用原来那条，格式不丢。
+    private(set) var richCells: [CellAddress: Int] = [:]
     private let sharedStrings: [String]
+    private let richIndices: Set<Int>
     private let dateSystem: DateSystem
 
     private var row = -1
@@ -31,9 +34,10 @@ final class WorksheetPart: XMLScanHandler {
         var inlineText = ""
     }
 
-    init(sheet: Sheet, sharedStrings: [String], dateSystem: DateSystem) {
+    init(sheet: Sheet, sharedStrings: [String], richIndices: Set<Int> = [], dateSystem: DateSystem) {
         self.sheet = sheet
         self.sharedStrings = sharedStrings
+        self.richIndices = richIndices
         self.dateSystem = dateSystem
     }
 
@@ -84,7 +88,7 @@ final class WorksheetPart: XMLScanHandler {
         case "v": cell?.value = text
         // 腾讯文档在 <f> 里写的公式带开头的 "="（标准里不带）。去掉，否则一个公式都解析不了（2026-10-08 对照测试抓到的）。
         case "f": cell?.formula = text.hasPrefix("=") ? String(text.dropFirst()) : text
-        case "t" where inInlineString && phoneticDepth == 0: cell?.inlineText += text
+        case "t" where inInlineString && phoneticDepth == 0: cell?.inlineText += XMLText.decodeEscapes(text)
         case "is": inInlineString = false
         case "rPh": phoneticDepth -= 1
         case "c": finishCell()
@@ -126,9 +130,10 @@ final class WorksheetPart: XMLScanHandler {
         switch pending.type {
         case "s":
             guard let index = pending.value.flatMap({ Int($0) }), sharedStrings.indices.contains(index) else { return .empty }
+            if richIndices.contains(index) { richCells[pending.address] = index }
             return .text(sharedStrings[index])
         case "str":
-            return .text(pending.value ?? "")
+            return .text(XMLText.decodeEscapes(pending.value ?? ""))
         case "inlineStr":
             return .text(pending.inlineText)
         case "b":

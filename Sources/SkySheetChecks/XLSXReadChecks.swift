@@ -62,11 +62,15 @@ func xlsxReadChecks() {
     }
 }
 
-private func unusualWorkbook() throws -> Data {
+/// 写的检查也用它：在这种文件上改完存回去，读不懂的东西（图表 sheet、x: 前缀）都要留着。
+func unusualWorkbook() throws -> Data {
     let main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
     let rel = "http://schemas.openxmlformats.org/officeDocument/2006/relationships"
     let pkg = "http://schemas.openxmlformats.org/package/2006/relationships"
     var writer = ZipWriter()
+    try writer.addFile("[Content_Types].xml", contents: Data("""
+        <?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">        <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>        <Default Extension="xml" ContentType="application/xml"/>        <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>        <Override PartName="/xl/worksheets/data.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>        </Types>
+        """.utf8))
     try writer.addFile("_rels/.rels", contents: Data("""
         <?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="\(pkg)">\
         <Relationship Id="r1" Type="\(rel)/officeDocument" Target="xl/workbook.xml"/></Relationships>

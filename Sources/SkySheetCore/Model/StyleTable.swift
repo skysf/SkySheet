@@ -11,13 +11,30 @@ public struct StyleTable: Hashable, Sendable {
     public var fills: [FillStyle]
     public var borders: [BorderStyle]
 
+    /// 默认值是新建工作簿的样式表（csv 打开的、没有样式表的 xlsx）：和 Excel 新建的文件一样，一个 Calibri 11 号字，
+    /// 填充的前两项 none、gray125 是 Excel 保留的，一个空边框。保存成 xlsx 再读回来，一项一项对得上。
     public init(customNumberFormats: [Int: String] = [:], cellFormats: [CellFormat] = [CellFormat()],
-                fonts: [FontStyle] = [], fills: [FillStyle] = [], borders: [BorderStyle] = []) {
+                fonts: [FontStyle] = StyleTable.defaultFonts, fills: [FillStyle] = StyleTable.defaultFills,
+                borders: [BorderStyle] = StyleTable.defaultBorders) {
         self.customNumberFormats = customNumberFormats
         self.cellFormats = cellFormats
         self.fonts = fonts
         self.fills = fills
         self.borders = borders
+    }
+
+    public static let defaultFonts = [FontStyle(name: "Calibri", size: 11)]
+    public static let defaultFills = [FillStyle(pattern: "none"), FillStyle(pattern: "gray125")]
+    public static let defaultBorders = [BorderStyle()]
+
+    /// 没写默认行高时 Excel 按默认字体（第 0 个字体）的字号算：11 磅是 15 磅高，10 磅是 13.5 磅高，四舍五入到 0.75 磅。
+    /// 显示和保存都用它，存出去再读回来行高不变。
+    public var defaultRowHeight: Double {
+        Self.rowHeight(forFontSize: fonts.first?.size ?? 11)
+    }
+
+    public static func rowHeight(forFontSize size: Double) -> Double {
+        max(12.75, (size * 1.36 / 0.75).rounded() * 0.75)
     }
 
     public func numberFormatID(forStyle index: Int) -> Int {

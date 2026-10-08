@@ -1,12 +1,33 @@
 import Foundation
 import SkySheetCore
 
-/// 读进来的 csv：一张 sheet 的工作簿，加上原来的编码、分隔符。M3 写回 csv 时照原样用（设计 7.3 节）。
+/// 读进来的 csv：一张 sheet 的工作簿，加上原来的写法。写回 csv 时照原样用（设计 7.3 节）。
 public struct CSVDocument: Sendable {
     public var workbook: Workbook
+    public var format: CSVFormat
+}
+
+/// csv 的写法：编码、BOM、分隔符、换行。
+public struct CSVFormat: Equatable, Sendable {
     public var encoding: String.Encoding
     public var hasByteOrderMark: Bool
     public var delimiter: Character
+    /// "\r\n"、"\n" 或 "\r"：按文件里第一个换行认。
+    public var lineEnding: String
+    public var endsWithLineBreak: Bool
+
+    public init(encoding: String.Encoding, hasByteOrderMark: Bool, delimiter: Character, lineEnding: String,
+                endsWithLineBreak: Bool) {
+        self.encoding = encoding
+        self.hasByteOrderMark = hasByteOrderMark
+        self.delimiter = delimiter
+        self.lineEnding = lineEnding
+        self.endsWithLineBreak = endsWithLineBreak
+    }
+
+    /// 新写的 csv（xlsx 另存成 csv）：UTF-8 带 BOM（Excel 打开中文才不乱码）、逗号、\r\n（RFC 4180，也是 Excel 的写法）。
+    public static let standard = CSVFormat(encoding: .utf8, hasByteOrderMark: true, delimiter: ",", lineEnding: "\r\n",
+                                           endsWithLineBreak: true)
 }
 
 public enum CSVError: Error, Equatable, Sendable {
@@ -30,8 +51,11 @@ public enum CSVReader {
             }
         }
         let workbook = Workbook(sheets: [sheet], styles: CSVValue.styles)
-        return CSVDocument(workbook: workbook, encoding: decoded.encoding, hasByteOrderMark: decoded.byteOrderMark,
-                           delimiter: delimiter)
+        let lineBreaks: Set<Character> = ["\r\n", "\n", "\r"]
+        let format = CSVFormat(encoding: decoded.encoding, hasByteOrderMark: decoded.byteOrderMark, delimiter: delimiter,
+                               lineEnding: decoded.text.first(where: lineBreaks.contains).map(String.init) ?? "\r\n",
+                               endsWithLineBreak: decoded.text.last.map(lineBreaks.contains) ?? true)
+        return CSVDocument(workbook: workbook, format: format)
     }
 
     /// RFC 4180：字段可以用双引号括起来，里面的 "" 是一个引号，可以有分隔符和换行。行尾认 \r\n、\n、\r。
