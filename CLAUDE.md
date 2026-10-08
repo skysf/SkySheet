@@ -5,7 +5,7 @@
 
 ## 现在在哪
 
-- M2 完成（查看器 v0.1.0），下一步 M3 编辑与保存。里程碑见设计第十三节；每完成一个就改这一行。
+- M3 完成（编辑与保存 v0.2.0），下一步 M4 MCP。里程碑见设计第十三节；每完成一个就改这一行。
 
 ## 常用命令
 
@@ -15,6 +15,8 @@
 - 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
 - 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60]`，
   把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。
+- 看存出来的文件：`SKYSHEET_CHECK_OUTPUT=文件夹 swift run --arch arm64 --skip-build SkySheetChecks` 把保存自检写出的
+  xlsx 留在那个文件夹，可以拿 `qlmanage -t` 或别的软件打开看。
 - 真机检查清单：`docs/testing/`，每个里程碑一份。
 
 ## 硬规矩
@@ -33,7 +35,8 @@
 
 - 按职责拆文件，一个文件大约 500 行就考虑拆；多用泛型和共用内核（如设计 5.2 节的函数族、`SparseGrid<Value>`），
   不复制第二份。
-- 界面文字只用英文，一律走 String Catalog（设计第 22 条：先做英文版，中文以后补翻译）。
+- 界面文字只用英文，一律写成 `String(localized:)`（设计第 22 条：先做英文版，中文以后补翻译；本机没有 xcstringstool，
+  String Catalog 等加中文时再生成）。
 - 注释和文档用中文，写「为什么」；和作者沟通用中文。
 - 参考实现：SrtFlow（本机 `../srt_vtt/app_files`，或 `github.com/skysf/SrtFlow`）。签名、MCP 三段结构、自检程序的
   写法从那里搬，按设计删减。

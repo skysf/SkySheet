@@ -34,6 +34,19 @@ public struct ZipWriter: Sendable {
         }
     }
 
+    /// 原样拷一个别的包里的条目（压缩好的字节、CRC、大小、时间都照旧），不解压也不重新压缩。
+    public mutating func addCopy(of entry: ZipEntry, compressed: Data) throws(ZipError) {
+        let method: Int
+        switch entry.method {
+        case .stored: method = 0
+        case .deflated: method = 8
+        case .other(let code): method = code
+        }
+        try append(entry.name, method: method, crc: entry.crc32, payload: [UInt8](compressed),
+                   uncompressedSize: entry.uncompressedSize, modified: entry.modified,
+                   externalAttributes: entry.isDirectory ? 0x10 : 0)
+    }
+
     /// 目录条目：名字以 "/" 结尾、没有内容。腾讯文档导出的 xlsx 里就有，照样能写回去。
     public mutating func addDirectory(_ name: String, modified: DOSDateTime = .earliest) throws(ZipError) {
         let directoryName = name.hasSuffix("/") ? name : name + "/"

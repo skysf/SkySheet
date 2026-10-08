@@ -3,7 +3,7 @@ import SkyZip
 
 /// xlsx 的包结构（Open Packaging Conventions）：zip 里的每个文件是一个「部件」，部件之间靠 `_rels/*.rels` 里的关系连起来。
 /// 部件名统一不带开头的 "/"，如 `xl/worksheets/sheet1.xml`。
-struct OPCPackage {
+struct OPCPackage: Sendable {
     let zip: ZipArchive
     /// OPC 规定部件名不分大小写；zip 里是区分的。先精确找，找不到再不分大小写找。
     private let lowercasedNames: [String: String]

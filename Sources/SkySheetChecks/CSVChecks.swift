@@ -15,27 +15,27 @@ func csvChecks() {
     group("csv: encodings") {
         let text = "贷款,金额\n工行,50000\n"
         let utf8 = try read(Data(text.utf8))
-        checkEqual(utf8.encoding, .utf8, "plain UTF-8")
+        checkEqual(utf8.format.encoding, .utf8, "plain UTF-8")
         checkEqual(value(utf8, "A2"), .text("工行"), "UTF-8 text")
         checkEqual(utf8.workbook.sheets[0].name, "Bank", "sheet named after the file")
 
         let bom = try read(Data([0xEF, 0xBB, 0xBF] + Array(text.utf8)))
-        check(bom.hasByteOrderMark, "UTF-8 byte order mark noticed")
+        check(bom.format.hasByteOrderMark, "UTF-8 byte order mark noticed")
         checkEqual(value(bom, "A1"), .text("贷款"), "BOM is not part of the first cell")
 
         let gbk = text.data(using: String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
             CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue))))!
         let chinese = try read(gbk)
         checkEqual(value(chinese, "A2"), .text("工行"), "GB18030 / GBK from a bank export")
-        check(chinese.encoding != .utf8, "remembered as GB18030")
+        check(chinese.format.encoding != .utf8, "remembered as GB18030")
 
         let utf16 = try read(Data([0xFF, 0xFE]) + text.data(using: .utf16LittleEndian)!)
         checkEqual(value(utf16, "B2"), .number(50000), "UTF-16 with BOM")
     }
 
     group("csv: delimiters and quotes") {
-        checkEqual(try read(Data("a\tb\n1\t2\n".utf8)).delimiter, "\t", "tab separated")
-        checkEqual(try read(Data("a;b;c\n1;2;3\n".utf8)).delimiter, ";", "semicolon separated")
+        checkEqual(try read(Data("a\tb\n1\t2\n".utf8)).format.delimiter, "\t", "tab separated")
+        checkEqual(try read(Data("a;b;c\n1;2;3\n".utf8)).format.delimiter, ";", "semicolon separated")
         let quoted = try read(Data("名称,备注\n\"中信, 分期\",\"第一行\r\n第二行\"\n\"说\"\"好\"\"\",x\n".utf8))
         checkEqual(value(quoted, "A2"), .text("中信, 分期"), "comma inside quotes")
         checkEqual(value(quoted, "B2"), .text("第一行\r\n第二行"), "line break inside quotes")
@@ -61,6 +61,45 @@ func csvChecks() {
         let dateCell = document.workbook.sheets[0].cells[CellAddress(a1: "D1")!]!
         checkEqual(ValueFormatter.format(dateCell.value, code: styles.formatCode(forStyle: dateCell.styleIndex)).text,
                    "2025-12-01", "dates are shown as dates")
+    }
+
+    group("csv: writing back keeps the file's own format") {
+        let gb18030 = String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(
+            CFStringEncoding(CFStringEncodings.GB_18030_2000.rawValue)))
+        let original = "日期,金额,备注\r\n2025/12/1,1234.5,\"中信, 分期\"\r\n2025-12-02 10:30,5%,\"说\"\"好\"\"\"\r\n,,\r\n"
+        var document = try read(original.data(using: gb18030)!)
+        checkEqual(document.format.lineEnding, "\r\n", "line ending remembered")
+        document.workbook.enter(.formula("B2*2"), at: CellAddress(a1: "D2")!, sheet: 0)
+        Recalculator.recalculate(&document.workbook, options: RecalcOptions(today: checkToday))
+        let written = try CSVWriter.write(document.workbook.sheets[0], styles: document.workbook.styles,
+                                          dateSystem: document.workbook.dateSystem, format: document.format)
+        try CSVWriter.verify(written.data, written: written)
+        checkEqual(String(data: written.data, encoding: gb18030),
+                   "日期,金额,备注,\r\n2025-12-01,1234.5,\"中信, 分期\",2469\r\n2025-12-02 10:30:00,5%,\"说\"\"好\"\"\",\r\n",
+                   "same encoding and line ending; dates, percents, formulas and quotes written the csv way")
+
+        let tabs = try read(Data([0xEF, 0xBB, 0xBF]) + Data("a\tb\n1\t2".utf8))
+        let tabsWritten = try CSVWriter.write(tabs.workbook.sheets[0], styles: tabs.workbook.styles,
+                                              dateSystem: .from1900, format: tabs.format)
+        checkEqual(tabsWritten.data, Data([0xEF, 0xBB, 0xBF]) + Data("a\tb\n1\t2".utf8),
+                   "BOM, tabs, \\n and the missing final line break all kept")
+
+        var sheet = Sheet(id: 1, name: "x")
+        sheet.cells[0, 0] = Cell(value: .text("中"))
+        do {
+            _ = try CSVWriter.write(sheet, styles: StyleTable(), dateSystem: .from1900,
+                                    format: CSVFormat(encoding: .ascii, hasByteOrderMark: false, delimiter: ",",
+                                                      lineEnding: "\n", endsWithLineBreak: true))
+            fail("unencodable text accepted")
+        } catch let error as CSVWriteError {
+            checkEqual(error, .unencodableCharacter("中"), "says which character can't be written")
+        }
+        do {
+            try CSVWriter.verify(Data("a,b\n".utf8), written: tabsWritten)
+            fail("a mismatching csv passed the check")
+        } catch let error as CSVWriteError {
+            checkEqual(error, .verificationFailed("Row 1 doesn't match after saving."), "names the row")
+        }
     }
 
     group("xlsx: fonts, fills, borders and theme of the fixture") {

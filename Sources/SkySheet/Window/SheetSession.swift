@@ -3,16 +3,25 @@ import Observation
 import SkySheetCore
 import SkySheetDisplay
 
-/// 一个窗口里大家共用的状态：工作簿、看的是哪张 sheet、选中了哪里、缩放。
-/// SwiftUI 的公式栏和底栏直接观察它；AppKit 的表格视图用 `observe` 订阅。
+/// 一个窗口里大家共用的状态：工作簿、看的是哪张 sheet、选中了哪里、缩放、正在编辑的格子。
+/// SwiftUI 的公式栏和底栏直接观察它；AppKit 的表格视图用 `observeChanges` 订阅。
+/// 改工作簿都走 `apply`（SheetSession+Editing.swift）：改完整本重算，登记撤销。
 @MainActor
 @Observable
 final class SheetSession {
-    private(set) var workbook: Workbook
-    let styles: StyleResolver
-    private(set) var sheetIndex: Int
-    private(set) var selection = Selection(at: CellAddress(row: 0, column: 0))
+    var workbook: Workbook
+    var styles: StyleResolver
+    var sheetIndex: Int
+    var selection = Selection(at: CellAddress(row: 0, column: 0))
     private(set) var zoom = 1.0
+    /// 正在编辑的格子：格内的编辑框和公式栏共用这一份，哪边打字另一边跟着变。
+    var editing: CellEditing?
+    /// 改了几次（每次 apply、撤销、重做都加一）。恢复副本按它判断要不要重写。
+    var revision = 0
+    /// 文档的撤销管理器，窗口建好时接上。
+    @ObservationIgnored weak var undoManager: UndoManager?
+    /// 公式栏编辑完把键盘还给表格（窗口建好时接上）。
+    @ObservationIgnored var focusGrid: (@MainActor () -> Void)?
 
     init(workbook: Workbook) {
         self.workbook = workbook
@@ -30,6 +39,8 @@ final class SheetSession {
 
     func showSheet(_ index: Int) {
         guard workbook.sheets.indices.contains(index), index != sheetIndex else { return }
+        // 正在编辑的先提交：提交时按当前看的 sheet 写，换了 sheet 再提交就写错地方了。
+        commitEditing()
         sheetIndex = index
         resetSelection()
     }
@@ -52,7 +63,7 @@ final class SheetSession {
         zoom = min(max(value, 0.5), 3)
     }
 
-    private func resetSelection() {
+    func resetSelection() {
         // 冻结窗格的话，从第一个不冻结的格子开始，和 Excel 打开时一样。
         let start = CellAddress(row: sheet.frozen?.rows ?? 0, column: sheet.frozen?.columns ?? 0)
         selection = Selection(at: start)
@@ -60,7 +71,7 @@ final class SheetSession {
     }
 
     /// 区域碰到的合并单元格整块包进来（一直包到不再变大为止）。
-    private func expandedToMerges(_ range: CellRange) -> CellRange {
+    func expandedToMerges(_ range: CellRange) -> CellRange {
         var result = range
         var changed = true
         while changed {

@@ -48,6 +48,11 @@ public enum ValueFormatter {
         FormatCodeCache.shared.parsed(code).sections.first?.kind == .date
     }
 
+    /// 这个格式（第一段）有几个 %：每个乘一次 100。存 csv 时百分比写成「5%」，读回来还是同一个数。
+    public static func percentCount(_ code: String) -> Int {
+        FormatCodeCache.shared.parsed(code).sections.first?.percentCount ?? 0
+    }
+
     private static func renderText(_ text: String, _ section: FormatSection) -> String {
         section.tokens.reduce(into: "") { result, token in
             switch token {

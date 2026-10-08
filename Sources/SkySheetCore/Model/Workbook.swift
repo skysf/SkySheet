@@ -10,18 +10,23 @@ public struct Workbook: Hashable, Sendable {
     /// 主题的 12 种颜色（RRGGBB），按主题文件里的顺序：dk1、lt1、dk2、lt2、accent1…6、hlink、folHlink。
     /// 样式里的 `theme="1"` 指哪一个有讲究（前四个两两对调），由显示层换算。
     public var themeColors: [String]
+    /// 下一张新 sheet 用的编号，只增不减：删掉的 sheet 的编号不再用（保存时编号对应文件里的部件，重用了会把新 sheet
+    /// 当成那张删掉的去改）。读文件时取文件里所有 sheet（包括我们跳过的图表 sheet）最大的编号加一。
+    public var nextSheetID: Int
 
     /// Office 默认主题的颜色。文件里没有主题时用它（样例 loan.xlsx 的主题也是这一套）。
     public static let defaultThemeColors = ["000000", "FFFFFF", "44546A", "E7E6E6", "4472C4", "ED7D31",
                                             "A5A5A5", "FFC000", "5B9BD5", "70AD47", "0563C1", "954F72"]
 
     public init(sheets: [Sheet] = [], styles: StyleTable = StyleTable(), dateSystem: DateSystem = .from1900,
-                definedNames: [DefinedName] = [], themeColors: [String] = Workbook.defaultThemeColors) {
+                definedNames: [DefinedName] = [], themeColors: [String] = Workbook.defaultThemeColors,
+                nextSheetID: Int? = nil) {
         self.sheets = sheets
         self.styles = styles
         self.dateSystem = dateSystem
         self.definedNames = definedNames
         self.themeColors = themeColors
+        self.nextSheetID = max(nextSheetID ?? 0, (sheets.map(\.id).max() ?? 0) + 1)
     }
 
     /// Excel 的 sheet 名不分大小写：公式里写 `loan!A1` 也指 Loan。
@@ -42,10 +47,13 @@ public struct DefinedName: Hashable, Sendable {
     public var formula: String
     /// 只在某张 sheet 里有效时，那张 sheet 在工作簿里的位置。
     public var sheetIndex: Int?
+    /// 文件里别的属性（hidden、comment……），写回时原样带上。
+    public var extraAttributes: [String: String]
 
-    public init(name: String, formula: String, sheetIndex: Int? = nil) {
+    public init(name: String, formula: String, sheetIndex: Int? = nil, extraAttributes: [String: String] = [:]) {
         self.name = name
         self.formula = formula
         self.sheetIndex = sheetIndex
+        self.extraAttributes = extraAttributes
     }
 }
