@@ -76,39 +76,19 @@ extension Workbook {
         rewriteFormulas { FormulaRewriter.removeSheet(in: $0, named: name) }
     }
 
-    /// 复制一张，放在它后面，名字是「原名 (2)」。里面的公式照抄：没写 sheet 名的引用指向复制出来的这张，
-    /// 写了原 sheet 名的仍然指向原来那张（Excel 也这样）。图片、批注这些部件不跟着复制（设计第十五节）。
+    /// 复制一张，放在它后面，名字是「原名 (2)」（SheetOperations 的 copySheet）。图片、批注这些部件不跟着复制（设计第十五节）。
     @discardableResult
     public mutating func duplicateSheet(_ index: Int) -> Int {
-        var copy = sheets[index]
-        copy.id = nextSheetID
-        nextSheetID += 1
-        copy.name = SheetName.copyName(of: copy.name, among: sheets.map(\.name))
-        copy.visibility = .visible
-        sheets.insert(copy, at: index + 1)
-        for position in definedNames.indices {
-            if let scope = definedNames[position].sheetIndex, scope > index {
-                definedNames[position].sheetIndex = scope + 1
-            }
-        }
-        return index + 1
+        // 「原名 (2)」总是合规矩的名字，不会抛错。
+        (try? copySheet(index)) ?? index
     }
 
     /// 在 `base` 这个样式上换一个数字格式：已经有一模一样的就用它，没有才往后加（已有的编号一个不动，设计 7.2 节）。
     public mutating func styleIndex(basedOn base: Int, numberFormat: CellInput.SuggestedFormat) -> Int {
         var format = styles.cellFormats.indices.contains(base) ? styles.cellFormats[base] : CellFormat()
         switch numberFormat {
-        case .builtin(let id):
-            format.numberFormatID = id
-        case .custom(let code):
-            if let existing = styles.customNumberFormats.first(where: { $0.value == code })?.key {
-                format.numberFormatID = existing
-            } else {
-                // 自定义格式从 164 开始编（0–163 留给内置格式）。
-                let id = max(163, styles.customNumberFormats.keys.max() ?? 163) + 1
-                styles.customNumberFormats[id] = code
-                format.numberFormatID = id
-            }
+        case .builtin(let id): format.numberFormatID = id
+        case .custom(let code): format.numberFormatID = numberFormatID(forCode: code)
         }
         if let existing = styles.cellFormats.firstIndex(of: format) { return existing }
         styles.cellFormats.append(format)

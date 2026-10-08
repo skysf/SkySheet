@@ -26,6 +26,10 @@ public enum SaveVerifier {
             // 没改过的 sheet 是原字节照抄的，上面已经逐字节比过。
             if result.regeneratedSheets.contains(memory.id) { try compare(memory, reread) }
         }
+        // 哪些是 AI 的 sheet、谁写的：按写进文件的样子比（时间只记到秒）。
+        guard AIProperties.properties(of: saved) == AIProperties.properties(of: workbook) else {
+            throw XLSXWriteError.verificationFailed("Which sheets belong to AI doesn't match after saving.")
+        }
         guard saved.styles == workbook.styles else {
             throw XLSXWriteError.verificationFailed("Cell styles don't match after saving.")
         }

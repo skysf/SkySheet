@@ -6,6 +6,12 @@ public enum BuiltinFormats {
         table[id]
     }
 
+    /// 格式代码 → 内置编号。只认各地都显示得一样的那几个：货币、日期这些随地区变的内置格式不用，
+    /// 写成自定义格式，别的软件打开显示才确定。
+    public static func id(forCode code: String) -> Int? {
+        ["General": 0, "0": 1, "0.00": 2, "#,##0": 3, "#,##0.00": 4, "0%": 9, "0.00%": 10, "0.00E+00": 11, "@": 49][code]
+    }
+
     private static let table: [Int: String] = [
         0: "General",
         1: "0",

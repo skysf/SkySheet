@@ -71,13 +71,3 @@ struct SharedStringTable {
         "<\(prefix)si><\(prefix)t xml:space=\"preserve\">\(XMLText.text(text))</\(prefix)t></\(prefix)si>"
     }
 }
-
-extension Sheet {
-    /// 写进 sheet 部件里的内容一样不一样（名字、隐藏、角色写在 workbook.xml 和别处，不算）。
-    /// 一样就整个部件原字节照抄（设计 7.2 节）。
-    func hasSameContent(as other: Sheet) -> Bool {
-        cells == other.cells && columns == other.columns && rowFormats == other.rowFormats && frozen == other.frozen
-            && merges == other.merges && tabColor == other.tabColor && defaultColumnWidth == other.defaultColumnWidth
-            && defaultRowHeight == other.defaultRowHeight
-    }
-}

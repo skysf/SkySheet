@@ -70,7 +70,7 @@ public enum CSVWriter {
         case .error(let error): return error == .circular ? "" : error.code
         case .number(let number):
             let code = styles.formatCode(forStyle: cell.styleIndex)
-            if ValueFormatter.isDateFormat(code), let date = dateText(number, dateSystem) { return date }
+            if ValueFormatter.isDateFormat(code), let date = DateSerial.isoText(number, system: dateSystem) { return date }
             if ValueFormatter.percentCount(code) == 1 { return plain(number * 100) + "%" }
             return plain(number)
         }
@@ -78,19 +78,6 @@ public enum CSVWriter {
 
     private static func plain(_ number: Decimal) -> String {
         DecimalMath.plainString(DecimalMath.roundSignificant(number, digits: 15))
-    }
-
-    /// 2025-12-01；带时刻的 2025-12-01 10:30:00（四舍五入到秒）；不到一天的只有时刻（10:30:00）。
-    private static func dateText(_ serial: Decimal, _ system: DateSystem) -> String? {
-        guard serial >= 0 else { return nil }
-        var seconds = Int(DecimalMath.double(serial * 86_400).rounded())
-        let days = seconds / 86_400
-        seconds %= 86_400
-        let time = String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
-        guard days > 0 else { return time }
-        guard let date = DateSerial.civilDate(fromSerial: days, system: system) else { return nil }
-        let day = String(format: "%04d-%02d-%02d", date.year, date.month, date.day)
-        return seconds > 0 ? day + " " + time : day
     }
 
     /// RFC 4180：有分隔符、引号、换行的字段用引号括起来，里面的引号写两个。

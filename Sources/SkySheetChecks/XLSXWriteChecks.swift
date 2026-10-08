@@ -228,6 +228,75 @@ func xlsxWriteChecks() {
     }
 }
 
+/// 哪些是 AI 的 sheet、谁写的：存进 docProps/custom.xml，读回来还在（设计 9.3 节）。
+@MainActor
+func aiPropertiesChecks() {
+    group("xlsx write: AI sheets and who wrote them survive saving") {
+        let original = try Data(contentsOf: fixtureURL("loan.xlsx"))
+        var opened = try openForEditing(original)
+        var baseline = opened.workbook
+        let authorship = AIAuthorship(
+            created: .init(.ai(client: "claude-code", model: "claude-opus-5-5"), date: Date(timeIntervalSince1970: 1_790_000_000.6)),
+            lastChanged: .init(.user, date: Date(timeIntervalSince1970: 1_790_000_100)))
+        let copy = try opened.workbook.copySheet(0, named: "AI 利率")
+        opened.workbook.sheets[copy].role = .ai(authorship)
+        var (result, reread) = try save(opened.workbook, source: opened.source, baseline: baseline)
+        checkEqual(reread.workbook.sheets[1].role.authorship?.badge, "Claude", "the AI sheet is read back as AI")
+        checkEqual(reread.workbook.sheets[1].role.authorship?.lastChanged?.author, .user, "last change by the user kept")
+        checkEqual(reread.workbook.sheets[0].role, .original, "the original stays original")
+        var parts = try zipContents(result.data)
+        let custom = String(decoding: parts["docProps/custom.xml"] ?? Data(), as: UTF8.self)
+        check(custom.contains("name=\"SkySheet.AI.2\"") && custom.contains("pid=\"2\""), "one property per AI sheet")
+        check(String(decoding: parts["_rels/.rels"] ?? Data(), as: UTF8.self).contains("custom-properties"), "linked from the package")
+        check(String(decoding: parts["[Content_Types].xml"] ?? Data(), as: UTF8.self).contains("/docProps/custom.xml"),
+              "content type added")
+
+        // 存完以后什么都不改再存：custom.xml 原样照抄。
+        let source = reread.source
+        baseline = opened.workbook
+        (result, reread) = try save(opened.workbook, source: source, baseline: baseline)
+        check(result.copiedEntries.contains("docProps/custom.xml") && result.regeneratedSheets.isEmpty, "nothing rewritten")
+
+        // 删掉 AI 的 sheet：属性跟着去掉。
+        try opened.workbook.deleteSheet(1)
+        (result, reread) = try save(opened.workbook, source: reread.source, baseline: opened.workbook)
+        parts = try zipContents(result.data)
+        check(!String(decoding: parts["docProps/custom.xml"] ?? Data(), as: UTF8.self).contains("SkySheet.AI."),
+              "the property goes with the sheet")
+    }
+
+    group("xlsx write: other custom properties are kept") {
+        let original = """
+            <?xml version="1.0" encoding="UTF-8" standalone="yes"?><Properties xmlns="\(AIProperties.namespace)" \
+            xmlns:vt="\(AIProperties.typesNamespace)"><property fmtid="\(AIProperties.formatID)" pid="5" name="Owner">\
+            <vt:lpwstr>Finance</vt:lpwstr></property><property fmtid="\(AIProperties.formatID)" pid="6" \
+            name="SkySheet.AI.9"><vt:lpwstr>stale</vt:lpwstr></property></Properties>
+            """
+        let authorship = AIAuthorship(created: .init(.ai(client: String(repeating: "c", count: 90),
+                                                         model: String(repeating: "m", count: 90)), date: Date()),
+                                      lastChanged: .init(.ai(client: String(repeating: "c", count: 90),
+                                                             model: String(repeating: "m", count: 90)), date: Date()))
+        let encoded = AIProperties.encode(authorship)
+        check(encoded.count <= 255, "long names are cut to fit 255 characters (\(encoded.count))")
+        checkEqual(AIProperties.decode(encoded)?.badge, "c" + String(repeating: "c", count: 29), "and decode")
+        let patched = String(decoding: AIProperties.patchedPart(Data(original.utf8), properties: ["SkySheet.AI.3": "{}"]) ?? Data(),
+                             as: UTF8.self)
+        check(patched.contains("name=\"Owner\"") && !patched.contains("stale"), "others kept, stale ones dropped")
+        check(patched.contains("pid=\"6\" name=\"SkySheet.AI.3\""), "new ids continue after the largest one kept")
+    }
+
+    group("xlsx write: a csv workbook with an AI sheet saved as xlsx") {
+        var workbook = try CSVReader.read(Data("a,b\n1,2\n".utf8), sheetName: "data").workbook
+        let index = try workbook.addSheet(named: "AI", role: .ai(AIAuthorship(created: .init(.ai(client: "claude-code", model: nil),
+                                                                                                date: Date()))))
+        workbook.enter(.formula("data!A2*10"), at: CellAddress(row: 0, column: 0), sheet: index)
+        Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday))
+        let (result, reread) = try save(workbook, source: nil, baseline: nil)
+        checkEqual(reread.workbook.sheets[1].role.authorship?.badge, "Claude Code", "role kept in a fresh package")
+        check(try zipContents(result.data)["docProps/custom.xml"] != nil, "custom.xml written")
+    }
+}
+
 /// 第四、五道保险的存储：备份轮换、恢复副本。都在临时目录里试。
 @MainActor
 func safetyStoreChecks() {
