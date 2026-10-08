@@ -38,9 +38,14 @@ public enum ValueFormatter {
         }
     }
 
-    /// 数字的「常规」写法（15 位有效数字）。公式里把数字接成文字时用它。
-    public static func general(_ number: Decimal) -> String {
-        GeneralFormat.render(number)
+    /// 数字的「常规」写法（默认 15 位有效数字）。公式里把数字接成文字时用它；表格里列太窄时显示层用更少的位数。
+    public static func general(_ number: Decimal, significantDigits: Int = 15) -> String {
+        GeneralFormat.render(number, significantDigits: significantDigits)
+    }
+
+    /// 这个格式是不是日期 / 时间格式（看第一段）。公式栏显示日期格子的值时要用。
+    public static func isDateFormat(_ code: String) -> Bool {
+        FormatCodeCache.shared.parsed(code).sections.first?.kind == .date
     }
 
     private static func renderText(_ text: String, _ section: FormatSection) -> String {

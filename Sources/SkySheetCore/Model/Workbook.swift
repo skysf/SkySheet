@@ -7,13 +7,21 @@ public struct Workbook: Hashable, Sendable {
     public var dateSystem: DateSystem
     /// 文件里定义的名称（named range）。第一版公式里不支持，读进来原样留着，保存时写回（设计 5.1 节）。
     public var definedNames: [DefinedName]
+    /// 主题的 12 种颜色（RRGGBB），按主题文件里的顺序：dk1、lt1、dk2、lt2、accent1…6、hlink、folHlink。
+    /// 样式里的 `theme="1"` 指哪一个有讲究（前四个两两对调），由显示层换算。
+    public var themeColors: [String]
+
+    /// Office 默认主题的颜色。文件里没有主题时用它（样例 loan.xlsx 的主题也是这一套）。
+    public static let defaultThemeColors = ["000000", "FFFFFF", "44546A", "E7E6E6", "4472C4", "ED7D31",
+                                            "A5A5A5", "FFC000", "5B9BD5", "70AD47", "0563C1", "954F72"]
 
     public init(sheets: [Sheet] = [], styles: StyleTable = StyleTable(), dateSystem: DateSystem = .from1900,
-                definedNames: [DefinedName] = []) {
+                definedNames: [DefinedName] = [], themeColors: [String] = Workbook.defaultThemeColors) {
         self.sheets = sheets
         self.styles = styles
         self.dateSystem = dateSystem
         self.definedNames = definedNames
+        self.themeColors = themeColors
     }
 
     /// Excel 的 sheet 名不分大小写：公式里写 `loan!A1` 也指 Loan。

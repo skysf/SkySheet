@@ -137,9 +137,9 @@ enum NumberRenderer {
 /// Excel 的「常规」：最多 15 位有效数字，去掉末尾的 0；绝对值 ≥ 1E+15 或者 < 1E-9（不为 0）时用科学计数法。
 /// 公式里把数字接成文字（="合计"&A1）也是这个写法。界面上按列宽再缩短是 M2 的事。
 enum GeneralFormat {
-    static func render(_ value: Decimal) -> String {
+    static func render(_ value: Decimal, significantDigits: Int = 15) -> String {
         guard value != 0 else { return "0" }
-        let rounded = DecimalMath.roundSignificant(value, digits: 15)
+        let rounded = DecimalMath.roundSignificant(value, digits: significantDigits)
         let magnitude = abs(rounded)
         guard magnitude >= DecimalMath.powerOfTen(15) || magnitude < DecimalMath.powerOfTen(-9) else {
             return DecimalMath.plainString(rounded)

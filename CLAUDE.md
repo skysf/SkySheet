@@ -5,14 +5,17 @@
 
 ## 现在在哪
 
-- M1 完成（zip、读 xlsx、公式引擎 62 个函数、数字格式、自检和 CI），下一步 M2 查看器。里程碑见设计第十三节；每完成一个就改这一行。
+- M2 完成（查看器 v0.1.0），下一步 M3 编辑与保存。里程碑见设计第十三节；每完成一个就改这一行。
 
 ## 常用命令
 
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
 - 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，6 秒左右）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
-- 打包：`VERSION=x.y.z scripts/build-app.sh`（M2 起）。
+- 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
+- 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60]`，
+  把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。
+- 真机检查清单：`docs/testing/`，每个里程碑一份。
 
 ## 硬规矩
 
