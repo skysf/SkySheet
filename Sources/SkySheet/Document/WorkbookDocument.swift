@@ -4,24 +4,63 @@ import SkySheetDisplay
 import SkySheetFiles
 
 /// 一个打开的 xlsx / csv（设计 8.1 节）。文档层用 AppKit 的 NSDocument：SwiftUI 的 DocumentGroup 会自动把改动存回原文件，
-/// 违反「只有 ⌘S 才写回」（设计第 15 条）。
+/// 违反「只有 ⌘S 才写回」（设计第 15 条）。保存和六道保险在 WorkbookDocument+Saving.swift。
 ///
-/// M2 只看不改：Info.plist 里文档的角色是 Viewer，没有保存。M3 改成 Editor 并接上保存的六道保险（设计第十节）。
+/// NSDocument 的 read / write 不在主线程隔离域里，但我们没开并发读写（canConcurrentlyReadDocuments、
+/// canAsynchronouslyWrite 都是默认的 false），系统在主线程上调它们。下面几个 nonisolated(unsafe) 的属性都只在主线程上读写。
 @objc(WorkbookDocument)
 final class WorkbookDocument: NSDocument {
-    /// NSDocument 的 read 不在主线程隔离域里，但我们没开并发读取（canConcurrentlyReadDocuments 默认是 false），
-    /// 系统是在主线程上调它的，写这个属性和之后 makeWindowControllers 读它都在主线程。
-    nonisolated(unsafe) private var loaded: DocumentLoader.Loaded?
+    nonisolated(unsafe) var loaded: DocumentLoader.Loaded?
+    /// 窗口建好以后的编辑状态。保存时从这里拿工作簿。
+    nonisolated(unsafe) var session: SheetSession?
+    /// 原包：保存时没改过的部件照抄（设计 7.2 节）。打开的是 csv 时没有。
+    nonisolated(unsafe) var source: XLSXSource?
+    /// 打开（或上次保存）时的工作簿：判断哪张 sheet 改过。
+    nonisolated(unsafe) var baseline: Workbook?
+    /// 打开的是 csv 时原来的写法（编码、分隔符、换行）。
+    nonisolated(unsafe) var csvFormat: CSVFormat?
+    /// 刚写好、核对过、还没确认存成功的：存成功以后它们成为新的原包和基准。
+    nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?)?
+    /// 这次打开以后备份过原文件没有（第四道保险：第一次覆盖前备份）。
+    var backedUp = false
+    /// 恢复副本的编号和上次写恢复副本时的改动次数（第五道保险）。
+    let recoveryID = UUID()
+    var recoveredRevision: Int?
+    /// 从恢复副本打开的：原来那个文件。存的时候默认存回它旁边。
+    var recoveredFrom: URL?
 
     override class var autosavesInPlace: Bool { false }
 
     override func read(from url: URL, ofType typeName: String) throws {
-        loaded = try DocumentLoader.load(contentsOf: url, typeName: typeName)
+        let loaded = try DocumentLoader.load(contentsOf: url, typeName: typeName)
+        self.loaded = loaded
+        source = loaded.source
+        baseline = loaded.workbook
+        csvFormat = loaded.csvFormat
     }
 
     override func makeWindowControllers() {
         guard let loaded else { return }
-        addWindowController(WorkbookWindowController(session: SheetSession(workbook: loaded.workbook)))
+        let session = SheetSession(workbook: loaded.workbook)
+        session.undoManager = undoManager
+        self.session = session
+        addWindowController(WorkbookWindowController(session: session))
+    }
+
+    /// 「复原到上次存的样子」和「文件被别的程序改了，重新载入」：读回来以后换掉窗口里的工作簿，撤销记录清空。
+    override func revert(toContentsOf url: URL, ofType typeName: String) throws {
+        try super.revert(toContentsOf: url, ofType: typeName)
+        guard let loaded, let session else { return }
+        session.editing = nil
+        session.replaceWorkbook(loaded.workbook)
+        session.resetSelection()
+        undoManager?.removeAllActions()
+        backedUp = false
+    }
+
+    override func close() {
+        RecoveryCoordinator.shared.forget(self)
+        super.close()
     }
 }
 
@@ -29,8 +68,8 @@ final class WorkbookDocument: NSDocument {
 enum DocumentLoader {
     struct Loaded {
         var workbook: Workbook
-        /// 打开的是 csv 时原来的编码、分隔符：M3 写回 csv 要用。
-        var csv: CSVDocument?
+        var source: XLSXSource?
+        var csvFormat: CSVFormat?
     }
 
     static func load(contentsOf url: URL, typeName: String? = nil) throws -> Loaded {
@@ -46,12 +85,12 @@ enum DocumentLoader {
                 autoFitColumns(&copy)
                 return copy
             }
-            return Loaded(workbook: fitted, csv: csv)
+            return Loaded(workbook: fitted, source: nil, csvFormat: csv.format)
         }
-        var workbook = try XLSXReader.read(data)
+        var document = try XLSXReader.readDocument(data)
         // 读进来先整本重算一遍：TODAY() 是今天，我们算得了的公式用我们的结果，算不了的保留文件里的缓存值。
-        Recalculator.recalculate(&workbook)
-        return Loaded(workbook: workbook, csv: nil)
+        Recalculator.recalculate(&document.workbook)
+        return Loaded(workbook: document.workbook, source: document.source, csvFormat: nil)
     }
 
     /// csv 没有列宽：按内容定宽（设计 7.3 节，AutoFit 的说明）。量文字要用真正画的字体，所以在 App 这一层做。
@@ -66,9 +105,9 @@ enum DocumentLoader {
         }
     }
 
-    private static func isDelimitedText(url: URL, typeName: String?) -> Bool {
+    static func isDelimitedText(url: URL? = nil, typeName: String?) -> Bool {
         if let typeName, typeName.contains("separated-values") || typeName.contains("delimited") { return true }
-        return ["csv", "tsv", "txt"].contains(url.pathExtension.lowercased())
+        return ["csv", "tsv", "txt"].contains(url?.pathExtension.lowercased() ?? "")
     }
 }
 

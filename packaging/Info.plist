@@ -33,7 +33,7 @@
 	<string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 skylu.ai · AGPL-3.0</string>
-	<!-- 能打开的文件。M2 只看不改，角色是 Viewer；M3 有了保存再改成 Editor（设计第十三节）。
+	<!-- 能打开、能保存的文件，角色是 Editor（M3 起能保存；M2 只看不改时是 Viewer）。
 	     LSHandlerRank 用 Alternate：不抢 Numbers、Excel、WPS 的默认打开方式，要用 SkySheet 打开时右键「打开方式」选它。
 	     NSDocumentClass 对应代码里的 @objc(WorkbookDocument)。 -->
 	<key>CFBundleDocumentTypes</key>
@@ -42,7 +42,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Spreadsheet (xlsx)</string>
 			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
+			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>
@@ -56,7 +56,7 @@
 			<key>CFBundleTypeName</key>
 			<string>Comma-separated values</string>
 			<key>CFBundleTypeRole</key>
-			<string>Viewer</string>
+			<string>Editor</string>
 			<key>LSHandlerRank</key>
 			<string>Alternate</string>
 			<key>LSItemContentTypes</key>

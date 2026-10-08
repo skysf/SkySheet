@@ -11,7 +11,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let request = SnapshotRequest(arguments: CommandLine.arguments) {
             SnapshotRenderer.run(request)
+            return
         }
+        // 第五道保险：上次没正常退出留下的恢复副本，先问要不要恢复；然后每 30 秒写一次。
+        RecoveryCoordinator.shared.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        RecoveryCoordinator.shared.drain()
     }
 
     /// 从访达打开、拖到 Dock 图标上的文件都走这里，交给文档控制器。截图模式下一律不开（见 SnapshotRequest）。
@@ -60,10 +67,25 @@ enum MainMenu {
             item(String(localized: "Open…"), #selector(NSDocumentController.openDocument(_:)), key: "o"),
             .separator(),
             item(String(localized: "Close"), #selector(NSWindow.performClose(_:)), key: "w"),
+            item(String(localized: "Save"), #selector(NSDocument.save(_:)), key: "s"),
+            item(String(localized: "Save As…"), #selector(NSDocument.saveAs(_:)), key: "s", modifiers: [.command, .shift]),
+            item(String(localized: "Revert to Saved"), #selector(NSDocument.revertToSaved(_:))),
         ]))
         main.addItem(submenu(String(localized: "Edit"), [
+            item(String(localized: "Undo"), #selector(SpreadsheetView.undo(_:)), key: "z"),
+            item(String(localized: "Redo"), #selector(SpreadsheetView.redo(_:)), key: "z", modifiers: [.command, .shift]),
+            .separator(),
+            item(String(localized: "Cut"), #selector(SpreadsheetView.cut(_:)), key: "x"),
             item(String(localized: "Copy"), #selector(SpreadsheetView.copy(_:)), key: "c"),
+            item(String(localized: "Paste"), #selector(SpreadsheetView.paste(_:)), key: "v"),
+            item(String(localized: "Delete"), #selector(SpreadsheetView.delete(_:))),
             item(String(localized: "Select All"), #selector(NSResponder.selectAll(_:)), key: "a"),
+        ]))
+        main.addItem(submenu(String(localized: "Sheet"), [
+            item(String(localized: "Rename Sheet…"), #selector(SpreadsheetView.renameSheet(_:))),
+            item(String(localized: "Duplicate Sheet"), #selector(SpreadsheetView.duplicateSheet(_:))),
+            .separator(),
+            item(String(localized: "Delete Sheet"), #selector(SpreadsheetView.deleteSheet(_:))),
         ]))
         main.addItem(submenu(String(localized: "View"), [
             item(String(localized: "Actual Size"), #selector(SpreadsheetView.resetZoom(_:)), key: "0"),

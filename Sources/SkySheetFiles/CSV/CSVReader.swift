@@ -58,6 +58,11 @@ public enum CSVReader {
         return CSVDocument(workbook: workbook, format: format)
     }
 
+    /// 拆成一行一行的字段（不转换值）。粘贴别处复制来的制表符分隔的文字也用它：Excel 会把带换行的格子用引号括起来。
+    public static func rows(in text: String, delimiter: Character) -> [[String]] {
+        parse(text, delimiter: delimiter)
+    }
+
     /// RFC 4180：字段可以用双引号括起来，里面的 "" 是一个引号，可以有分隔符和换行。行尾认 \r\n、\n、\r。
     static func parse(_ text: String, delimiter: Character) -> [[String]] {
         var rows: [[String]] = []

@@ -28,6 +28,10 @@ final class SpreadsheetView: NSView {
     private let columnHeader = HeaderView(axis: .columns)
     private let rowHeader = HeaderView(axis: .rows)
     private let cornerBox = CornerBox()
+    /// 格内编辑框（CellEditor.swift）。不编辑时藏着。
+    let editor = CellEditor()
+    /// 正在处理的按键：开始打字时要把这一下转给编辑框（SpreadsheetView+Input）。
+    var pendingKeyEvent: NSEvent?
 
     static let columnHeaderHeight: CGFloat = 22
     /// 第一次排好之后要不要滚到活动格（选区在视图建好之前就定了的时候，比如换 sheet、截图模式的 --select）。
@@ -52,15 +56,23 @@ final class SpreadsheetView: NSView {
         scrollView.contentView.postsBoundsChangedNotifications = true
         NotificationCenter.default.addObserver(self, selector: #selector(contentScrolled),
                                                name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
-        for view in [scrollView, cornerPane, frozenRowsPane, frozenColumnsPane, columnHeader, rowHeader, cornerBox] as [NSView] {
+        editor.spreadsheet = self
+        for view in [scrollView, cornerPane, frozenRowsPane, frozenColumnsPane, columnHeader, rowHeader, cornerBox,
+                     editor] as [NSView] {
             addSubview(view)
         }
         rebuildCanvas()
         observeChanges(self, read: { view in
             _ = view.session.sheetIndex
             _ = view.session.zoom
+            _ = view.session.workbook
         }, onChange: { view in
             view.rebuildCanvas()
+        })
+        observeChanges(self, read: { view in
+            _ = view.session.editing
+        }, onChange: { view in
+            view.editingChanged()
         })
         observeChanges(self, read: { view in
             _ = view.session.selection
@@ -151,6 +163,7 @@ final class SpreadsheetView: NSView {
         frozenColumnsPane.origin = CGPoint(x: 0, y: canvas.frozenHeight + offset.y)
         columnHeader.scroll = offset.x
         rowHeader.scroll = offset.y
+        if session.editing != nil { placeEditor() }
     }
 
     private func selectionChanged() {

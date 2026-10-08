@@ -59,6 +59,10 @@ final class WorkbookViewController: NSViewController {
         }
         view = container
         self.spreadsheet = spreadsheet
+        session.focusGrid = { [weak spreadsheet] in
+            guard let spreadsheet else { return }
+            spreadsheet.window?.makeFirstResponder(spreadsheet)
+        }
     }
 
     override func viewDidAppear() {

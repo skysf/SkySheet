@@ -2,7 +2,7 @@ import SkySheetCore
 import SkySheetDisplay
 import SwiftUI
 
-/// 底栏：sheet 页签，右边是选中区域的平均值、计数、合计（和 Excel 底部那行一样），再右边是缩放比例。
+/// 底栏：sheet 页签（右键改名、复制、删除），右边是选中区域的平均值、计数、合计（和 Excel 底部那行一样），再右边是缩放比例。
 struct BottomBar: View {
     let session: SheetSession
 
@@ -13,6 +13,16 @@ struct BottomBar: View {
                     ForEach(session.tabIndices, id: \.self) { index in
                         SheetTab(sheet: session.workbook.sheets[index], isSelected: index == session.sheetIndex) {
                             session.showSheet(index)
+                        }
+                        // 双击改名，和 Excel 一样。
+                        .simultaneousGesture(TapGesture(count: 2).onEnded {
+                            SheetCommands.rename(index, in: session, window: NSApp.keyWindow)
+                        })
+                        .contextMenu {
+                            Button("Rename…") { SheetCommands.rename(index, in: session, window: NSApp.keyWindow) }
+                            Button("Duplicate") { SheetCommands.duplicate(index, in: session) }
+                            Divider()
+                            Button("Delete") { SheetCommands.delete(index, in: session, window: NSApp.keyWindow) }
                         }
                     }
                 }
