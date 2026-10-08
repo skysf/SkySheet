@@ -76,6 +76,29 @@ public enum CSVWriter {
         }
     }
 
+    /// 导出给 Python / pandas 的 csv（设计 9.2 节 export_sheet）：UTF-8 不带 BOM、逗号、\n；数字写原值（百分比写小数，
+    /// 不加千分位），日期写 ISO（YYYY-MM-DD），公式写算出来的值。和写回用户文件的那套不同：这里只求好读、好算。
+    public static func analysisData(_ sheet: Sheet, range: CellRange, styles: StyleTable, dateSystem: DateSystem) -> Data {
+        var lines: [String] = []
+        for row in range.start.row...range.end.row {
+            let fields = (range.start.column...range.end.column).map { column -> String in
+                guard let cell = sheet.cells[row, column] else { return "" }
+                switch cell.value {
+                case .number(let number):
+                    if ValueFormatter.isDateFormat(styles.formatCode(forStyle: cell.styleIndex)),
+                       let date = DateSerial.isoText(number, system: dateSystem) { return date }
+                    return plain(number)
+                case .error(let error):
+                    return error == .circular ? "" : error.code
+                default:
+                    return quoted(text(of: cell, styles: styles, dateSystem: dateSystem), ",")
+                }
+            }
+            lines.append(fields.joined(separator: ","))
+        }
+        return Data((lines.joined(separator: "\n") + "\n").utf8)
+    }
+
     private static func plain(_ number: Decimal) -> String {
         DecimalMath.plainString(DecimalMath.roundSignificant(number, digits: 15))
     }

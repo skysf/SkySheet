@@ -10,11 +10,14 @@ final class SheetCanvas {
     let styles: StyleResolver
     let dateSystem: DateSystem
     let fonts = FontBook()
+    /// 这一轮 AI 改过的格子：淡紫色高亮（设计 8.3 节）。
+    let aiTouched: Set<CellAddress>
 
     init(session: SheetSession) {
         sheet = session.sheet
         styles = session.styles
         dateSystem = session.workbook.dateSystem
+        aiTouched = session.aiTouched[session.sheet.id] ?? []
         geometry = SheetGeometry(sheet: session.sheet, baseFontSize: session.styles.baseFontSize,
                                  digitWidth: fonts.digitWidth(session.styles.style(0).font), zoom: session.zoom)
     }

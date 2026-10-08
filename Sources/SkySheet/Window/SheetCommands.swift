@@ -59,6 +59,16 @@ enum SheetCommands {
         }
     }
 
+    /// 用户把一张 sheet 标成「AI 可改」或者「原始数据」（设计 9.3 节第 4 条）。标成 AI 可改的署名是用户自己。
+    static func setAIEditable(_ editable: Bool, _ index: Int, in session: SheetSession) {
+        guard session.workbook.sheets.indices.contains(index) else { return }
+        let now = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
+        let name = editable ? String(localized: "Let AI Edit") : String(localized: "Mark as Original Data")
+        session.apply(name) { workbook in
+            workbook.sheets[index].role = editable ? .ai(AIAuthorship(created: AIAuthorship.Mark(.user, date: now))) : .original
+        }
+    }
+
     static func message(for problem: SheetName.Problem) -> String {
         switch problem {
         case .empty: String(localized: "The sheet name can't be empty.")

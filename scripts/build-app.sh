@@ -33,6 +33,8 @@ fi
 # 一律 --arch arm64：这台 M1 的终端跑在 Rosetta 下，不带就编成 x86_64（CLAUDE.md）。
 echo "==> swift build -c release（arm64）"
 swift build -c release --arch arm64 --product "${APP_NAME}"
+# Claude Code 启动的 MCP 小程序，放进 Contents/Helpers（设计第三节、9.1 节）。
+swift build -c release --arch arm64 --product skysheet-mcp
 BUILD_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
 
 APP="${DIST}/${APP_NAME}.app"
@@ -41,6 +43,12 @@ rm -rf "${APP}"
 mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BUILD_DIR}/${APP_NAME}" "${APP}/Contents/MacOS/${APP_NAME}"
 strip -xS "${APP}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
+
+echo "==> 内置 skysheet-mcp"
+mkdir -p "${APP}/Contents/Helpers"
+cp "${BUILD_DIR}/skysheet-mcp" "${APP}/Contents/Helpers/skysheet-mcp"
+strip -xS "${APP}/Contents/Helpers/skysheet-mcp" 2>/dev/null || true
+chmod +x "${APP}/Contents/Helpers/skysheet-mcp"
 
 # SwiftPM 的资源包（以后加中文翻译的 .lproj 会在这里）：内容铺进 Contents/Resources，Bundle.main 才找得到。
 RESOURCES="${BUILD_DIR}/${APP_NAME}_${APP_NAME}.bundle"

@@ -12,9 +12,30 @@ final class RecoveryCoordinator {
     /// 写和删排在同一条串行队列上：先写后删的顺序不会乱（乱了会留下一份不该有的恢复副本）。
     private let queue = DispatchQueue(label: "ai.skylu.skysheet.recovery", qos: .utility)
     private var timer: Timer?
+    private var activationObserver: NSObjectProtocol?
+    /// 启动时就在的恢复副本：只有它们是上次没正常退出留下的。
+    private var leftAtLaunch: Set<UUID> = []
 
-    func start() {
+    /// 被 AI 拉起来以后，用户第一次切到 SkySheet：这时再问要不要恢复。
+    private func userArrived() {
+        if let activationObserver { NotificationCenter.default.removeObserver(activationObserver) }
+        activationObserver = nil
         offerRestore()
+    }
+
+    /// `askNow` 为假（App 是被 AI 在后台拉起来的）：等用户自己切到 SkySheet 再问，没人看着时弹框会把 AI 的调用挂住。
+    /// 问的只是启动时就在的那些（上次没正常退出留下的）：这次运行里每 30 秒写的恢复副本属于开着的文档，不能当成要恢复的
+    /// （2026-10-09 端到端时抓到：被 AI 拉起来、过了一会儿用户切过来，问的是正开着的那个文档）。
+    func start(askNow: Bool = true) {
+        leftAtLaunch = Set(store.entries().map(\.id))
+        if askNow {
+            offerRestore()
+        } else {
+            activationObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+                MainActor.assumeIsolated { RecoveryCoordinator.shared.userArrived() }
+            }
+        }
         timer = Timer.scheduledTimer(withTimeInterval: 30, repeats: true) { _ in
             MainActor.assumeIsolated { RecoveryCoordinator.shared.writeCopies() }
         }
@@ -57,8 +78,10 @@ final class RecoveryCoordinator {
         queue.sync {}
     }
 
-    private func offerRestore() {
-        let entries = store.entries()
+    func offerRestore() {
+        let open = Set(NSDocumentController.shared.documents.compactMap { ($0 as? WorkbookDocument)?.recoveryID })
+        let entries = store.entries().filter { leftAtLaunch.contains($0.id) && !open.contains($0.id) }
+        leftAtLaunch = []
         guard !entries.isEmpty else { return }
         let alert = NSAlert()
         alert.messageText = entries.count == 1

@@ -37,8 +37,10 @@ public enum DecimalMath {
         return NSDecimalNumber(decimal: whole).intValue
     }
 
+    /// Decimal 转 Double：按十进制文字解析，正确舍入。NSDecimalNumber 的 doubleValue 末位会差一点
+    /// （8673.94 变成 8673.939999999999，2026-10-09 给 AI 的结果里看到的）。
     public static func double(_ value: Decimal) -> Double {
-        NSDecimalNumber(decimal: value).doubleValue
+        Double(value.description) ?? NSDecimalNumber(decimal: value).doubleValue
     }
 
     /// Double 转 Decimal：走最短的十进制写法（0.1 就是 0.1，不是 0.1000000000000000055…）。不是有限数返回 nil。

@@ -18,8 +18,10 @@ public struct TableBlock: Sendable, Equatable {
     public var range: CellRange
     public var title: String?
     public var headerRow: Int?
-    /// 数据行（只有标题、表头时是 nil）。
+    /// 数据行（只有标题、表头时是 nil）。不含合计行。
     public var dataRows: ClosedRange<Int>?
+    /// 块的最后一行是合计（有 SUM 公式，如「合计」那一行）：不算数据，免得求和、查询时把合计又加一遍。
+    public var totalsRow: Int?
     public var columns: [Column]
 }
 
@@ -60,11 +62,16 @@ public enum TableBlocks {
                 headerRow = top
                 remaining = remaining.dropFirst()
             }
+            var totalsRow: Int?
+            if remaining.count > 1, let bottom = remaining.last, isTotals(row: bottom, columns: columnsByRow[bottom] ?? [], sheet) {
+                totalsRow = bottom
+                remaining = remaining.dropLast()
+            }
             let name = blocks.isEmpty ? sheet.name : "\(sheet.name)_\(blocks.count + 1)"
             blocks.append(TableBlock(
                 name: name, range: CellRange(CellAddress(row: rows[0], column: first), CellAddress(row: rows[rows.count - 1], column: last)),
                 title: title, headerRow: headerRow,
-                dataRows: remaining.first.map { $0...remaining[remaining.endIndex - 1] },
+                dataRows: remaining.first.map { $0...remaining[remaining.endIndex - 1] }, totalsRow: totalsRow,
                 columns: namedColumns(first...last, headerRow: headerRow, sheet)))
         }
         return blocks
@@ -73,8 +80,17 @@ public enum TableBlocks {
     /// 指定一块区域当表（query 的 tables 参数）：第一行是表头。
     public static func block(_ range: CellRange, named name: String, in sheet: Sheet) -> TableBlock {
         let data = range.start.row < range.end.row ? (range.start.row + 1)...range.end.row : nil
-        return TableBlock(name: name, range: range, title: nil, headerRow: range.start.row, dataRows: data,
+        return TableBlock(name: name, range: range, title: nil, headerRow: range.start.row, dataRows: data, totalsRow: nil,
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
+    }
+
+    /// 合计行：这一行有 SUM（或 SUBTOTAL）公式。
+    private static func isTotals(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        columns.contains { column in
+            guard let source = sheet.cells[row, column]?.formula?.source.uppercased() else { return false }
+            let body = source.hasPrefix("=") ? String(source.dropFirst()) : source
+            return body.hasPrefix("SUM(") || body.hasPrefix("SUBTOTAL(")
+        }
     }
 
     /// 表头：至少两格文字，文字占这一行有内容的格子的四分之三以上（表头旁边常有一两个零碎的数）。
