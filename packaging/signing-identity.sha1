@@ -1,0 +1,4 @@
+# 发布签名证书（自签名「Skylu Signing」）的 SHA-1。scripts/signing/sign-app.sh 只肯用这一把签：
+# 换证书 = 签出来的 SkySheet 在系统里都算「另一个 App」，用户给过的权限全部作废一次（设计第 4 条、第十一节）。
+# 私钥在仓库外的 ~/.config/skylu/signing/；scripts/signing/create-identity.sh 第一次建身份时把 SHA-1 写在下面。
+2068045ad0cd4a879781d8206046cc2fad51a40e

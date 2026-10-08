@@ -12,13 +12,20 @@ let package = Package(
         .target(name: "SkyZip"),
         // 值类型的工作簿模型、公式引擎和函数库、数字格式。不碰任何文件格式。
         .target(name: "SkySheetCore"),
-        // xlsx（M2 起还有 csv）读写：把文件变成 SkySheetCore 的模型。
+        // xlsx、csv 读写：把文件变成 SkySheetCore 的模型。
         .target(name: "SkySheetFiles", dependencies: ["SkySheetCore", "SkyZip"]),
+        // 画表格要做的决定：颜色换算、样式继承、行列几何、格子显示成什么。和 AppKit 无关，自检能测。
+        .target(name: "SkySheetDisplay", dependencies: ["SkySheetCore"]),
+        // App：文档、窗口、表格视图（AppKit + SwiftUI）。打包见 scripts/build-app.sh。
+        .executableTarget(
+            name: "SkySheet",
+            dependencies: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay"]
+        ),
         // 自检。本机只有命令行工具，没有 XCTest，也没有 Swift Testing（设计第十二节），
         // 所以是一个可执行程序：全过退出码 0。scripts/check-all.sh 调它，CI 也跑同一个。
         .executableTarget(
             name: "SkySheetChecks",
-            dependencies: ["SkyZip", "SkySheetCore", "SkySheetFiles"]
+            dependencies: ["SkyZip", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay"]
         ),
     ]
 )

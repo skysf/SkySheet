@@ -43,7 +43,7 @@ SkySheet 是一个**给 AI 用的**轻量 macOS 表格工具：
 | 19 | 测试数据 | 只提交 `Fixtures/loan.xlsx`（从作者表格里抽出的 Loan 表，来历见 `Fixtures/README.md`）；`SampleData/` 永不入库 | 仓库是公开的；真实表格里还有房产、装修、理财等个人信息 |
 | 20 | 仓库流程 | main 禁止直推，走 PR，CI 绿了才合；CI 只占 1 台 macOS 机器 | 和 SrtFlow 一样；免费档同时最多 5 台 macOS，是整个账号共用的 |
 | 21 | 代码 | 按职责拆文件，一个文件大约 500 行就考虑拆，不设守卫脚本；多用泛型和共用内核，不复制第二份 | 作者定：方便维护、效率高就好，不必像 SrtFlow 那么严 |
-| 22 | 语言 | 界面先只做英文；注释和文档用中文；给模型看的 MCP 文字用英文 | 作者 2026-10-08 定：先做英文版，中文以后再加。界面文字一律走 String Catalog、开发语言英文，以后加中文只是补翻译。本文引号里的界面文字只写意思，实际是英文 |
+| 22 | 语言 | 界面先只做英文；注释和文档用中文；给模型看的 MCP 文字用英文 | 作者 2026-10-08 定：先做英文版，中文以后再加。界面文字一律用 `String(localized:)`、开发语言英文，以后加中文只是补翻译。本机只有命令行工具，没有编 String Catalog（.xcstrings）的 xcstringstool（2026-10-08 实测），所以翻译照 SrtFlow 用 `.lproj/Localizable.strings`。本文引号里的界面文字只写意思，实际是英文 |
 | 23 | AI 署名 | 每张 AI 的 sheet 记下是哪个 AI 建的、最后是谁改的；页签上显示 AI 的名字（如 Claude）；存进文件，下次打开还在；不写进 sheet 名 | 作者要求；以后会让用户接别的 AI，得分得清是谁写的。不进 sheet 名：名字会变长（Excel 限 31 个字符），换了 AI 再改时名字里的署名也会过时。做法见 9.3 节 |
 
 ## 三、整体结构
@@ -62,10 +62,11 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 | `SkyZip` | 库 | Foundation、Compression | zip 读写：中央目录、stored / deflate、CRC32 |
 | `SkySheetCore` | 库 | Foundation、SQLite3 | 值类型的工作簿模型、公式引擎和函数库、数字格式、把表格块装进 SQLite 查询 |
 | `SkySheetFiles` | 库 | SkySheetCore、SkyZip | xlsx 读写（含原样保留）、csv 读写（含编码识别） |
+| `SkySheetDisplay` | 库 | SkySheetCore | 画表格要做的决定：颜色换算、样式继承、行列几何、格子显示成什么、文字溢出、csv 自动列宽。和 AppKit 无关，自检能测（M2 加的） |
 | `SkySheetMCPKit` | 库 | Foundation | MCP 协议、工具清单（唯一一份）、和 App 之间的通道；小程序和 App 共用 |
 | `SkySheetMCP` | 可执行，产物 `skysheet-mcp` | SkySheetMCPKit | Claude Code 启动它；清单当场回，调用转给 App；App 没开就 `open -g` 拉起来 |
 | `SkySheet` | 可执行（App） | 以上全部 | 文档、表格视图、编辑、保存安全、AI 层、「连接 Claude Code」 |
-| `SkySheetChecks` | 可执行 | Core、Files、MCPKit | 自检（第十二节） |
+| `SkySheetChecks` | 可执行 | Core、Files、Display、MCPKit | 自检（第十二节） |
 
 Core 和 Files 分开：公式、格式的自检不用造 xlsx；文件格式的改动不碰公式引擎。
 
@@ -89,12 +90,13 @@ Sources/
     CSV/               CSVReader、CSVWriter、TextEncodingSniffer
   SkySheetMCPKit/      MCPServerCore、JSONValue、MCPUnixSocket、MCPBridge（从 SrtFlow 搬）；MCPToolName、各组工具说明、MCPInstructions
   SkySheetMCP/         main.swift、AppConnection.swift（从 SrtFlow 搬）
+  SkySheetDisplay/     Colors、ResolvedStyle、SheetGeometry、CellDisplay、AutoFit
   SkySheet/
-    App/               AppDelegate、DocumentController、菜单
-    Document/          WorkbookDocument、SaveSafety、Backups
-    Grid/              GridView（自绘）、Headers、Selection、CellEditor、FrozenPanes、Clipboard
-    Chrome/            FormulaBar、SheetTabs、AIBanner（SwiftUI）
-    AI/                AIBridgeServer、AIToolRouter、AISession（这一轮）、AISheetOwnership、各组工具
+    App/               main、AppDelegate（含菜单）、Snapshot（截图模式）
+    Document/          WorkbookDocument（含 DocumentLoader）；M3 加 SaveSafety、Backups
+    Window/            SheetSession（共享状态）、WorkbookWindowController、FormulaBar、BottomBar（SwiftUI）
+    Grid/              SpreadsheetView（排布、滚动同步、键鼠）、PaneView（四块窗格、行号列标）、RegionRenderer、SheetCanvas
+    AI/                AIBridgeServer、AIToolRouter、AISession（这一轮）、AISheetOwnership、各组工具（M4）
     Settings/          ConnectClaudeCode
   SkySheetChecks/      main.swift + 每块一个 *Checks.swift
 ```
@@ -231,6 +233,8 @@ Sources/
 - 读：先认编码，带 BOM 或者整份是合法 UTF-8 就按 UTF-8，否则按 GB18030（国内 Excel 和银行导出的 csv 多是 GBK）；
   再认分隔符（逗号、制表符、分号）；引号按 RFC 4180。纯数字转成数字，`2025-12-01`、`2025/12/1` 转成日期，其余都是
   文字（带 ¥ 或千分位的先当文字，AI 需要时自己转）。
+- csv 没有列宽：打开时按每列最长的显示文字自动定宽（最宽 60 个字符）。不然日期显示成 ###、文字被截断，
+  Excel 打开 csv 就是这样（2026-10-08 截图核对时发现，AutoFit）。
 - 写：用读进来时的编码和分隔符写回；数字写原值，日期写 `yyyy-mm-dd`，公式写计算结果（csv 存不了公式）。
 - csv 只能放一张表。打开的是 csv、AI 又加了 sheet 时，⌘S 弹框二选一：「另存为 xlsx（保留 AI 的 sheet，默认）」
   或「只存回 csv（AI 的 sheet 不会保存）」。
@@ -246,8 +250,17 @@ Sources/
 
 ### 8.2 表格视图自绘
 
-- `GridView` 是自己画的 `NSView`，放在 `NSScrollView` 里，只画看得见的格子；行号、列标、冻结窗格各是一块，
-  跟着滚动同步。几千行没有压力。
+- 表格是自己画的：主区放在 `NSScrollView` 里，只画看得见的格子；冻结的左上角、冻结行、冻结列、行号、列标各是一块，
+  跟着主区滚动同步。四块窗格用同一个视图类、同一个渲染器（RegionRenderer），只是对应 sheet 的不同部分。几千行没有压力。
+- M2 落地时踩到、写进代码注释的几条：
+  - macOS 14 起视图默认不裁剪到自己的边界，传进 draw 的脏区域可能比边界大：自绘的视图都要打开 `clipsToBounds`，
+    否则一块窗格刷的白底会盖住别的窗格和公式栏（第一次截图里主区整个是白的）。
+  - 主区关掉「响应式滚动」：否则系统在别的线程上挪主区的图层，行号列标和冻结窗格跟着重画会差一帧。
+  - 列宽的单位是「默认字体里数字的最大宽度」：按我们真正用的字体量（Mac 上用苹方替代「等线」，数字更宽），
+    不能写死 Excel 的 7 像素，不然 Excel 里放得下的金额在我们这里变成 ###。
+  - Excel 的主题色编号前四个两两对调（0 是 lt1、1 是 dk1）；腾讯文档的默认字体是 `theme="1"`，不对调字就全白了。
+- 截图模式：`SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60]` 在屏幕外把整个窗口画成 PNG。
+  开发时核对显示用，不需要录屏权限。参数都带「-」：不带的会被 AppKit 当成要打开的文件，打不开就弹模态框卡死。
 - SwiftUI 的 `Table` / `Grid` 做不了单元格选区、冻结窗格、格内编辑这些表格的基本功，把 NSTableView 改成表格也很
   别扭，所以自绘。
 - 基础编辑（第 16 条）：双击或直接打字进入编辑；回车、Tab 移动；公式栏同步；⌘C / ⌘V 用制表符分隔的文字，和 Excel、
@@ -422,6 +435,7 @@ Tools by need:
   5. **csv**：UTF-8（带和不带 BOM）、GB18030、逗号和制表符、引号里的换行。
   6. **MCP**：两代协议的握手、工具清单、总说明不超过 2,048 字符、说明文字里没有汉字（从 SrtFlow 搬对应的检查）。
   7. **样例泄漏守卫**：`git ls-files SampleData` 必须是空的。
+- 显示效果靠截图模式核对（8.2 节），M2 起每次改表格画法都截一张看。
 - 自动化够不着的（真窗口、别的软件打开我们存的文件、和 Claude Code 端到端对话），每个里程碑结束前在真机上按
   清单走一遍，清单放在 `docs/testing/`。
 
@@ -456,3 +470,4 @@ Tools by need:
   （9.3 节）。新增 AI 署名（第 23 条），起因是作者说以后会让用户接别的 AI。
 - 2026-10-08 作者确认：图片不显示、只原样保留（第 11 条）；AI 的名字不写进 sheet 名（第 23 条）。定稿。
 - 2026-10-08 M1 完成：zip、读 xlsx、公式引擎（62 个函数）、数字格式、自检程序和 CI。实测结果写进 5.5、5.6、7.1 节。
+- 2026-10-08 M2 完成：查看器 v0.1.0（表格、冻结窗格、公式栏、页签、选区合计、打开 xlsx 和 csv、签名证书、打包）。加了 SkySheetDisplay 模块；实测写进 7.3、8.2 节和第 22 条。

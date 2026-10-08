@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>SkySheet</string>
+	<key>CFBundleExecutable</key>
+	<string>SkySheet</string>
+	<key>CFBundleIdentifier</key>
+	<string>ai.skylu.skysheet</string>
+	<key>CFBundleIconFile</key>
+	<string>SkySheet</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>SkySheet</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<!-- 版本号由 scripts/build-app.sh 按 VERSION 或 git tag 写进去，这里只是占位。 -->
+	<key>CFBundleShortVersionString</key>
+	<string>0.0.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>15.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>© 2026 skylu.ai · AGPL-3.0</string>
+	<!-- 能打开的文件。M2 只看不改，角色是 Viewer；M3 有了保存再改成 Editor（设计第十三节）。
+	     LSHandlerRank 用 Alternate：不抢 Numbers、Excel、WPS 的默认打开方式，要用 SkySheet 打开时右键「打开方式」选它。
+	     NSDocumentClass 对应代码里的 @objc(WorkbookDocument)。 -->
+	<key>CFBundleDocumentTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Spreadsheet (xlsx)</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>org.openxmlformats.spreadsheetml.sheet</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>WorkbookDocument</string>
+		</dict>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Comma-separated values</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Alternate</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>public.comma-separated-values-text</string>
+				<string>public.tab-separated-values-text</string>
+			</array>
+			<key>NSDocumentClass</key>
+			<string>WorkbookDocument</string>
+		</dict>
+	</array>
+</dict>
+</plist>
