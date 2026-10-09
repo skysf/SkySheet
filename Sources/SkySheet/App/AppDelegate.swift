@@ -1,7 +1,11 @@
 import AppKit
+import SkySheetMCPKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    /// skysheet-mcp 在后台把 App 拉起来的（设计 9.1 节）：没人看着，不弹「打开」面板，恢复副本的提示等用户自己切过来再问。
+    private let launchedByAI = CommandLine.arguments.contains(MCPBridge.launchedByAIArgument)
+
     func applicationWillFinishLaunching(_ notification: Notification) {
         // 文档控制器要在启动完成前就有：从 Finder 双击打开的文件，系统在这之后马上交给它。
         _ = NSDocumentController.shared
@@ -13,11 +17,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             SnapshotRenderer.run(request)
             return
         }
+        // AI 的通道：Claude Code 启动的 skysheet-mcp 连这个 socket（设计第三节）。
+        AIBridgeServer.shared.start()
         // 第五道保险：上次没正常退出留下的恢复副本，先问要不要恢复；然后每 30 秒写一次。
-        RecoveryCoordinator.shared.start()
+        RecoveryCoordinator.shared.start(askNow: !launchedByAI)
     }
 
     func applicationWillTerminate(_ notification: Notification) {
+        AIBridgeServer.shared.stop()
         RecoveryCoordinator.shared.drain()
     }
 
@@ -38,7 +45,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 只看不建：不开空文档，改成弹「打开」面板。不能在启动完成后自己判断「有没有文档」再弹：用 open 命令或从访达
     /// 打开文件时，文件来得比那更晚，结果面板和文档窗口一起出来（2026-10-08 启动测试抓到的）。
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        SnapshotRequest(arguments: CommandLine.arguments) == nil
+        SnapshotRequest(arguments: CommandLine.arguments) == nil && !launchedByAI
+    }
+
+    @objc func showSettings(_ sender: Any?) {
+        SettingsWindowController.shared.present()
     }
 
     func applicationOpenUntitledFile(_ sender: NSApplication) -> Bool {
@@ -55,6 +66,8 @@ enum MainMenu {
         let appName = "SkySheet"
         main.addItem(submenu(appName, [
             item(String(localized: "About \(appName)"), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
+            .separator(),
+            item(String(localized: "Settings…"), #selector(AppDelegate.showSettings(_:)), key: ","),
             .separator(),
             item(String(localized: "Hide \(appName)"), #selector(NSApplication.hide(_:)), key: "h"),
             item(String(localized: "Hide Others"), #selector(NSApplication.hideOtherApplications(_:)), key: "h",

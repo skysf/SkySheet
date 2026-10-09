@@ -5,12 +5,13 @@ import SkySheetCore
 @MainActor
 func functionChecks() {
     group("functions: every listed function is registered") {
-        let expected = ["ABS", "AND", "AVERAGE", "AVERAGEIF", "AVERAGEIFS", "CONCAT", "CONCATENATE", "COUNT", "COUNTA",
-                        "COUNTIF", "COUNTIFS", "CUMIPMT", "CUMPRINC", "DATE", "DATEDIF", "DAY", "DAYS", "EDATE", "EFFECT",
-                        "EOMONTH", "FV", "IF", "IFERROR", "IFS", "INDEX", "INT", "IPMT", "IRR", "LEFT", "LEN", "MATCH",
-                        "MAX", "MID", "MIN", "MOD", "MONTH", "NOMINAL", "NOT", "NPER", "NPV", "OR", "PMT", "POWER",
-                        "PPMT", "PRODUCT", "PV", "RATE", "RIGHT", "ROUND", "ROUNDDOWN", "ROUNDUP", "SQRT", "SUM",
-                        "SUMIF", "SUMIFS", "SUMPRODUCT", "TEXT", "TODAY", "VLOOKUP", "XIRR", "XLOOKUP", "XNPV", "YEAR"]
+        let expected = ["ABS", "AND", "AVERAGE", "AVERAGEIF", "AVERAGEIFS", "COLUMN", "COLUMNS", "CONCAT", "CONCATENATE",
+                        "COUNT", "COUNTA", "COUNTIF", "COUNTIFS", "CUMIPMT", "CUMPRINC", "DATE", "DATEDIF", "DAY", "DAYS",
+                        "EDATE", "EFFECT", "EOMONTH", "FV", "IF", "IFERROR", "IFS", "INDEX", "INT", "IPMT", "IRR", "LEFT",
+                        "LEN", "MATCH", "MAX", "MID", "MIN", "MOD", "MONTH", "NOMINAL", "NOT", "NPER", "NPV", "OR", "PMT",
+                        "POWER", "PPMT", "PRODUCT", "PV", "RANK", "RANK.EQ", "RATE", "RIGHT", "ROUND", "ROUNDDOWN",
+                        "ROUNDUP", "ROW", "ROWS", "SQRT", "SUM", "SUMIF", "SUMIFS", "SUMPRODUCT", "TEXT", "TODAY",
+                        "VLOOKUP", "XIRR", "XLOOKUP", "XNPV", "YEAR"]
         checkEqual(FunctionLibrary.names, expected, "function list")
     }
 

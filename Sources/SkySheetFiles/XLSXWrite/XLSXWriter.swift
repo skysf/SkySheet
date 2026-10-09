@@ -116,6 +116,34 @@ private struct PackagePatch {
             addPart("styles", type: OOXML.stylesType, content: OOXML.stylesContent, data: StylesWriter.fresh(workbook.styles))
         }
 
+        // AI 的 sheet 和署名（custom.xml）：和原文件里记的一样就不碰；不一样就换掉 SkySheet.AI.* 那几条，没有这个部件就新建。
+        let properties = AIProperties.properties(of: workbook)
+        if properties != source.aiProperties {
+            if let part = source.customPropertiesPart {
+                guard let data = AIProperties.patchedPart(try read(part), properties: properties) else {
+                    throw XLSXWriteError.unreadablePart(part)
+                }
+                replaced[part.lowercased()] = data
+            } else if !properties.isEmpty {
+                var name = AIProperties.partName
+                if takenNames.contains(name.lowercased()) {
+                    name = Self.unused("docProps/custom", ".xml", taken: &takenNames)
+                } else {
+                    takenNames.insert(name.lowercased())
+                }
+                added.append((name, AIProperties.freshPart(properties)))
+                newOverrides.append((name, AIProperties.contentType))
+                let packageRelationships = "_rels/.rels"
+                let taken = try Self.relationshipIDs(in: try read(packageRelationships))
+                var ids = taken
+                if let data = try PackageIndex.patchRelationships(
+                    try read(packageRelationships), part: packageRelationships, removingIDs: [], removingTypes: [],
+                    adding: [.init(id: Self.unusedID(&ids), type: AIProperties.relationshipType, target: name)]) {
+                    replaced[packageRelationships] = data
+                }
+            }
+        }
+
         if let data = try WorkbookWriter.patch(workbookFragments, part: source.workbookPart, entries: entries,
                                                workbook: workbook, baseline: baseline,
                                                existing: Set(source.sheets.keys), recalculate: recalculate) {
@@ -166,6 +194,12 @@ private struct PackagePatch {
         } catch {
             throw XLSXWriteError.unreadablePart(part)
         }
+    }
+
+    /// 一个关系文件里已经用掉的 id。
+    private static func relationshipIDs(in data: Data) throws(XLSXWriteError) -> Set<String> {
+        guard let document = XMLFragments(data) else { throw XLSXWriteError.unreadablePart("_rels/.rels") }
+        return Set(document.children.compactMap { XMLFragments.attribute("Id", in: $0.raw) })
     }
 
     /// 共用字符串表后面追加几条（在 extLst 之前），uniqueCount 改成条数。count（全书引用了多少次）算不出来，去掉，它是可选的。
@@ -224,11 +258,18 @@ enum FreshPackage {
         }
         overrides += [("docProps/core.xml", OOXML.coreContent), ("docProps/app.xml", OOXML.appContent)]
 
-        let packageRelationships = PackageIndex.freshRelationships([
+        var rootRelationships: [PackageIndex.NewRelationship] = [
             .init(id: "rId1", type: OOXML.officeDocumentType, target: "xl/workbook.xml"),
             .init(id: "rId2", type: OOXML.corePropertiesType, target: "docProps/core.xml"),
             .init(id: "rId3", type: OOXML.extendedPropertiesType, target: "docProps/app.xml"),
-        ])
+        ]
+        let properties = AIProperties.properties(of: workbook)
+        if !properties.isEmpty {
+            parts.append((AIProperties.partName, AIProperties.freshPart(properties)))
+            overrides.append((AIProperties.partName, AIProperties.contentType))
+            rootRelationships.append(.init(id: "rId4", type: AIProperties.relationshipType, target: AIProperties.partName))
+        }
+        let packageRelationships = PackageIndex.freshRelationships(rootRelationships)
         let files: [(name: String, data: Data)] = [
             (PackageIndex.contentTypesName, PackageIndex.freshContentTypes(overrides)),
             ("_rels/.rels", packageRelationships),

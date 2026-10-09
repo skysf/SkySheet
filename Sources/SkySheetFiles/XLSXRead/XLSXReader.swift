@@ -29,6 +29,9 @@ public struct XLSXSource: Sendable {
     let calcChainPart: String?
     /// workbook 关系里已经用掉的 id：新加的不能撞上。
     let relationshipIDs: Set<String>
+    /// docProps/custom.xml（有的话）和里面 SkySheet.AI.* 那几条：哪些是 AI 的 sheet、谁写的（设计 9.3 节）。
+    let customPropertiesPart: String?
+    let aiProperties: [String: String]
 }
 
 /// 读 xlsx，得到 SkySheetCore 的工作簿模型（设计 7.1 节）。读进来的公式都是 `.pending`：
@@ -87,6 +90,22 @@ public enum XLSXReader {
             sheetParts[entry.sheetID] = XLSXSource.SheetPart(path: relationship.target, relationshipID: entry.relationshipID)
         }
 
+        // 哪些是 AI 的 sheet：custom.xml 里的 SkySheet.AI.<sheetId>。认不出来的就当原始数据（设计 9.3 节第 3 条）。
+        let customPart = try package.relationships(of: "").first { $0.hasType("custom-properties") && !$0.isExternal }
+            .map(\.target).flatMap { package.has($0) ? $0 : nil }
+        var aiProperties: [String: String] = [:]
+        if let customPart {
+            let properties = CustomPropertiesPart()
+            try XMLScanner.scan(try package.data(customPart), part: customPart, handler: properties)
+            aiProperties = properties.values.filter { $0.key.hasPrefix(AIProperties.prefix) }
+        }
+        for index in sheets.indices {
+            if let value = aiProperties[AIProperties.prefix + String(sheets[index].id)],
+               let authorship = AIProperties.decode(value) {
+                sheets[index].role = .ai(authorship)
+            }
+        }
+
         // 模型里的样式表每一项至少有一个（缺的补新建工作簿的默认值），保存时补上的这几项算新加的。
         let fileStyles = StyleTable(customNumberFormats: styles.numberFormats, cellFormats: styles.cellFormats,
                                     fonts: styles.fonts, fills: styles.fills, borders: styles.borders)
@@ -109,7 +128,8 @@ public enum XLSXReader {
         let source = XLSXSource(package: package, workbookPart: workbookPath, sheets: sheetParts,
                                 stylesPart: part("styles"), fileStyles: fileStyles, sharedStringsPart: part("sharedStrings"),
                                 sharedStrings: strings.strings, richStrings: strings.richIndices, richCells: richCells,
-                                calcChainPart: part("calcChain"), relationshipIDs: Set(relationships.map(\.id)))
+                                calcChainPart: part("calcChain"), relationshipIDs: Set(relationships.map(\.id)),
+                                customPropertiesPart: customPart, aiProperties: aiProperties)
         return XLSXDocument(workbook: workbook, source: source)
     }
 

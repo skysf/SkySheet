@@ -70,27 +70,37 @@ public enum CSVWriter {
         case .error(let error): return error == .circular ? "" : error.code
         case .number(let number):
             let code = styles.formatCode(forStyle: cell.styleIndex)
-            if ValueFormatter.isDateFormat(code), let date = dateText(number, dateSystem) { return date }
+            if ValueFormatter.isDateFormat(code), let date = DateSerial.isoText(number, system: dateSystem) { return date }
             if ValueFormatter.percentCount(code) == 1 { return plain(number * 100) + "%" }
             return plain(number)
         }
     }
 
-    private static func plain(_ number: Decimal) -> String {
-        DecimalMath.plainString(DecimalMath.roundSignificant(number, digits: 15))
+    /// 导出给 Python / pandas 的 csv（设计 9.2 节 export_sheet）：UTF-8 不带 BOM、逗号、\n；数字写原值（百分比写小数，
+    /// 不加千分位），日期写 ISO（YYYY-MM-DD），公式写算出来的值。和写回用户文件的那套不同：这里只求好读、好算。
+    public static func analysisData(_ sheet: Sheet, range: CellRange, styles: StyleTable, dateSystem: DateSystem) -> Data {
+        var lines: [String] = []
+        for row in range.start.row...range.end.row {
+            let fields = (range.start.column...range.end.column).map { column -> String in
+                guard let cell = sheet.cells[row, column] else { return "" }
+                switch cell.value {
+                case .number(let number):
+                    if ValueFormatter.isDateFormat(styles.formatCode(forStyle: cell.styleIndex)),
+                       let date = DateSerial.isoText(number, system: dateSystem) { return date }
+                    return plain(number)
+                case .error(let error):
+                    return error == .circular ? "" : error.code
+                default:
+                    return quoted(text(of: cell, styles: styles, dateSystem: dateSystem), ",")
+                }
+            }
+            lines.append(fields.joined(separator: ","))
+        }
+        return Data((lines.joined(separator: "\n") + "\n").utf8)
     }
 
-    /// 2025-12-01；带时刻的 2025-12-01 10:30:00（四舍五入到秒）；不到一天的只有时刻（10:30:00）。
-    private static func dateText(_ serial: Decimal, _ system: DateSystem) -> String? {
-        guard serial >= 0 else { return nil }
-        var seconds = Int(DecimalMath.double(serial * 86_400).rounded())
-        let days = seconds / 86_400
-        seconds %= 86_400
-        let time = String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
-        guard days > 0 else { return time }
-        guard let date = DateSerial.civilDate(fromSerial: days, system: system) else { return nil }
-        let day = String(format: "%04d-%02d-%02d", date.year, date.month, date.day)
-        return seconds > 0 ? day + " " + time : day
+    private static func plain(_ number: Decimal) -> String {
+        DecimalMath.plainString(DecimalMath.roundSignificant(number, digits: 15))
     }
 
     /// RFC 4180：有分隔符、引号、换行的字段用引号括起来，里面的引号写两个。

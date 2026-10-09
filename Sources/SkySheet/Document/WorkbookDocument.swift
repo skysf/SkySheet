@@ -96,13 +96,18 @@ enum DocumentLoader {
     /// csv 没有列宽：按内容定宽（设计 7.3 节，AutoFit 的说明）。量文字要用真正画的字体，所以在 App 这一层做。
     @MainActor
     private static func autoFitColumns(_ workbook: inout Workbook) {
+        for index in workbook.sheets.indices {
+            workbook.sheets[index].columns = fittedColumns(for: workbook.sheets[index], in: workbook)
+        }
+    }
+
+    /// 一张 sheet 按内容定的列宽（AI 从 csv 导进来的 sheet 也用它）。
+    @MainActor
+    static func fittedColumns(for sheet: Sheet, in workbook: Workbook) -> [ColumnFormat] {
         let styles = StyleResolver(workbook: workbook)
         let fonts = FontBook()
-        for index in workbook.sheets.indices {
-            workbook.sheets[index].columns = AutoFit.columns(
-                for: workbook.sheets[index], styles: styles, dateSystem: workbook.dateSystem,
-                digitWidth: fonts.digitWidth(styles.style(0).font), measure: { fonts.width(of: $0, style: $1) })
-        }
+        return AutoFit.columns(for: sheet, styles: styles, dateSystem: workbook.dateSystem,
+                               digitWidth: fonts.digitWidth(styles.style(0).font), measure: { fonts.width(of: $0, style: $1) })
     }
 
     static func isDelimitedText(url: URL? = nil, typeName: String?) -> Bool {

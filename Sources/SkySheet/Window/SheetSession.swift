@@ -18,6 +18,8 @@ final class SheetSession {
     var editing: CellEditing?
     /// 改了几次（每次 apply、撤销、重做都加一）。恢复副本按它判断要不要重写。
     var revision = 0
+    /// 这一轮 AI 改过的格子（sheet 编号 → 格子），淡色高亮；下一轮开始时清掉，不存进文件（设计 8.3 节）。
+    var aiTouched: [Int: Set<CellAddress>] = [:]
     /// 文档的撤销管理器，窗口建好时接上。
     @ObservationIgnored weak var undoManager: UndoManager?
     /// 公式栏编辑完把键盘还给表格（窗口建好时接上）。

@@ -35,7 +35,7 @@ public enum FormulaRewriter {
     }
 
     /// 我们支持的函数里，Excel 存文件时要加 `_xlfn.` 的那些（Excel 2010 以后新加的）。
-    static let prefixedFunctions: Set<String> = ["CONCAT", "IFS", "XLOOKUP", "DAYS"]
+    static let prefixedFunctions: Set<String> = ["CONCAT", "IFS", "XLOOKUP", "DAYS", "RANK.EQ"]
 
     /// 公式里写 sheet 名：只有字母、数字、下划线、中文，而且不像格子地址、不以数字开头的，可以不加引号；
     /// 其余加单引号，名字里的单引号写两个。

@@ -37,14 +37,36 @@ extension SheetSession {
     }
 
     /// `change` 抛错时什么都不改。改完和原来一样（比如输入了原来的值）就不登记撤销。
-    func apply(_ actionName: String, _ change: (inout Workbook) throws -> Void) rethrows {
+    /// `author` 是谁改的：直接改到的 AI 的 sheet 记下「最后是谁改的」（设计 9.3 节第 5 条）；只是跟着重算变了值的不算。
+    func apply(_ actionName: String, author: AIAuthorship.Mark.Author = .user,
+               _ change: (inout Workbook) throws -> Void) rethrows {
         let before = Snapshot(workbook: workbook, sheetIndex: sheetIndex, selection: selection)
         var changed = workbook
         try change(&changed)
         guard changed != workbook else { return }
+        let edited = Self.editedSheets(changed, comparedTo: workbook)
         Recalculator.recalculate(&changed)
+        Self.sign(&changed, sheets: edited, author: author)
         replaceWorkbook(changed)
         registerUndo(restoring: before, actionName)
+    }
+
+    /// 内容被直接改到的 sheet（编号）。在重算之前比：没碰到的公式格子这时还是原来的值。
+    private static func editedSheets(_ new: Workbook, comparedTo old: Workbook) -> Set<Int> {
+        let previous = Dictionary(old.sheets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return Set(new.sheets.filter { sheet in
+            guard let before = previous[sheet.id] else { return false }
+            return !sheet.hasSameContent(as: before) || sheet.name != before.name
+        }.map(\.id))
+    }
+
+    private static func sign(_ workbook: inout Workbook, sheets: Set<Int>, author: AIAuthorship.Mark.Author) {
+        let now = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
+        for index in workbook.sheets.indices where sheets.contains(workbook.sheets[index].id) {
+            guard var authorship = workbook.sheets[index].role.authorship else { continue }
+            authorship.lastChanged = AIAuthorship.Mark(author, date: now)
+            workbook.sheets[index].role = .ai(authorship)
+        }
     }
 
     /// 换一整本（apply、撤销、重新载入都走这里）：样式变了重建样式表，看的 sheet 还在不在。

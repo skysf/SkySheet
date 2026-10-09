@@ -44,6 +44,20 @@ public enum DateSerial {
         }
     }
 
+    /// 序列号写成 ISO 的样子：2025-12-01；带时刻的 2025-12-01 10:30:00（四舍五入到秒）；不到一天的只有时刻。
+    /// 存 csv、导出给 Python、SQL 查询里的日期都用它。负数和不存在的日子返回 nil。
+    public static func isoText(_ serial: Decimal, system: DateSystem) -> String? {
+        guard serial >= 0 else { return nil }
+        var seconds = Int(DecimalMath.double(serial * 86_400).rounded())
+        let days = seconds / 86_400
+        seconds %= 86_400
+        let time = String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
+        guard days > 0 else { return time }
+        guard let date = civilDate(fromSerial: days, system: system), date.day > 0 else { return nil }
+        let day = String(format: "%04d-%02d-%02d", date.year, date.month, date.day)
+        return seconds > 0 ? day + " " + time : day
+    }
+
     public static func serial(from date: CivilDate, system: DateSystem) -> Int {
         let days = days(fromCivil: date)
         switch system {

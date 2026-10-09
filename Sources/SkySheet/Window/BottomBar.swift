@@ -22,6 +22,13 @@ struct BottomBar: View {
                             Button("Rename…") { SheetCommands.rename(index, in: session, window: NSApp.keyWindow) }
                             Button("Duplicate") { SheetCommands.duplicate(index, in: session) }
                             Divider()
+                            // 设计 9.3 节第 4 条：用户自己决定一张 sheet 能不能让 AI 改。
+                            if session.workbook.sheets[index].role.isAI {
+                                Button("Mark as Original Data") { SheetCommands.setAIEditable(false, index, in: session) }
+                            } else {
+                                Button("Let AI Edit This Sheet") { SheetCommands.setAIEditable(true, index, in: session) }
+                            }
+                            Divider()
                             Button("Delete") { SheetCommands.delete(index, in: session, window: NSApp.keyWindow) }
                         }
                     }
@@ -62,7 +69,8 @@ struct BottomBar: View {
     }
 }
 
-/// 一个页签。文件里给 sheet 设了页签颜色的，在下边画一道。
+/// 一个页签。文件里给 sheet 设了页签颜色的，在下边画一道。AI 的 sheet 底色带紫，名字后面一个小标写着是哪个 AI
+/// （设计 8.2 节、9.3 节第 5 条），鼠标停上去看完整署名。
 private struct SheetTab: View {
     let sheet: Sheet
     let isSelected: Bool
@@ -70,19 +78,35 @@ private struct SheetTab: View {
 
     var body: some View {
         Button(action: action) {
-            Text(sheet.name)
-                .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .background(isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear)
-                .overlay(alignment: .bottom) {
-                    if let color = tabColor {
-                        Rectangle().fill(color).frame(height: 3)
-                    }
+            HStack(spacing: 5) {
+                Text(sheet.name)
+                    .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                if let authorship = sheet.role.authorship {
+                    Text(authorship.badge)
+                        .font(.system(size: 9, weight: .semibold))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 1)
+                        .foregroundStyle(.white)
+                        .background(Capsule().fill(Color.purple.opacity(0.85)))
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 4))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 4)
+            .background(background)
+            .overlay(alignment: .bottom) {
+                if let color = tabColor {
+                    Rectangle().fill(color).frame(height: 3)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
+        .help(sheet.role.authorship.map(AIByline.text) ?? "")
+    }
+
+    private var background: Color {
+        if sheet.role.isAI { return Color.purple.opacity(isSelected ? 0.16 : 0.07) }
+        return isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear
     }
 
     /// 白色的页签颜色（腾讯文档常写 FFFFFFFF）等于没有。

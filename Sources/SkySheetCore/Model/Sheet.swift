@@ -34,10 +34,31 @@ public struct Sheet: Hashable, Sendable {
     }
 }
 
-/// 原始数据，还是 AI 写的。原始 sheet 对 AI 只读（设计第 12 条）。
+/// 原始数据，还是 AI 的。原始 sheet 对 AI 只读（设计第 12 条）；AI 的 sheet 带着署名（第 23 条，见 AIAuthorship）。
 public enum SheetRole: Hashable, Sendable {
     case original
-    case ai
+    /// AI 用 add_sheet 建的，或者用户在页签上标成「AI 可改」的。
+    case ai(AIAuthorship)
+
+    public var isAI: Bool {
+        if case .ai = self { return true }
+        return false
+    }
+
+    public var authorship: AIAuthorship? {
+        if case .ai(let authorship) = self { return authorship }
+        return nil
+    }
+}
+
+extension Sheet {
+    /// 写进 sheet 部件里的内容一样不一样（名字、隐藏、角色写在 workbook.xml 和别处，不算）。
+    /// 保存时一样就整个部件原字节照抄（设计 7.2 节）；用户改了 AI 的 sheet 时据此记「最后是谁改的」。
+    public func hasSameContent(as other: Sheet) -> Bool {
+        cells == other.cells && columns == other.columns && rowFormats == other.rowFormats && frozen == other.frozen
+            && merges == other.merges && tabColor == other.tabColor && defaultColumnWidth == other.defaultColumnWidth
+            && defaultRowHeight == other.defaultRowHeight
+    }
 }
 
 public enum SheetVisibility: Hashable, Sendable {

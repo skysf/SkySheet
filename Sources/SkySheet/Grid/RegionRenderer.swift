@@ -23,6 +23,7 @@ struct RegionRenderer {
         let merges = canvas.sheet.merges.filter { canvas.rect(of: $0).intersects(clip) }
         drawGridLines()
         drawFills(merges)
+        drawAITouched()
         drawText(merges)
         drawBorders(merges)
         if let selection { drawSelection(selection) }
@@ -66,6 +67,15 @@ struct RegionRenderer {
             let style = canvas.styles.style(canvas.sheet.cells[merge.start]?.styleIndex ?? 0)
             (style.fill.map(NSColor.init) ?? .white).setFill()
             canvas.rect(of: merge).insetBy(dx: -0.5, dy: -0.5).fill()
+        }
+    }
+
+    /// 这一轮 AI 改过的格子盖一层淡紫色（和 AI 的 sheet 页签一个颜色），下一轮开始时消失、不存进文件。
+    private func drawAITouched() {
+        guard !canvas.aiTouched.isEmpty else { return }
+        NSColor.systemPurple.withAlphaComponent(0.13).setFill()
+        for address in canvas.aiTouched where rows.contains(address.row) && columns.contains(address.column) {
+            canvas.rect(of: canvas.merge(containing: address) ?? CellRange(address)).fill()
         }
     }
 

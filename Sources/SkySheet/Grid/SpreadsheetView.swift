@@ -66,6 +66,7 @@ final class SpreadsheetView: NSView {
             _ = view.session.sheetIndex
             _ = view.session.zoom
             _ = view.session.workbook
+            _ = view.session.aiTouched
         }, onChange: { view in
             view.rebuildCanvas()
         })
