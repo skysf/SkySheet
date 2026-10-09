@@ -11,6 +11,8 @@ enum StatisticalFunctions {
         FunctionSpec("COUNTA", 1...FunctionSpec.many, countNonEmpty),
         FunctionSpec("PRODUCT", 1...FunctionSpec.many, product),
         FunctionSpec("SUMPRODUCT", 1...FunctionSpec.many, sumProduct),
+        FunctionSpec("RANK", 2...3, rank),
+        FunctionSpec("RANK.EQ", 2...3, rank),
     ]
 
     private static func sum(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
@@ -74,5 +76,18 @@ enum StatisticalFunctions {
             total += term
         }
         return .number(try Operators.checked(total))
+    }
+
+    /// RANK(数, 区域, [顺序=0])：在区域的数里排第几，0 从大到小、非 0 从小到大；一样大的同名次。按精确的值比，
+    /// 不像 COUNTIF(">"&H2) 要先把数变成 15 位的文字（2026-10-09 端到端时 AI 用 COUNTIF 排名差了一位，所以补上）。
+    private static func rank(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
+        let target = try arguments.number(0)
+        let numbers = try arguments.grid(1).values.compactMap { value -> Decimal? in
+            if case .number(let number) = value { return number }
+            return nil
+        }
+        guard numbers.contains(target) else { throw CellError.na }
+        let ascending = try arguments.integer(2, default: 0) != 0
+        return .number(Decimal(numbers.filter { ascending ? $0 < target : $0 > target }.count + 1))
     }
 }

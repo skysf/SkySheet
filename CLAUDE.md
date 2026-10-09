@@ -5,7 +5,7 @@
 
 ## 现在在哪
 
-- M3 完成（编辑与保存 v0.2.0），下一步 M4 MCP。里程碑见设计第十三节；每完成一个就改这一行。
+- M4 完成（MCP v0.3.0，第一个真正可用的版本），下一步 M5 打磨。里程碑见设计第十三节；每完成一个就改这一行。
 
 ## 常用命令
 
@@ -17,6 +17,9 @@
   把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。
 - 看存出来的文件：`SKYSHEET_CHECK_OUTPUT=文件夹 swift run --arch arm64 --skip-build SkySheetChecks` 把保存自检写出的
   xlsx 留在那个文件夹，可以拿 `qlmanage -t` 或别的软件打开看。
+- 试 MCP：打包后用 JSON-RPC 直接跟 `dist/SkySheet.app/Contents/Helpers/skysheet-mcp` 说话；要和真的 Claude Code 试，用
+  `claude -p "…" --mcp-config <临时 json> --strict-mcp-config --allowedTools mcp__skysheet`，不动用户自己的配置
+  （`docs/architecture/mcp.md` 第五节）。
 - 真机检查清单：`docs/testing/`，每个里程碑一份。
 
 ## 硬规矩
@@ -40,4 +43,4 @@
 - 注释和文档用中文，写「为什么」；和作者沟通用中文。
 - 参考实现：SrtFlow（本机 `../srt_vtt/app_files`，或 `github.com/skysf/SrtFlow`）。签名、MCP 三段结构、自检程序的
   写法从那里搬，按设计删减。
-- 文档：`docs/plans/` 放方案和拍板，`docs/architecture/` 放长期约束（随模块落地补），`docs/testing/` 放真机清单。
+- 文档：`docs/plans/` 放方案和拍板，`docs/architecture/` 放长期约束（随模块落地补：`mcp.md`），`docs/testing/` 放真机清单。

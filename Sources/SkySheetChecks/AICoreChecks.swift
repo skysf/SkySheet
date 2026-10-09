@@ -147,6 +147,19 @@ func aiCoreChecks() {
         checkEqual(workbook.sheets[0].frozen, nil, "unfreeze")
     }
 
+    group("ai core: functions Claude reached for (ROW, RANK…)") {
+        checkEqual(evaluate("ROW()", at: "C7"), .number(7), "ROW of the formula's own cell")
+        checkEqual(evaluate("ROW(Sheet1!B5)"), .number(5), "ROW of a reference")
+        checkEqual(evaluate("COLUMN(C1:E9)"), .number(3), "COLUMN takes the top-left")
+        checkEqual(evaluate("ROWS(A1:A4)*COLUMNS(A1:C1)"), .number(12), "ROWS and COLUMNS")
+        let rates = ["A1": "0.0375", "A2": "0.0328", "A3": "0.0279", "A4": "0.0328"]
+        checkEqual(evaluate("RANK(A2,A1:A4)", rates), .number(2), "ties share a rank")
+        checkEqual(evaluate("RANK(A3,A1:A4)", rates), .number(4), "after a tie the next rank skips")
+        checkEqual(evaluate("RANK.EQ(A3,A1:A4,1)", rates), .number(1), "ascending order")
+        checkEqual(evaluate("RANK(0.5,A1:A4)", rates), .error(.na), "a number not in the list is #N/A")
+        checkEqual(FormulaRewriter.storageForm("RANK.EQ(A1,B:B)"), "_xlfn.RANK.EQ(A1,B:B)", "saved with the _xlfn. prefix")
+    }
+
     group("ai core: who wrote a sheet") {
         let date = Date(timeIntervalSince1970: 0)
         checkEqual(AIAuthorship(created: .init(.ai(client: "claude-code", model: nil), date: date)).badge, "Claude Code",

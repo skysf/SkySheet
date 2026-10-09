@@ -7,7 +7,39 @@ enum LookupFunctions {
         FunctionSpec("MATCH", 2...3, match),
         FunctionSpec("INDEX", 2...3, index),
         FunctionSpec("XLOOKUP", 3...6, xlookup),
+        FunctionSpec("ROW", 0...1, row),
+        FunctionSpec("COLUMN", 0...1, column),
+        FunctionSpec("ROWS", 1...1, rows),
+        FunctionSpec("COLUMNS", 1...1, columns),
     ]
+
+    /// ROW([引用])：引用（不给就是公式所在的格子）是第几行。区域取左上角那一行（不做数组）。
+    /// 2026-10-09 和 Claude Code 端到端时它要用 =ROW(Loan!A5) 标出数据来自哪一行，补上的。
+    private static func row(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
+        guard arguments.count > 0, !arguments.isOmitted(0) else {
+            return .number(Decimal(arguments.context.currentCell.row + 1))
+        }
+        guard let area = arguments.area(0) else { throw CellError.value }
+        return .number(Decimal(area.range.start.row + 1))
+    }
+
+    /// COLUMN([引用])：第几列（A 是 1）。
+    private static func column(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
+        guard arguments.count > 0, !arguments.isOmitted(0) else {
+            return .number(Decimal(arguments.context.currentCell.column + 1))
+        }
+        guard let area = arguments.area(0) else { throw CellError.value }
+        return .number(Decimal(area.range.start.column + 1))
+    }
+
+    /// ROWS(区域)、COLUMNS(区域)：有几行、几列。单个值算 1。
+    private static func rows(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
+        .number(Decimal(arguments.area(0)?.range.rowCount ?? 1))
+    }
+
+    private static func columns(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
+        .number(Decimal(arguments.area(0)?.range.columnCount ?? 1))
+    }
 
     /// VLOOKUP(值, 表, 第几列, [近似=TRUE])。近似匹配要求第一列从小到大排好：取不超过它的最后一行。
     private static func verticalLookup(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
