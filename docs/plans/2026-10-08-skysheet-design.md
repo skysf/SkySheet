@@ -398,6 +398,9 @@ Tools by need:
   - 跑 `claude mcp add --scope user skysheet <App 包里 skysheet-mcp 的路径>`。不直接改 `~/.claude.json`：
     正在跑的 Claude Code 会整份重写它，直接改会被冲掉。
   - 往 `~/.claude/settings.json` 的 `permissions.allow` 里加 `mcp__skysheet`（第一次改之前先备份），免得每个工具都问一次。
+    **按原文只插进这一条**（断开时只删这一条），别的字节一个不动：这是用户自己的文件，可能手排过、可能进了 git。
+    v0.3.0 整份解析再写回，键被排序、冒号两边的空格和末尾换行全变了（内容没变），v0.3.1 改掉。
+    文件是软链接（dotfiles）就写进它指向的文件，链接留着。
   - 找不到 `claude` 命令行，就给「复制一段话」，让用户贴给 Claude Code 自己装。
 - 状态有四种：没装 Claude Code / 没连接 / 已连接 / 连着另一份 SkySheet（App 挪过位置）。
 
@@ -538,3 +541,5 @@ Tools by need:
 - 2026-10-09 M4 完成：MCP v0.3.0（skysheet-mcp 小程序、14 个工具、这一轮和撤销、AI 的 sheet 的标记和署名、连接 Claude Code）。
   用 JSON-RPC 走完 14 个工具，又用 `claude -p` 和真的 Claude Code 问了一遍典型问题。实测写进 9.3、9.7、十五节；
   长期约束写进 `docs/architecture/mcp.md`。
+- 2026-10-09 v0.3.1：作者装到本机点「Connect」时发现 settings.json 被整份重排（键按字母排、冒号两边加空格、末尾换行没了）。
+  改成按原文插进或删掉那一条（9.5 节），软链接也留着。

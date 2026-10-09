@@ -35,38 +35,6 @@ func mcpChecks() {
         }
     }
 
-    group("mcp: Claude Code settings edits") {
-        let config = Data(#"{"mcpServers":{"skysheet":{"command":"/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp"},"other":{"command":"x"}},"theme":"dark"}"#.utf8)
-        checkEqual(ClaudeCodeConfig.command(in: config), "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
-                   "reads which helper Claude Code starts")
-        checkEqual(ClaudeCodeConfig.command(in: Data("{}".utf8)), nil, "not connected")
-        let settings = Data(#"{"model":"opus","permissions":{"allow":["Bash(ls:*)"],"deny":["Read(.env)"]}}"#.utf8)
-        let allowed = try ClaudeCodeConfig.allowing(in: settings)
-        check(ClaudeCodeConfig.allows(in: allowed), "rule added")
-        let again = try ClaudeCodeConfig.allowing(in: allowed)
-        let object = try JSONSerialization.jsonObject(with: again) as? [String: Any]
-        let permissions = object?["permissions"] as? [String: Any]
-        checkEqual(permissions?["allow"] as? [String], ["Bash(ls:*)", "mcp__skysheet"], "added once, others kept")
-        checkEqual(permissions?["deny"] as? [String], ["Read(.env)"], "other settings untouched")
-        checkEqual(object?["model"] as? String, "opus", "unrelated keys untouched")
-        check(!ClaudeCodeConfig.allows(in: try ClaudeCodeConfig.disallowing(in: again)), "rule removed")
-        check(ClaudeCodeConfig.allows(in: try ClaudeCodeConfig.allowing(in: nil)), "a missing file is created")
-        do {
-            _ = try ClaudeCodeConfig.allowing(in: Data(#"{"permissions":{"allow":"everything"}}"#.utf8))
-            fail("a malformed allow list was rewritten")
-        } catch let error as ClaudeCodeConfig.FormatError {
-            check(error.message.contains("not a list"), "malformed files are left alone")
-        }
-        do {
-            _ = try ClaudeCodeConfig.allowing(in: Data("{not json".utf8))
-            fail("invalid JSON was rewritten")
-        } catch let error as ClaudeCodeConfig.FormatError {
-            check(error.message.contains("not valid JSON"), "invalid JSON is left alone")
-        }
-        check(ClaudeCodeConfig.setupPrompt(helper: "/x/skysheet-mcp").contains("claude mcp add --scope user skysheet -- \"/x/skysheet-mcp\""),
-              "the copy-paste prompt has the command")
-    }
-
     guard let helper = helperURL() else {
         group("mcp: helper") { fail("skysheet-mcp is not next to SkySheetChecks; build with swift build first") }
         return

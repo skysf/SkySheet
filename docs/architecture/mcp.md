@@ -57,6 +57,10 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 - 走它自己的命令行 `claude mcp add --scope user skysheet -- <包里的小程序>`，**不直接改 `~/.claude.json`**（正在跑的
   Claude Code 会整份重写它）。同时往 `~/.claude/settings.json` 的 `permissions.allow` 加 `mcp__skysheet`（第一次改前备份成
   `.skysheet-backup`），只动这一条，文件格式不对就报错、一个字节不写。找不到命令行就「复制一段话」。
+- **按原文改，不许整份解析再写回**（`JSONText`）：先让 JSONSerialization 验合法，再扫出每个值在原文里的位置，只在 allow
+  列表末尾插进这一条（或删掉它和它的逗号）；新写的部分照文件自己的换行、缩进和冒号。没有要改的就不写。v0.3.0 用
+  `JSONSerialization.data(.prettyPrinted, .sortedKeys)` 整份重写，作者的 settings.json 键全被重排（2026-10-09）。
+  软链接写进它指向的文件（原子写会把链接换成普通文件）。都钉在 `Sources/SkySheetChecks/ClaudeCodeConfigChecks.swift`。
 
 ## 五、守卫和怎么测
 
