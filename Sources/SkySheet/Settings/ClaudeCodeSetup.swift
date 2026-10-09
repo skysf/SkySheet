@@ -4,7 +4,7 @@ import SkySheetMCPKit
 
 /// 「连接 Claude Code」（设计 9.5 节，照 SrtFlow 的 AIClientSetup 只留 Claude Code 一家，第 17 条）：
 /// 跑 `claude mcp add --scope user skysheet -- <包里的 skysheet-mcp>`，再往 ~/.claude/settings.json 的 permissions.allow 里加
-/// `mcp__skysheet`（第一次改之前备份）。找不到 claude 命令行就给「复制一段话」。
+/// `mcp__skysheet`（按原文只插这一条，第一次改之前备份；`ClaudeCodeConfig.updateSettings`）。找不到 claude 命令行就给「复制一段话」。
 /// 状态有四种：没装 Claude Code / 没连接 / 已连接（每次都会问的算没放行）/ 连着另一份 SkySheet（App 挪过位置）。
 @MainActor
 @Observable
@@ -77,9 +77,7 @@ final class ClaudeCodeSetup {
             return
         }
         do {
-            if !ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: settingsPath)) {
-                try rewrite(settingsPath) { data throws(ClaudeCodeConfig.FormatError) in try ClaudeCodeConfig.allowing(in: data) }
-            }
+            try ClaudeCodeConfig.updateSettings(at: settingsPath, ClaudeCodeConfig.allowing(in:))
             message = String(localized: """
                 Connected. Start a new Claude Code session so it picks up SkySheet; it will use SkySheet's tools without asking.
                 """)
@@ -98,9 +96,7 @@ final class ClaudeCodeSetup {
             refresh()
         }
         _ = await ChildProcess.exitStatus(cli, ["mcp", "remove", "--scope", "user", ClaudeCodeConfig.serverName])
-        if ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: settingsPath)) {
-            try? rewrite(settingsPath) { data throws(ClaudeCodeConfig.FormatError) in try ClaudeCodeConfig.disallowing(in: data) }
-        }
+        try? ClaudeCodeConfig.updateSettings(at: settingsPath, ClaudeCodeConfig.disallowing(in:))
         message = String(localized: "Disconnected. Restart Claude Code to finish.")
     }
 
@@ -109,19 +105,6 @@ final class ClaudeCodeSetup {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(ClaudeCodeConfig.setupPrompt(helper: helper), forType: .string)
         message = String(localized: "Copied. Paste it into Claude Code.")
-    }
-
-    /// 读 → 改 → 原子写回。第一次改之前备份一份原文件（`.skysheet-backup`），改坏了能找回来。
-    private func rewrite(_ path: String, _ transform: (Data?) throws(ClaudeCodeConfig.FormatError) -> Data) throws {
-        let original = FileManager.default.contents(atPath: path)
-        let next = try transform(original)
-        let backup = path + ".skysheet-backup"
-        if let original, !FileManager.default.fileExists(atPath: backup) {
-            try original.write(to: URL(fileURLWithPath: backup))
-        }
-        try FileManager.default.createDirectory(atPath: (path as NSString).deletingLastPathComponent,
-                                                withIntermediateDirectories: true)
-        try next.write(to: URL(fileURLWithPath: path), options: .atomic)
     }
 }
 

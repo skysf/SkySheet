@@ -9,9 +9,11 @@
 
 ## 准备
 
-- [ ] 装上 v0.3.0；拿 `Fixtures/loan.xlsx` 或自己表格的**副本**来试。
+- [ ] 装上要发的那一版；拿 `Fixtures/loan.xlsx` 或自己表格的**副本**来试。
 - [ ] 设置（⌘,）→ Claude Code 那一行是「Not connected」→ 点 Connect → 变成「Connected」。
       `~/.claude/settings.json` 的 permissions.allow 里多了 `mcp__skysheet`，旁边有一份 `settings.json.skysheet-backup`。
+      `diff ~/.claude/settings.json.skysheet-backup ~/.claude/settings.json` 只差这一行（和上一行末尾的逗号）；
+      原来就有 allow 列表的话，点 Disconnect 再 diff，一个字节不差（v0.3.1 起）。
 - [ ] 新开一个 Claude Code 会话，`/mcp` 里能看到 skysheet 和 14 个工具。
 
 ## 三类典型问题（M4 的验收）
