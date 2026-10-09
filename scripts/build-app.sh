@@ -97,7 +97,8 @@ SkySheet — 首次打开必读 / Read Me First
 4. 回到「应用程序」里再双击 SkySheet，这次就正常打开了。以上只需要做一次。
 
 用 SkySheet 打开表格：在访达里右键 xlsx / csv 文件 →「打开方式」→ SkySheet；或者先打开 SkySheet，
-在「打开」面板里选文件。这个版本只能查看，还不能保存。
+在「打开」面板里选文件。改完按 ⌘S 保存（第一次覆盖原文件之前会先备份）。
+连接 Claude Code：SkySheet 菜单 →「设置…」（⌘,）→ Connect。
 
 运行要求：Apple 芯片（M 系列）Mac，macOS 15 Sequoia 或更新版本。
 
@@ -115,7 +116,8 @@ SkySheet — 首次打开必读 / Read Me First
 4. Double-click SkySheet again. It opens normally from now on.
 
 To open a spreadsheet: right-click an .xlsx or .csv file in Finder → Open With → SkySheet, or start
-SkySheet and pick a file. This version views files; saving comes in a later version.
+SkySheet and pick a file. Press Cmd+S to save (SkySheet backs up the original before it first
+overwrites a file). To connect Claude Code: SkySheet menu → Settings… (Cmd+,) → Connect.
 
 Requirements: an Apple silicon (M-series) Mac running macOS 15 Sequoia or later.
 READMEEOF
