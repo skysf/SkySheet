@@ -45,9 +45,10 @@ func fail(_ message: String, file: StaticString = #fileID, line: UInt = #line) {
     Checks.failures.append("[\(Checks.currentGroup)] \(file):\(line) \(message)")
 }
 
-/// 打印结果并退出：全过退出码 0，否则 1。
+/// 打印结果并退出：全过退出码 0，否则 1。临时目录在这里一起删掉（exit 不会跑 defer 和 deinit）。
 @MainActor
 func finishChecks() -> Never {
+    try? FileManager.default.removeItem(at: temporaryRoot)
     for failure in Checks.failures {
         print("FAIL \(failure)")
     }
@@ -69,10 +70,14 @@ func fixtureURL(_ name: String) -> URL {
     repositoryRoot.appendingPathComponent("Fixtures").appendingPathComponent(name)
 }
 
+/// 这一次自检的临时目录都放在它下面，跑完由 `finishChecks` 整个删掉。以前每个目录单独放、没人删，
+/// 本机每跑一次就在 $TMPDIR 里多留几个（2026-10-09 清出 84 个）。
+private let temporaryRoot = FileManager.default.temporaryDirectory
+    .appendingPathComponent("SkySheetChecks-\(UUID().uuidString)", isDirectory: true)
+
 /// 每次调用新建一个空的临时目录。
 func makeTemporaryDirectory() throws -> URL {
-    let url = FileManager.default.temporaryDirectory
-        .appendingPathComponent("SkySheetChecks-\(UUID().uuidString)", isDirectory: true)
+    let url = temporaryRoot.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
     return url
 }
