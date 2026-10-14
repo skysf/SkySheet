@@ -367,7 +367,7 @@ private func save(_ workbook: Workbook, source: XLSXSource?, baseline: Workbook?
 
 @MainActor private var savedFiles = 0
 
-private func zipContents(_ data: Data) throws -> [String: Data] {
+func zipContents(_ data: Data) throws -> [String: Data] {
     let archive = try ZipArchive(data: data)
     var contents: [String: Data] = [:]
     for entry in archive.entries where !entry.isDirectory {

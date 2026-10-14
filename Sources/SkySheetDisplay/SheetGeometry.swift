@@ -94,6 +94,18 @@ public struct SheetGeometry: Sendable {
         ((256 * width + (128 / digitWidth).rounded(.down)) / 256 * digitWidth).rounded(.down)
     }
 
+    /// `columnPixels` 反过来：拖列标的边线拖到 `pixels` 宽（100% 缩放），存成多少个字符。按 Excel 的 1/256 个字符取，
+    /// 往上取：再换回像素正好是这么宽，不会差一个像素（d 是任何值都成立：⌊128/d⌋·d/256 不到 0.5）。
+    public static func columnWidth(forPixels pixels: Double, digitWidth: Double = 7) -> Double {
+        let digit = max(digitWidth, 1)
+        return (max(pixels.rounded(), 0) / digit * 256).rounded(.up) / 256
+    }
+
+    /// 拖行号的边线拖到 `pixels` 高（100% 缩放），存成多少磅：按 0.75 磅（Excel 的一个像素）取整。
+    public static func rowHeight(forPixels pixels: Double) -> Double {
+        (max(pixels, 0) / pixelsPerPoint / 0.75).rounded() * 0.75
+    }
+
     /// 没写列宽时的默认列：8.43 个字符加 5 像素的边距和网格线（d = 7 时是 64 像素）。
     public static func defaultColumnPixels(digitWidth: Double = 7) -> Double {
         (8.43 * digitWidth).rounded(.down) + 5

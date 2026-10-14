@@ -26,6 +26,12 @@ func mcpChecks() {
         let han = (instructions + catalog).unicodeScalars.filter { (0x4E00...0x9FFF).contains($0.value) }
         check(han.isEmpty, "English only for the model (found \(String(String.UnicodeScalarView(han.prefix(5)))))")
         checkEqual(MCPVocabulary.numberFormatPresets, FormatPreset.allCases.map(\.rawValue), "presets match FormatPreset")
+        checkEqual(MCPVocabulary.horizontalAlignments, Workbook.CellStyleChange.Horizontal.allCases.map(\.rawValue),
+                   "alignments match the style change")
+        checkEqual(MCPVocabulary.verticalAlignments, Workbook.CellStyleChange.Vertical.allCases.map(\.rawValue),
+                   "vertical alignments match the style change")
+        // 列宽、冻结 2026-10-14 挪到了 edit_rows_columns：format_cells 的说明要告诉模型去那里找。
+        check(MCPToolName.formatCells.definition.description.contains("edit_rows_columns"), "format_cells points at edit_rows_columns")
         for tool in MCPToolName.allCases {
             let schema = tool.definition.inputSchema
             let properties = schema["properties"]?.objectValue ?? [:]

@@ -17,6 +17,9 @@ public struct Sheet: Hashable, Sendable {
     public var tabColor: String?
     public var defaultColumnWidth: Double?
     public var defaultRowHeight: Double?
+    /// 原文件里用了富文本共用字符串的格子 → 那一条在共用字符串表里的编号（设计 7.2 节）。保存时文字没变就接着用那一条，
+    /// 一个格子里几种字体的样子不丢。记在 sheet 上而不是原包里：插删行列时它跟着格子挪，复制 sheet 时跟着复制。
+    public var richTextSources: [CellAddress: Int]
 
     public init(id: Int, name: String, role: SheetRole = .original) {
         self.id = id
@@ -31,6 +34,7 @@ public struct Sheet: Hashable, Sendable {
         tabColor = nil
         defaultColumnWidth = nil
         defaultRowHeight = nil
+        richTextSources = [:]
     }
 }
 
@@ -57,7 +61,24 @@ extension Sheet {
     public func hasSameContent(as other: Sheet) -> Bool {
         cells == other.cells && columns == other.columns && rowFormats == other.rowFormats && frozen == other.frozen
             && merges == other.merges && tabColor == other.tabColor && defaultColumnWidth == other.defaultColumnWidth
-            && defaultRowHeight == other.defaultRowHeight
+            && defaultRowHeight == other.defaultRowHeight && richTextSources == other.richTextSources
+    }
+}
+
+extension Sheet {
+    /// 有内容的格子（有值或公式）围成的范围；只刷了样式的空格子不算（腾讯文档常给一大片空格子刷样式，loan.xlsx 一直刷到
+    /// AG212）。给 AI 看的「用到的范围」、整列整行读到哪为止，都按它。
+    public var contentRange: CellRange? {
+        var top = Int.max, left = Int.max, bottom = -1, right = -1
+        cells.forEach { address, cell in
+            guard cell.value != .empty || cell.formula != nil else { return }
+            top = min(top, address.row)
+            bottom = max(bottom, address.row)
+            left = min(left, address.column)
+            right = max(right, address.column)
+        }
+        guard bottom >= 0 else { return nil }
+        return CellRange(CellAddress(row: top, column: left), CellAddress(row: bottom, column: right))
     }
 }
 

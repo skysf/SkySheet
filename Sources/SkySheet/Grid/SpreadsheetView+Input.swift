@@ -12,7 +12,8 @@ extension SpreadsheetView {
         if session.editing != nil { finishEditing(rows: 0, columns: 0) }
         window?.makeFirstResponder(self)
         guard let address = address(at: convert(event.locationInWindow, from: nil)) else { return }
-        session.select(address, extend: event.modifierFlags.contains(.shift))
+        // 选着整列时在格子上 Shift 点一下：变成从起点到这一格的一块格子（keepLines: false）。
+        session.select(address, extend: event.modifierFlags.contains(.shift), keepLines: false)
         if event.clickCount == 2, !event.modifierFlags.contains(.shift) { beginEditing(.editing) }
     }
 
@@ -103,8 +104,8 @@ extension SpreadsheetView {
     /// 复制两份：按显示出来的样子、制表符分隔的文字（贴到 Excel、腾讯文档里能还原成表格），
     /// 和 SkySheet 自己的格式（原始写法，粘回来不丢精度、公式平移引用）。
     @objc func copy(_ sender: Any?) {
-        guard let canvas else { return }
-        let range = session.selection.range
+        // 整列整行只复制到用到的地方为止（整列有一百多万格）。
+        guard let canvas, let range = session.selectedCells else { return }
         let lines = (range.start.row...range.end.row).map { row in
             (range.start.column...range.end.column).map { column -> String in
                 guard let cell = canvas.sheet.cells[CellAddress(row: row, column: column)] else { return "" }
@@ -164,6 +165,7 @@ extension SpreadsheetView {
     }
 
     @objc func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if let enabled = validateRowsColumnsItem(item) ?? validateFormatItem(item) { return enabled }
         switch item.action {
         case #selector(undo(_:)):
             if session.editing != nil {

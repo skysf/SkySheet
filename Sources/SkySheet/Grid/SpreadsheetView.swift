@@ -25,17 +25,23 @@ final class SpreadsheetView: NSView {
     private let cornerPane = PaneView(role: .corner)
     private let frozenRowsPane = PaneView(role: .frozenRows)
     private let frozenColumnsPane = PaneView(role: .frozenColumns)
-    private let columnHeader = HeaderView(axis: .columns)
-    private let rowHeader = HeaderView(axis: .rows)
+    let columnHeader = HeaderView(axis: .columns)
+    let rowHeader = HeaderView(axis: .rows)
     private let cornerBox = CornerBox()
     /// 格内编辑框（CellEditor.swift）。不编辑时藏着。
     let editor = CellEditor()
+    /// 拖边线时跟着鼠标的那个小牌子：「Width: 12.50 (92 px)」，和 Excel 一样。
+    let sizeLabel = SizeLabel()
+    /// 字体缓存，每次重建画布都接着用（拖边线时每动一下都要重建）。
+    let fonts = FontBook()
     /// 正在处理的按键：开始打字时要把这一下转给编辑框（SpreadsheetView+Input）。
     var pendingKeyEvent: NSEvent?
 
     static let columnHeaderHeight: CGFloat = 22
     /// 第一次排好之后要不要滚到活动格（选区在视图建好之前就定了的时候，比如换 sheet、截图模式的 --select）。
     private var needsInitialScroll = true
+    /// 上次建画布时看的 sheet 和缩放：只有换了它们才滚到活动格。别的改动（改格子、拖列宽、AI 写东西）不挪用户看的地方。
+    private var canvasKey: (sheet: Int, zoom: Double)?
 
     init(session: SheetSession) {
         self.session = session
@@ -58,7 +64,7 @@ final class SpreadsheetView: NSView {
                                                name: NSView.boundsDidChangeNotification, object: scrollView.contentView)
         editor.spreadsheet = self
         for view in [scrollView, cornerPane, frozenRowsPane, frozenColumnsPane, columnHeader, rowHeader, cornerBox,
-                     editor] as [NSView] {
+                     editor, sizeLabel] as [NSView] {
             addSubview(view)
         }
         rebuildCanvas()
@@ -67,6 +73,7 @@ final class SpreadsheetView: NSView {
             _ = view.session.zoom
             _ = view.session.workbook
             _ = view.session.aiTouched
+            _ = view.session.resizePreview
         }, onChange: { view in
             view.rebuildCanvas()
         })
@@ -115,12 +122,15 @@ final class SpreadsheetView: NSView {
     // MARK: - 排布
 
     private func rebuildCanvas() {
-        canvas = SheetCanvas(session: session)
+        canvas = SheetCanvas(session: session, fonts: fonts)
         needsLayout = true
-        needsInitialScroll = true
+        if canvasKey?.sheet != session.sheet.id || canvasKey?.zoom != session.zoom { needsInitialScroll = true }
+        canvasKey = (session.sheet.id, session.zoom)
         for view in [cornerPane, frozenRowsPane, frozenColumnsPane, mainPane, columnHeader, rowHeader] as [NSView] {
             view.needsDisplay = true
         }
+        window?.invalidateCursorRects(for: columnHeader)
+        window?.invalidateCursorRects(for: rowHeader)
     }
 
     override func layout() {

@@ -14,10 +14,10 @@ enum WorksheetWriter {
                         "tableParts", "extLst"]
 
     /// `original` 是原来的部件（新 sheet 传 nil）；`baseline` 是打开时的样子：页签颜色、冻结窗格没变就不碰原文。
-    /// `richCells` 是原来用了富文本的格子（见 XLSXSource.richCells）。`defaultRowHeight` 是 sheet 没写默认行高时
+    /// 原来用了富文本的格子记在 `sheet.richTextSources`。`defaultRowHeight` 是 sheet 没写默认行高时
     /// 按工作簿默认字体算的那个（StyleTable.defaultRowHeight）。
-    static func write(_ sheet: Sheet, original: XMLFragments?, baseline: Sheet?, richCells: [CellAddress: Int] = [:],
-                      defaultRowHeight: Double, strings: inout SharedStringTable) -> Data {
+    static func write(_ sheet: Sheet, original: XMLFragments?, baseline: Sheet?, defaultRowHeight: Double,
+                      strings: inout SharedStringTable) -> Data {
         var document = original ?? XMLFragments(
             declaration: OOXML.declaration,
             rootStart: "<worksheet xmlns=\"\(OOXML.main)\" xmlns:r=\"\(OOXML.relationships)\">", rootName: "worksheet")
@@ -38,7 +38,7 @@ enum WorksheetWriter {
                                                            fallbackHeight: defaultRowHeight, p), order: order)
         }
         document.set("cols", raw: columns(sheet.columns, p), order: order)
-        document.set("sheetData", raw: sheetData(sheet, p, richCells, &strings), order: order)
+        document.set("sheetData", raw: sheetData(sheet, p, &strings), order: order)
         document.set("mergeCells", raw: merges(sheet.merges, p), order: order)
         if original == nil {
             document.set("pageMargins", raw: "<\(p)pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" "
@@ -123,8 +123,7 @@ enum WorksheetWriter {
 
     // MARK: - 格子
 
-    private static func sheetData(_ sheet: Sheet, _ p: String, _ richCells: [CellAddress: Int],
-                                  _ strings: inout SharedStringTable) -> String {
+    private static func sheetData(_ sheet: Sheet, _ p: String, _ strings: inout SharedStringTable) -> String {
         var xml = "<\(p)sheetData>"
         let rows = Set(sheet.cells.rowIndices).union(sheet.rowFormats.keys).sorted()
         for row in rows {
@@ -142,7 +141,7 @@ enum WorksheetWriter {
             xml += "<\(p)row \(attributes)>"
             for (column, cell) in cells {
                 let address = CellAddress(row: row, column: column)
-                xml += cellXML(cell, at: address, p, richCells[address], &strings)
+                xml += cellXML(cell, at: address, p, sheet.richTextSources[address], &strings)
             }
             xml += "</\(p)row>"
         }

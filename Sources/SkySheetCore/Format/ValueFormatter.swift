@@ -79,7 +79,10 @@ final class FormatCodeCache: Sendable {
 
 /// 预设格式：界面菜单里点选，AI 用名字指定（设计第六节）。也可以直接给格式代码。
 /// 万元只用 Excel 认得的写法，在 Excel、腾讯文档、WPS 里打开显示一样；代价是只能 1 位小数或者精确到元。
+/// 常规（回到没有格式）和千分位两位小数是 2026-10-14 界面加 Format 菜单时补的。
 public enum FormatPreset: String, CaseIterable, Sendable {
+    case general
+    case number
     case cny
     case cnyInteger = "cny_int"
     case wan
@@ -90,6 +93,8 @@ public enum FormatPreset: String, CaseIterable, Sendable {
 
     public var code: String {
         switch self {
+        case .general: "General"
+        case .number: "#,##0.00"
         case .cny: "\"¥\"#,##0.00_);[Red](\"¥\"#,##0.00)"
         case .cnyInteger: "\"¥\"#,##0_);[Red](\"¥\"#,##0)"
         case .wan: "0!.0,\"万\""

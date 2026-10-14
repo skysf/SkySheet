@@ -1,6 +1,6 @@
 import Foundation
 
-// MARK: - 改东西的工具：add_sheet、write_cells、format_cells、edit_sheet、undo（设计 9.2、9.3 节）。
+// MARK: - 改东西的工具：add_sheet、write_cells、format_cells、edit_rows_columns、edit_sheet、undo（设计 9.2、9.3 节）。
 // 只认 AI 的 sheet：原始 sheet 一律拒绝，拒绝的话里直接说「用 add_sheet copy_from 复制一份再改」（App 那头）。
 
 enum MCPWriteTools {
@@ -48,25 +48,64 @@ enum MCPWriteTools {
             return MCPToolDefinition(
                 .formatCells, title: "Format cells",
                 description: """
-                    Formats cells of an AI sheet. Only the options you give change. number_format: a preset (cny and \
-                    cny_int for yuan amounts, wan and wan_exact for amounts in units of 10,000, percent, date, \
-                    date_cn) or an Excel format code such as 0.00%. bold; font_color and fill_color as hex like \
-                    #C00000; column_width in characters for the range's columns; freeze keeps the top rows and left \
-                    columns in view, e.g. {"rows": 1, "columns": 1} ({"rows": 0, "columns": 0} unfreezes).
+                    Formats cells of an AI sheet. Only the options you give change. range is an A1 range; whole \
+                    columns (C:E) or rows (3:5) format the cells in use, so write the cells first. number_format: \
+                    a preset (general; number for 1,234.56; cny and cny_int for yuan amounts; wan and wan_exact for \
+                    amounts in units of 10,000; percent; date; date_cn) or an Excel format code such as 0.00%. \
+                    bold, italic; font_color and fill_color as hex like #C00000 (font_color "auto" goes back to the \
+                    default color, fill_color "none" removes the fill); align and vertical_align; wrap wraps long \
+                    text inside the cell. merge=true merges the range into one cell, keeping the top-left value \
+                    (refused while other cells in it have content: clear them first); merge=false unmerges merged \
+                    cells in the range. Column widths, row heights, hiding and freezing are in edit_rows_columns.
                     """,
                 input: MCPSchema.object([
                     "sheet": MCPSchema.sheet,
-                    "range": MCPSchema.string("A1 range to format (not needed for freeze alone)."),
+                    "range": MCPSchema.string("A1 range such as B2:D9, or whole columns (C:E) or rows (3:5)."),
                     "number_format": MCPSchema.string("Preset (\(MCPVocabulary.numberFormatPresets.joined(separator: ", "))) or format code."),
                     "bold": MCPSchema.boolean("Bold text on or off."),
-                    "font_color": MCPSchema.string("Text color, hex such as #C00000."),
-                    "fill_color": MCPSchema.string("Background color, hex such as #FFF2CC."),
-                    "column_width": MCPSchema.number("Width of the range's columns in characters.", minimum: 0, maximum: 255),
-                    "freeze": MCPSchema.object(["rows": MCPSchema.integer("Rows to freeze.", minimum: 0),
-                                                "columns": MCPSchema.integer("Columns to freeze.", minimum: 0)],
-                                               description: "Frozen panes of the sheet."),
+                    "italic": MCPSchema.boolean("Italic text on or off."),
+                    "font_color": MCPSchema.string("Text color, hex such as #C00000, or auto."),
+                    "fill_color": MCPSchema.string("Background color, hex such as #FFF2CC, or none."),
+                    "align": MCPSchema.string("Horizontal alignment; general puts numbers right and text left.",
+                                              oneOf: MCPVocabulary.horizontalAlignments),
+                    "vertical_align": MCPSchema.string("Vertical alignment.", oneOf: MCPVocabulary.verticalAlignments),
+                    "wrap": MCPSchema.boolean("Wrap long text onto more lines inside the cell."),
+                    "merge": MCPSchema.boolean("true merges the range into one cell; false unmerges merged cells in it."),
                     "workbook": MCPSchema.workbook,
-                ], required: ["sheet"]))
+                ], required: ["sheet", "range"]))
+        case .editRowsColumns:
+            return MCPToolDefinition(
+                .editRowsColumns, title: "Edit rows and columns",
+                description: """
+                    Changes whole rows or columns of an AI sheet. Give rows ("3" or "3:5") or columns ("C" or \
+                    "B:D") and what to do.
+                    insert=true puts that many new empty rows (columns) there, pushing the existing ones down \
+                    (right); delete=true removes them and moves the rest up (left). Formulas anywhere that point at \
+                    moved cells follow them; references to deleted cells become #REF!. insert and delete are refused \
+                    on sheets with pictures, charts, comments, conditional formatting, data validation or similar, \
+                    which SkySheet keeps but cannot move (describe_sheet says so); they cannot be combined with the \
+                    other options.
+                    width (columns, in characters, up to 255) or height (rows, in points, up to 409) sets the size; \
+                    autofit=true sizes them to their content. hidden=true hides them, hidden=false shows them again. \
+                    freeze=true keeps them in view while scrolling: they must start at row 1 or column A (rows "1" \
+                    freezes a header row); freeze=false unfreezes the rows (or columns).
+                    Returns what changed; for insert and delete, how many formulas were updated and which ones now \
+                    show #REF!.
+                    """,
+                input: MCPSchema.object([
+                    "sheet": MCPSchema.sheet,
+                    "rows": MCPSchema.string("Row numbers, like 3 or 3:5."),
+                    "columns": MCPSchema.string("Column letters, like C or B:D."),
+                    "insert": MCPSchema.boolean("Insert that many new empty rows or columns at this place."),
+                    "delete": MCPSchema.boolean("Delete these rows or columns."),
+                    "width": MCPSchema.number("Column width in characters.", minimum: 0, maximum: 255),
+                    "height": MCPSchema.number("Row height in points.", minimum: 0, maximum: 409),
+                    "autofit": MCPSchema.boolean("Size to the content."),
+                    "hidden": MCPSchema.boolean("true hides, false shows them again."),
+                    "freeze": MCPSchema.boolean("true freezes these top rows or left columns; false unfreezes."),
+                    "workbook": MCPSchema.workbook,
+                ], required: ["sheet"]),
+                destructive: true)
         case .editSheet:
             return MCPToolDefinition(
                 .editSheet, title: "Rename, move or delete AI sheet",

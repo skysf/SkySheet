@@ -1,6 +1,6 @@
 # AI 接口（MCP）：让 Claude Code 和 Claude 桌面版读表、算数、写进新 sheet
 
-> 已生效的长期约束（M4 落地，2026-10-09；同一天加了 Claude 桌面版的普通聊天）。产品决定和理由见设计文档第九节、8.3 节、
+> 已生效的长期约束（M4 落地，2026-10-09；同一天加了 Claude 桌面版的普通聊天；2026-10-14 加了 edit_rows_columns）。产品决定和理由见设计文档第九节、8.3 节、
 > 第 12、13、14、17、23 条。
 > 结构和大部分规矩从 SrtFlow 搬来（它的 `docs/architecture/ai-control-mcp.md`），这里只写 SkySheet 自己的样子。
 
@@ -14,7 +14,7 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 | --- | --- | --- |
 | `SkySheetMCPKit`（库） | `Sources/SkySheetMCPKit/` | MCP 协议（`MCPServerCore`，两代客户端）、工具清单（`MCPToolName` + 说明）、总说明、通道格式与 socket 收发、AI 客户端配置文件的改法（`AIClientConfig` + `ClaudeCodeConfig` / `ClaudeDesktopConfig`）。只依赖 Foundation，小程序和 App 共用 |
 | `skysheet-mcp`（小程序） | `Sources/SkySheetMCP/`，打包进 `SkySheet.app/Contents/Helpers/` | 握手和工具清单当场回，工具调用转给 App；App 没开就 `open -g` 拉起来（带 `--launched-by-ai`） |
-| App 这一头 | `Sources/SkySheet/AI/` | `AIBridgeServer` 听 socket → `AIToolRouter` 排队、穷举分派 → `AIWorkbookTools` / `AIReadTools` / `AIWriteTools`；`AISession` 管这一轮 |
+| App 这一头 | `Sources/SkySheet/AI/` | `AIBridgeServer` 听 socket → `AIToolRouter` 排队、穷举分派 → `AIWorkbookTools` / `AIReadTools` / `AIWriteTools` / `AIRowColumnTools`；`AISession` 管这一轮 |
 
 1. **工具清单只有一份**（`MCPToolName`）：小程序回清单、App 分派都 switch 它，加工具漏了哪边编译不过。清单由小程序给，
    不为了列清单把 App 拉起来。
@@ -56,6 +56,14 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
    什么时候的」只能从这里答，不然它会去网上搜（2026-10-14 桌面版的聊天）。版本读 Info.plist 的 CFBundleShortVersionString
    （和小程序报的 serverInfo 同一个读法，`MCPBridge.appVersion`），打包时间读 build-app.sh 写的 `SkySheetBuildDate`（UTC）；
    `swift run` 的开发版是 dev、没有打包时间。
+10. **插删行列只在安全的表上**（`StructureLock`，设计 8.4 节）：表里或者文件别处有按位置指着格子、我们又读不懂的东西
+   （图片、批注、条件格式、数据验证、图表……）就拒绝，话里说清楚是什么、让 AI 用 add_sheet copy_from 复制一份改副本
+   （副本不带这些）。describe_sheet 对这样的 AI 的 sheet 给 `insert_delete`。改公式引用和界面上是同一份（`Workbook.shiftLines`），
+   结果回改了几个公式、哪些变成了 #REF!。
+11. **整列整行的区域**（C:E、3:5）：读、导出只到有内容的格子为止（`Sheet.contentRange`；腾讯文档给一大片空格子刷样式），
+   改格式到刷过样式的地方为止（和界面一样）；get_status、show 的选区写成 C:E、3:5。
+12. **工具说明改了以后，还开着的客户端用的是旧说明**（要重启客户端才换）：挪走的参数在 App 里照旧收（2026-10-14 把
+   format_cells 的 column_width、freeze 挪到了 edit_rows_columns，format_cells 仍然认这两个，只是说明里不写了）。
 
 ## 四、连接 AI 客户端（设置 ⌘, 的「AI」一节）
 
@@ -97,6 +105,11 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
   SQL、算公式不写、sheet 操作、样式、署名。`XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
 - Claude 桌面版没法在自检里重启：发版前在真机上按清单连一遍（桌面版开着、没开各一次）。别在桌面版的 Code 页里让 AI
   替你退出 Claude：那个会话会一起被关掉。
+- 开发时调 App 这一头、又不想动装着开着的那一份：App 和小程序都认 `SKYSHEET_MCP_SOCKET`，让编出来的 App 在别的 socket 上听
+  （路径不能超过 103 个字节，放 /tmp），小程序加 `SKYSHEET_MCP_NO_LAUNCH=1` 连它。光秃秃的 debug 可执行文件没有 Info.plist、
+  打不开 xlsx：拷进一个临时的 .app 外壳（`packaging/Info.plist`，bundle id 换一个，偏好设置不混）再跑。恢复副本、备份的
+  目录不跟 bundle id 走（`SafetyFolders`），测完杀掉它以后，把它写进 `Recovery/` 的那几份（json 里的 originalPath 指着测试文件）
+  删掉，不然装着的那一份下次启动会问要不要恢复（2026-10-14）。
 - 端到端（发版前）：打包好的 App，用 JSON-RPC 直接跟包里的小程序说话（和 Claude Code 一样），再用
   `claude -p … --mcp-config <临时配置> --strict-mcp-config --allowedTools mcp__skysheet` 真问一遍（不动用户自己的
   Claude Code 配置），看它的 MCP 日志（`~/Library/Caches/claude-cli-nodejs/<目录>/mcp-logs-skysheet/`）里没有 truncated。

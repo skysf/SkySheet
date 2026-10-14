@@ -12,6 +12,8 @@ public struct XLSXSource: Sendable {
     struct SheetPart: Sendable {
         let path: String
         let relationshipID: String
+        /// 打开时的名字：图表、数据透视表这些部件按这个名字指着它（StructureLock 要找）。
+        let name: String
     }
 
     let package: OPCPackage
@@ -24,8 +26,6 @@ public struct XLSXSource: Sendable {
     let sharedStringsPart: String?
     let sharedStrings: [String]
     let richStrings: Set<Int>
-    /// sheetId → 这张 sheet 里用了富文本共用字符串的格子和那条的编号。
-    let richCells: [Int: [CellAddress: Int]]
     let calcChainPart: String?
     /// workbook 关系里已经用掉的 id：新加的不能撞上。
     let relationshipIDs: Set<String>
@@ -75,7 +75,6 @@ public enum XLSXReader {
         var sheetParts: [Int: XLSXSource.SheetPart] = [:]
         /// workbook.xml 里第几个 <sheet>（包括跳过的图表 sheet）→ 模型里第几张。定义名称的 localSheetId 按前者数。
         var modelIndex: [Int: Int] = [:]
-        var richCells: [Int: [CellAddress: Int]] = [:]
         for (position, entry) in workbookPart.sheets.enumerated() {
             guard let relationship = relationships.first(where: { $0.id == entry.relationshipID }),
                   relationship.hasType("worksheet") else { continue }
@@ -86,8 +85,8 @@ public enum XLSXReader {
                                        dateSystem: workbookPart.dateSystem)
             try XMLScanner.scan(try package.data(relationship.target), part: relationship.target, handler: reader)
             sheets.append(reader.sheet)
-            if !reader.richCells.isEmpty { richCells[entry.sheetID] = reader.richCells }
-            sheetParts[entry.sheetID] = XLSXSource.SheetPart(path: relationship.target, relationshipID: entry.relationshipID)
+            sheetParts[entry.sheetID] = XLSXSource.SheetPart(path: relationship.target, relationshipID: entry.relationshipID,
+                                                             name: entry.name)
         }
 
         // 哪些是 AI 的 sheet：custom.xml 里的 SkySheet.AI.<sheetId>。认不出来的就当原始数据（设计 9.3 节第 3 条）。
@@ -127,7 +126,7 @@ public enum XLSXReader {
                                 nextSheetID: (workbookPart.sheets.map(\.sheetID).max() ?? 0) + 1)
         let source = XLSXSource(package: package, workbookPart: workbookPath, sheets: sheetParts,
                                 stylesPart: part("styles"), fileStyles: fileStyles, sharedStringsPart: part("sharedStrings"),
-                                sharedStrings: strings.strings, richStrings: strings.richIndices, richCells: richCells,
+                                sharedStrings: strings.strings, richStrings: strings.richIndices,
                                 calcChainPart: part("calcChain"), relationshipIDs: Set(relationships.map(\.id)),
                                 customPropertiesPart: customPart, aiProperties: aiProperties)
         return XLSXDocument(workbook: workbook, source: source)

@@ -24,7 +24,10 @@ final class AIBridgeServer: @unchecked Sendable {
         lock.lock()
         defer { lock.unlock() }
         guard socketPath == nil else { return }
-        let path = MCPBridge.socketPath(bundleIdentifier: Bundle.main.bundleIdentifier ?? "ai.skylu.skysheet")
+        // SKYSHEET_MCP_SOCKET：开发时让编出来的 App 在别的 socket 上听，和装着、开着的那一份互不相干，好拿小程序真调一遍
+        // （小程序认同一个变量，docs/architecture/mcp.md 第五节）。
+        let path = ProcessInfo.processInfo.environment["SKYSHEET_MCP_SOCKET"]
+            ?? MCPBridge.socketPath(bundleIdentifier: Bundle.main.bundleIdentifier ?? "ai.skylu.skysheet")
         do {
             let fd = try MCPUnixSocket.listen(path: path)
             socketPath = path

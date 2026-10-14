@@ -42,6 +42,11 @@ public enum ReferenceShift {
         return moved
     }
 
+    /// 一个引用的写法（不带 sheet 名）：单格 "B$3"，区域 "A1:C9"，整列 "A:C"，整行 "3:5"。插删行列改引用时也用它。
+    static func render(_ reference: ReferenceToken) -> String {
+        render(reference.start) + (reference.end.map { ":" + render($0) } ?? "")
+    }
+
     private static func render(_ point: ReferencePoint) -> String {
         var text = ""
         if let column = point.column {
