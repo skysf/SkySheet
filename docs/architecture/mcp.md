@@ -1,6 +1,7 @@
-# AI 接口（MCP）：让 Claude Code 读表、算数、写进新 sheet
+# AI 接口（MCP）：让 Claude Code 和 Claude 桌面版读表、算数、写进新 sheet
 
-> 已生效的长期约束（M4 落地，2026-10-09）。产品决定和理由见设计文档第九节、8.3 节、第 12、13、14、17、23 条。
+> 已生效的长期约束（M4 落地，2026-10-09；同一天加了 Claude 桌面版的普通聊天）。产品决定和理由见设计文档第九节、8.3 节、
+> 第 12、13、14、17、23 条。
 > 结构和大部分规矩从 SrtFlow 搬来（它的 `docs/architecture/ai-control-mcp.md`），这里只写 SkySheet 自己的样子。
 
 ## 一、结构：三段，活只在 App 里做
@@ -11,7 +12,7 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 
 | 部分 | 在哪 | 管什么 |
 | --- | --- | --- |
-| `SkySheetMCPKit`（库） | `Sources/SkySheetMCPKit/` | MCP 协议（`MCPServerCore`，两代客户端）、工具清单（`MCPToolName` + 说明）、总说明、通道格式与 socket 收发、Claude Code 配置文件的改法。只依赖 Foundation，小程序和 App 共用 |
+| `SkySheetMCPKit`（库） | `Sources/SkySheetMCPKit/` | MCP 协议（`MCPServerCore`，两代客户端）、工具清单（`MCPToolName` + 说明）、总说明、通道格式与 socket 收发、AI 客户端配置文件的改法（`AIClientConfig` + `ClaudeCodeConfig` / `ClaudeDesktopConfig`）。只依赖 Foundation，小程序和 App 共用 |
 | `skysheet-mcp`（小程序） | `Sources/SkySheetMCP/`，打包进 `SkySheet.app/Contents/Helpers/` | 握手和工具清单当场回，工具调用转给 App；App 没开就 `open -g` 拉起来（带 `--launched-by-ai`） |
 | App 这一头 | `Sources/SkySheet/AI/` | `AIBridgeServer` 听 socket → `AIToolRouter` 排队、穷举分派 → `AIWorkbookTools` / `AIReadTools` / `AIWriteTools`；`AISession` 管这一轮 |
 
@@ -52,7 +53,12 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
    会把 8673.94 变成 8673.939999999999）。表格块的合计行（有 SUM 公式的最后一行）不算数据，不进统计、不进 SQL 表。
 8. **SQL 只读**：每次现建内存库、装表、`PRAGMA query_only`，只许一条语句、`sqlite3_stmt_readonly`，最多跑 3 秒、回 500 行。
 
-## 四、连接 Claude Code（设置 ⌘,）
+## 四、连接 AI 客户端（设置 ⌘, 的「AI」一节）
+
+两家各一行、一行一个按钮；读 `mcpServers.skysheet.command`、改文件的规矩（备份、软链接、原子写、没有要改的不写）
+两家共用 `AIClientConfig`，按原文改 JSON 共用 `JSONText`。配置里写的都是**这一份 App 包里**的小程序路径。
+
+### Claude Code（`ClaudeCodeSetup`）
 
 - 走它自己的命令行 `claude mcp add --scope user skysheet -- <包里的小程序>`，**不直接改 `~/.claude.json`**（正在跑的
   Claude Code 会整份重写它）。同时往 `~/.claude/settings.json` 的 `permissions.allow` 加 `mcp__skysheet`（第一次改前备份成
@@ -62,11 +68,31 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
   `JSONSerialization.data(.prettyPrinted, .sortedKeys)` 整份重写，作者的 settings.json 键全被重排（2026-10-09）。
   软链接写进它指向的文件（原子写会把链接换成普通文件）。都钉在 `Sources/SkySheetChecks/ClaudeCodeConfigChecks.swift`。
 
+### Claude 桌面版的普通聊天（`ClaudeDesktopSetup`）
+
+- 改 `~/Library/Application Support/Claude/claude_desktop_config.json` 的 `mcpServers.skysheet`
+  （`{"command": <小程序>, "args": []}`，桌面版认的就是 command / args / env）。它的 Code 页跑的是 Claude Code，走上面那一行。
+- 同样按原文只动这一项：没有就加在 mcpServers 末尾（没有 mcpServers 就补在根对象末尾），连着另一份只换 command 那个字符串
+  （用户加的 env 留着），断开只删这一项（mcpServers 空了留着 `{}`）。格式不对一个字节不写。
+- **备份连权限一起复制**（`copyItem`）：这个文件是 0600、里面有账号的东西，写一份新文件会变成 0644。
+- **它开着时改的会被它盖掉**：桌面版启动时读一次整个文件，之后每次存偏好都把内存里那份整份写回、不重读（一天十几次，
+  开 Code 会话就会写）；退出时不写；mcpServers 只在启动时读（2026-10-09，Claude 2.31226.0，读代码和
+  `~/Library/Logs/Claude/main.log` 的「Config file written」确认）。所以：
+  - 点的时候它没开：直接改，状态「Connected」。
+  - 它开着：先改，记下要的结果（`pending`），状态「Restart Claude to finish」；听 `NSWorkspace.didTerminateApplication`，
+    bundle id 是 `com.anthropic.claudefordesktop` 就照 `pending` 再写一遍（已经是这样就不写）。要 SkySheet 那时还开着，
+    提示里说了；没赶上的话设置里显示没连上，再点一次。
+  - 不替用户退出 Claude：会打断它正在跑的 Code 会话（我们自己就常在里面）。
+- 「总是允许」存在桌面版自己那里，写不了：连上后的提示告诉用户在对话里点、或在它的 Connectors 设置里一次设好。
+- 钉在 `Sources/SkySheetChecks/ClaudeDesktopConfigChecks.swift`（照桌面版自己写的样子逐字节比、备份权限）。
+
 ## 五、守卫和怎么测
 
 - `MCPChecks`：真起小程序、旁边起假 App，两代协议各喂一遍（握手、清单、转发、客户端名、整数 id、版本错误、App 没开）；
-  文字长度和只用英文；Claude Code 配置的增删。`AICoreChecks`：表格块、SQL、算公式不写、sheet 操作、样式、署名。
-  `XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
+  文字长度和只用英文。`ClaudeCodeConfigChecks`、`ClaudeDesktopConfigChecks`：两家配置文件的增删。`AICoreChecks`：表格块、
+  SQL、算公式不写、sheet 操作、样式、署名。`XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
+- Claude 桌面版没法在自检里重启：发版前在真机上按清单连一遍（桌面版开着、没开各一次）。别在桌面版的 Code 页里让 AI
+  替你退出 Claude：那个会话会一起被关掉。
 - 端到端（发版前）：打包好的 App，用 JSON-RPC 直接跟包里的小程序说话（和 Claude Code 一样），再用
   `claude -p … --mcp-config <临时配置> --strict-mcp-config --allowedTools mcp__skysheet` 真问一遍（不动用户自己的
   Claude Code 配置），看它的 MCP 日志（`~/Library/Caches/claude-cli-nodejs/<目录>/mcp-logs-skysheet/`）里没有 truncated。

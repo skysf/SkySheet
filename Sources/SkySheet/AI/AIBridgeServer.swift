@@ -67,7 +67,8 @@ final class AIBridgeServer: @unchecked Sendable {
             response = MCPBridge.Response(id: request.id, result: result)
         } else {
             response = MCPBridge.Response(id: "", result: MCPBridge.textResult(
-                "SkySheet could not read the request from its AI helper. Ask the user to restart Claude Code.",
+                "SkySheet could not read the request from its AI helper. "
+                    + "Ask the user to restart their AI app (Claude or Claude Code).",
                 isError: true))
         }
         guard let data = try? JSONEncoder().encode(response) else { return }

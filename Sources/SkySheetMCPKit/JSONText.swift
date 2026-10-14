@@ -4,9 +4,9 @@ import Foundation
 //
 // 为什么有它：Claude Code 的 settings.json 是用户自己的文件，可能手排过、可能进了 git。整份解析再写回去
 // （JSONSerialization）会给键排序、换掉冒号两边的空格、丢掉末尾的换行：内容一样，文件却全变了（v0.3.0 在作者
-// 机器上碰到，v0.3.1 改成这样）。
-// 管什么：给一份合法 JSON 标出每个值的位置；往对象里加一项、往数组里加或删一个元素。新写的部分照着原文的换行、
-// 缩进和冒号写，别的字节一个不动。
+// 机器上碰到，v0.3.1 改成这样）。Claude 桌面版的 claude_desktop_config.json 也这么改。
+// 管什么：给一份合法 JSON 标出每个值的位置；往对象里加或删一项、往数组里加或删一个元素、把一个值整个换掉。新写的部分
+// 照着原文的换行、缩进和冒号写，别的字节一个不动。
 // 不管什么：验证合法（调用方先交给 JSONSerialization，不合法就一个字节都不写）；注释和 JSON5。
 
 /// 原文里的一个值。`start..<end` 是它在原文（UTF-8 字节）里的位置。
@@ -142,7 +142,7 @@ struct JSONText {
     func addingMember(_ key: String, _ value: JSONNewValue, to object: JSONTextValue, in holder: JSONTextMember?) -> Data {
         let members = object.members ?? []
         guard let last = members.last else {
-            return filling(object, with: .object([(key, value)]), in: holder)
+            return replacingValue(object, with: .object([(key, value)]), in: holder)
         }
         let (space, indent) = separator(before: last.start, first: members.count == 1)
         let item = JSONLayout.literal(key) + layout.colon + layout.render(value, indent: indent)
@@ -153,26 +153,35 @@ struct JSONText {
     func addingElement(_ value: JSONNewValue, to array: JSONTextValue, in holder: JSONTextMember?) -> Data {
         let elements = array.elements ?? []
         guard let last = elements.last else {
-            return filling(array, with: .array([value]), in: holder)
+            return replacingValue(array, with: .array([value]), in: holder)
         }
         let (space, indent) = separator(before: last.start, first: elements.count == 1)
         return replacing(last.end..<last.end, with: "," + space + layout.render(value, indent: indent))
     }
 
-    /// 删掉数组的第 `index` 个元素，连带一个逗号和该走的空白，别的元素原样不动：
-    /// 不是最后一个就删到下一个元素开头；是最后一个就从前一个元素末尾删起；只剩它就变成 `[]`。
+    /// 删掉数组的第 `index` 个元素，连带一个逗号和该走的空白，别的元素原样不动。
     func removingElement(at index: Int, of array: JSONTextValue) -> Data {
-        let elements = array.elements ?? []
-        if elements.count == 1 { return replacing((array.start + 1)..<(array.end - 1), with: "") }
-        if index < elements.count - 1 { return replacing(elements[index].start..<elements[index + 1].start, with: "") }
-        return replacing(elements[index - 1].end..<elements[index].end, with: "")
+        removing(at: index, of: array, spans: (array.elements ?? []).map { $0.start..<$0.end })
     }
 
-    /// 空的对象或数组（`{}`、`[ ]`）整个换成新写的。根对象、每项一行的对象里的值写成多行，不然写成一行。
-    private func filling(_ empty: JSONTextValue, with value: JSONNewValue, in holder: JSONTextMember?) -> Data {
+    /// 删掉对象的第 `index` 项（键和值），规矩同 removingElement。
+    func removingMember(at index: Int, of object: JSONTextValue) -> Data {
+        removing(at: index, of: object, spans: (object.members ?? []).map { $0.start..<$0.value.end })
+    }
+
+    /// 不是最后一项就删到下一项开头；是最后一项就从前一项末尾删起；只剩它就变成 `[]` / `{}`。
+    private func removing(at index: Int, of container: JSONTextValue, spans: [Range<Int>]) -> Data {
+        if spans.count == 1 { return replacing((container.start + 1)..<(container.end - 1), with: "") }
+        if index < spans.count - 1 { return replacing(spans[index].lowerBound..<spans[index + 1].lowerBound, with: "") }
+        return replacing(spans[index - 1].upperBound..<spans[index].upperBound, with: "")
+    }
+
+    /// 把一个值整个换成新写的（空的 `{}`、`[ ]` 填进第一项也是这样），前后的字节不动。`holder` 是装着它的那一项
+    /// （根对象传 nil）：根对象、自成一行的项里的值写成多行，不然写成一行。
+    func replacingValue(_ old: JSONTextValue, with value: JSONNewValue, in holder: JSONTextMember?) -> Data {
         let multiline = holder.map { gap(before: $0.start).contains(0x0A) } ?? true
-        let indent = multiline ? lineIndent(at: empty.start) : nil
-        return replacing(empty.start..<empty.end, with: layout.render(value, indent: indent))
+        let indent = multiline ? lineIndent(at: old.start) : nil
+        return replacing(old.start..<old.end, with: layout.render(value, indent: indent))
     }
 
     /// 新的一项前面放什么：照抄最后一项前面的空白（每项一行就是换行加缩进），和这一项开头那行的缩进（一行写完的是 nil）。

@@ -8,9 +8,9 @@ import SkySheetMCPKit
 func claudeCodeConfigChecks() {
     group("claude code: reading the config") {
         let config = Data(#"{"mcpServers":{"skysheet":{"command":"/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp"},"other":{"command":"x"}},"theme":"dark"}"#.utf8)
-        checkEqual(ClaudeCodeConfig.command(in: config), "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+        checkEqual(AIClientConfig.command(in: config), "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
                    "reads which helper Claude Code starts")
-        checkEqual(ClaudeCodeConfig.command(in: Data("{}".utf8)), nil, "not connected")
+        checkEqual(AIClientConfig.command(in: Data("{}".utf8)), nil, "not connected")
         check(ClaudeCodeConfig.allows(in: Data(#"{"permissions":{"allow":["Bash(ls:*)","mcp__skysheet"]}}"#.utf8)), "allowed")
         check(!ClaudeCodeConfig.allows(in: Data(#"{"permissions":{"allow":["mcp__skysheet__get_status"]}}"#.utf8)),
               "only the exact rule counts")
@@ -162,7 +162,7 @@ func claudeCodeConfigChecks() {
         defer { try? FileManager.default.removeItem(at: folder) }
 
         let missing = folder.appendingPathComponent("new/settings.json").path
-        try ClaudeCodeConfig.updateSettings(at: missing, ClaudeCodeConfig.allowing(in:))
+        try AIClientConfig.update(at: missing, ClaudeCodeConfig.allowing(in:))
         check(ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: missing)), "a missing file is created")
         check(!FileManager.default.fileExists(atPath: missing + ".skysheet-backup"), "nothing to back up")
 
@@ -171,15 +171,17 @@ func claudeCodeConfigChecks() {
         let original = Data("{\n  \"permissions\": {\n    \"allow\": [\n      \"Bash(ls:*)\"\n    ]\n  }\n}\n".utf8)
         try original.write(to: URL(fileURLWithPath: path))
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
-        try ClaudeCodeConfig.updateSettings(at: path, ClaudeCodeConfig.allowing(in:))
+        try AIClientConfig.update(at: path, ClaudeCodeConfig.allowing(in:))
         check(ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: path)), "rule written")
         checkEqual(FileManager.default.contents(atPath: path + ".skysheet-backup"), original, "the original is backed up first")
         checkEqual(attribute(.posixPermissions, path) as? Int, 0o600, "file permissions kept")
-        try ClaudeCodeConfig.updateSettings(at: path, ClaudeCodeConfig.disallowing(in:))
+        checkEqual(attribute(.posixPermissions, path + ".skysheet-backup") as? Int, 0o600,
+                   "the backup is no easier to read than the file")
+        try AIClientConfig.update(at: path, ClaudeCodeConfig.disallowing(in:))
         checkEqual(FileManager.default.contents(atPath: path), original, "disconnecting restores the file byte for byte")
         checkEqual(FileManager.default.contents(atPath: path + ".skysheet-backup"), original, "the backup keeps the first original")
         let written = attribute(.modificationDate, path) as? Date
-        try ClaudeCodeConfig.updateSettings(at: path, ClaudeCodeConfig.disallowing(in:))
+        try AIClientConfig.update(at: path, ClaudeCodeConfig.disallowing(in:))
         checkEqual(attribute(.modificationDate, path) as? Date, written, "nothing to change: the file is not touched")
 
         // dotfiles 常把 settings.json 做成软链接：写进它指向的文件，链接本身留着。
@@ -188,15 +190,17 @@ func claudeCodeConfigChecks() {
         try original.write(to: URL(fileURLWithPath: real))
         try FileManager.default.createDirectory(atPath: (link as NSString).deletingLastPathComponent, withIntermediateDirectories: true)
         try FileManager.default.createSymbolicLink(atPath: link, withDestinationPath: real)
-        try ClaudeCodeConfig.updateSettings(at: link, ClaudeCodeConfig.allowing(in:))
+        try AIClientConfig.update(at: link, ClaudeCodeConfig.allowing(in:))
         checkEqual(try? FileManager.default.destinationOfSymbolicLink(atPath: link), real, "the link is still a link")
         check(ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: real)), "the file it points to got the rule")
     }
 }
 
+// 下面三个 ClaudeDesktopConfigChecks 也用。
+
 /// 改完正好是这些字节；nil 是「不用写」。
 @MainActor
-private func checkEdit(_ edit: (Data?) throws(ClaudeCodeConfig.FormatError) -> Data?, _ input: String?, _ expected: String?,
+func checkEdit(_ edit: (Data?) throws(AIClientConfig.FormatError) -> Data?, _ input: String?, _ expected: String?,
                        _ message: String, file: StaticString = #fileID, line: UInt = #line) {
     do {
         let output = try edit(input.map { Data($0.utf8) })
@@ -208,7 +212,7 @@ private func checkEdit(_ edit: (Data?) throws(ClaudeCodeConfig.FormatError) -> D
 
 /// 格式不对的文件：报错（话里有 `reason`），不给出任何要写的东西。
 @MainActor
-private func checkRefused(_ edit: (Data?) throws(ClaudeCodeConfig.FormatError) -> Data?, _ input: String, _ reason: String,
+func checkRefused(_ edit: (Data?) throws(AIClientConfig.FormatError) -> Data?, _ input: String, _ reason: String,
                           file: StaticString = #fileID, line: UInt = #line) {
     do {
         let output = try edit(Data(input.utf8))
@@ -218,6 +222,6 @@ private func checkRefused(_ edit: (Data?) throws(ClaudeCodeConfig.FormatError) -
     }
 }
 
-private func attribute(_ key: FileAttributeKey, _ path: String) -> Any? {
+func attribute(_ key: FileAttributeKey, _ path: String) -> Any? {
     (try? FileManager.default.attributesOfItem(atPath: path))?[key]
 }

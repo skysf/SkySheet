@@ -21,8 +21,9 @@ public enum MCPInstructions {
     copy_from=<sheet> and edit the copy.
     - Prefer formulas that reference the original cells, e.g. =RATE(Loan!C5,-Loan!F5,Loan!B5)*12, over typed-in \
     numbers, so the user can trace every result.
-    - Python is fine for heavy analysis: export_sheet gives a CSV path; bring results back with add_sheet from_csv \
-    or write_cells. Never open, change or save the user's .xlsx/.csv files with other programs.
+    - Python is fine for heavy analysis if you can run it on this Mac: export_sheet gives a local CSV path; bring \
+    results back with add_sheet from_csv or write_cells. Never open, change or save the user's .xlsx/.csv files with \
+    other programs.
     - Only open files the user named or these tools returned.
     - Nothing reaches the user's file until they press Cmd+S. save_copy only writes a new file.
     - A round of changes can be undone in one step (undo round=true).
