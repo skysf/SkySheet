@@ -24,7 +24,7 @@ struct AppConnection {
         let appURL = environment["SKYSHEET_MCP_APP"].map { URL(fileURLWithPath: $0) } ?? enclosingApp()
         let bundle = appURL.flatMap { Bundle(url: $0) }
         let bundleID = bundle?.bundleIdentifier ?? "ai.skylu.skysheet"
-        let version = bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+        let version = MCPBridge.appVersion(of: bundle)
         return AppConnection(
             appURL: appURL,
             bundleIdentifier: bundleID,

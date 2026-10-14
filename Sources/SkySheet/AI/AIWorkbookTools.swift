@@ -10,11 +10,19 @@ enum AIWorkbookTools {
     static func status() -> AIToolResult {
         let documents = AIWorkbooks.open
         guard !documents.isEmpty else {
-            return .ok(["workbooks": [],
+            return .ok(["skysheet": app, "workbooks": [],
                         "next_step": "No workbook is open. Ask the user which file to use, then call open_file."])
         }
         let current = try? AIWorkbooks.context(AIToolArguments([:])).document
-        return .ok(["workbooks": .array(documents.map { summary($0, current: $0 === current) })])
+        return .ok(["skysheet": app, "workbooks": .array(documents.map { summary($0, current: $0 === current) })])
+    }
+
+    /// 这个 SkySheet 是哪一版、什么时候打的包。模型看不到握手里 serverInfo 的版本：用户问「SkySheet 是什么版本、
+    /// 什么时候的」，只能从这里答（2026-10-14 桌面版的聊天答不上来，跑去网上搜）。
+    private static var app: JSONValue {
+        var info: [String: JSONValue] = ["version": .string(MCPBridge.appVersion(of: .main))]
+        if let built = MCPBridge.appBuildDate(of: .main) { info["built"] = .string(built) }
+        return .object(info)
     }
 
     /// 一个工作簿的概况（get_status、open_file 都回它）。

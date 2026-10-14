@@ -10,11 +10,12 @@ enum MCPReadTools {
             return MCPToolDefinition(
                 .getStatus, title: "Get status",
                 description: """
-                    Lists the workbooks open in SkySheet. For each: path, whether it has unsaved changes, and its sheets \
-                    with their role (original data, read-only to you, or an AI sheet you may edit, with who wrote it) \
-                    and used range; plus the sheet the user is looking at and their selection ("this block" or \
-                    "these numbers" usually means the selection). Call it first. If nothing is open, ask the user \
-                    which file to use, then call open_file.
+                    Gives the version and build date of the SkySheet running on this Mac (answer questions about them \
+                    from here, not the web), and lists the workbooks open in it. For each: path, whether it has \
+                    unsaved changes, and its sheets with their role (original data, read-only to you, or an AI sheet \
+                    you may edit, with who wrote it) and used range; plus the sheet the user is looking at and their \
+                    selection ("this block" or "these numbers" usually means the selection). Call it first. If nothing \
+                    is open, ask the user which file to use, then call open_file.
                     """,
                 readOnly: true)
         case .openFile:

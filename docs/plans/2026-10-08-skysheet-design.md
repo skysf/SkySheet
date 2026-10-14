@@ -324,7 +324,7 @@ Sources/
 
 | 工具 | 只读 | 做什么 |
 | --- | --- | --- |
-| `get_status` | ✓ | 打开着的工作簿；每张 sheet 是原始的还是 AI 的，AI 的是谁写的；有没有没保存的改动；用户当前选中的区域（「分析我选中的这块」） |
+| `get_status` | ✓ | 打开着的工作簿；每张 sheet 是原始的还是 AI 的，AI 的是谁写的；有没有没保存的改动；用户当前选中的区域（「分析我选中的这块」）。还有这个 SkySheet 的版本和打包时间（2026-10-14 加：模型看不到握手里的 serverInfo，用户问「什么版本、什么时候的」当场答，不上网找） |
 | `open_file` | | 打开一个 xlsx / csv。只开用户给的路径或工具返回的路径 |
 | `describe_sheet` | ✓ | 一张表的结构：用到的范围；认出的表格块（标题行、每列的名字、类型、格式、非空个数、样例值、数字列的合计和最值）；公式个数；「未重算」的格子 |
 | `read_range` | ✓ | 读一块区域：值（全精度），可选显示文字和公式原文。一次最多 2,000 格，更多的用 `query` 或 `export_sheet` |
@@ -484,7 +484,8 @@ Tools by need:
   标注卡住，可以单独降到 Swift 5 模式，在 `Package.swift` 里写明原因。
 - **一律带 `--arch arm64`**：作者这台 M1 的终端跑在 Rosetta 下（`sysctl.proc_translated` 是 1），不带就编成 x86_64。
 - 打包 `scripts/build-app.sh`：从 SrtFlow 搬，去掉 ffmpeg 那段。版本号取 git tag，正式发版用 `VERSION=x.y.z`
-  显式指定。产物是 `dist/SkySheet.app` 和 `dist/SkySheet-<版本>-arm64.dmg`，DMG 里带「首次打开必读」。
+  显式指定；打包时间（UTC）写进 Info.plist 的 `SkySheetBuildDate`，get_status 报给 AI。产物是 `dist/SkySheet.app` 和
+  `dist/SkySheet-<版本>-arm64.dmg`，DMG 里带「首次打开必读」。
 - 签名 `scripts/signing/`（`common.sh`、`create-identity.sh`、`sign-app.sh`）：从 SrtFlow 搬，改成：
   - 证书叫「Skylu Signing」：自签名、只能签代码、20 年；
   - 私钥在仓库外的 `~/.config/skylu/signing/`（专用钥匙串和它的密码文件，目录 700、文件 600），要进 Time Machine 备份；
@@ -570,3 +571,6 @@ Tools by need:
   「Claude Desktop」，按原文改它的 claude_desktop_config.json。它开着时会拿内存里的那份把文件盖掉，所以在它退出那一刻
   再写一遍（9.5 节）。顺带：总说明和 export_sheet 的说明点明 Python 要能在这台 Mac 上跑（桌面版的聊天不行）；
   「请重启 Claude Code」的两句改成按客户端说；备份配置文件改成连权限一起复制。
+- 2026-10-14 作者在桌面版的聊天里问「SkySheet 是什么版本」「是什么时候的」，AI 答不上来、跑去网上搜：模型看不到 MCP
+  握手里的 serverInfo。get_status 改成带上 `skysheet: {version, built}`（版本和打包时间，build-app.sh 写进 Info.plist），
+  说明里写明这类问题从这里答（9.2 节、第十一节）。

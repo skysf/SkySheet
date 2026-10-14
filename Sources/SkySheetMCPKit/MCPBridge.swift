@@ -69,6 +69,18 @@ public enum MCPBridge {
     /// （没人看着时弹框会把 AI 的调用挂住）。
     public static let launchedByAIArgument = "--launched-by-ai"
 
+    /// SkySheet 的版本号：包里 Info.plist 的 CFBundleShortVersionString（打包时写进去；`swift run` 的开发版没有，算 dev）。
+    /// 小程序报给客户端的 serverInfo、App 在 get_status 里报给模型的，都是它。
+    public static func appVersion(of bundle: Bundle?) -> String {
+        bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
+    }
+
+    /// 什么时候打的包（UTC，ISO 8601），scripts/build-app.sh 写进 Info.plist 的 `SkySheetBuildDate`；开发版没有。
+    /// 用户问「SkySheet 是什么时候的」，get_status 当场答，不用 AI 上网找。
+    public static func appBuildDate(of bundle: Bundle?) -> String? {
+        (bundle?.object(forInfoDictionaryKey: "SkySheetBuildDate") as? String).flatMap { $0.isEmpty ? nil : $0 }
+    }
+
     // MARK: 在哪说
 
     /// App 监听的那个 socket（设计 9.1 节第 7 条）。
