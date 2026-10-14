@@ -46,10 +46,48 @@ enum AIReadTools {
         ]
         if let frozen = sheet.frozen { payload["frozen"] = ["rows": .number(Double(frozen.rows)), "columns": .number(Double(frozen.columns))] }
         if !sheet.merges.isEmpty { payload["merged"] = .array(sheet.merges.prefix(50).map { .string($0.a1) }) }
+        for (key, value) in layout(of: sheet) { payload[key] = value }
+        if sheet.role.isAI, let lock = context.document.structureLock(forSheet: sheet.id) {
+            payload["insert_delete"] = .string("not possible: \(lock.reason); copy the sheet with add_sheet copy_from to do it")
+        }
         if !notRecalculated.isEmpty { payload["not_recalculated"] = .array(notRecalculated) }
         if !loose.isEmpty { payload["other_cells"] = .array(loose) }
         if let authorship = sheet.role.authorship { payload["by"] = .string(AIWorkbookTools.byline(authorship.created)) }
         return .ok(.object(payload))
+    }
+
+    /// 列宽、行高里和默认不一样的，和藏起来的行列（2026-10-14 加）：一样的挨着几列并成一段，各最多 40 段。
+    private static func layout(of sheet: Sheet) -> [String: JSONValue] {
+        var result: [String: JSONValue] = [:]
+        var widths: [String: JSONValue] = [:]
+        for format in sheet.columns where format.width != nil && widths.count < 40 {
+            widths[AIFormat.label(.columns, format.first...format.last)] = .number((format.width! * 100).rounded() / 100)
+        }
+        if !widths.isEmpty { result["column_widths"] = .object(widths) }
+        var heights: [String: JSONValue] = [:]
+        for run in runs(sheet.rowFormats.compactMap { row, format in format.height.map { (row, $0) } }) where heights.count < 40 {
+            heights[AIFormat.label(.rows, run.lines)] = .number(run.value)
+        }
+        if !heights.isEmpty { result["row_heights"] = .object(heights) }
+        let hiddenColumns = sheet.columns.filter(\.hidden).prefix(40).map { JSONValue.string(AIFormat.label(.columns, $0.first...$0.last)) }
+        if !hiddenColumns.isEmpty { result["hidden_columns"] = .array(Array(hiddenColumns)) }
+        let hiddenRows = runs(sheet.rowFormats.filter(\.value.hidden).map { ($0.key, 1.0) }).prefix(40)
+            .map { JSONValue.string(AIFormat.label(.rows, $0.lines)) }
+        if !hiddenRows.isEmpty { result["hidden_rows"] = .array(Array(hiddenRows)) }
+        return result
+    }
+
+    /// 挨着、值一样的几行并成一段。
+    private static func runs(_ values: [(Int, Double)]) -> [(lines: ClosedRange<Int>, value: Double)] {
+        var result: [(lines: ClosedRange<Int>, value: Double)] = []
+        for (line, value) in values.sorted(by: { $0.0 < $1.0 }) {
+            if let last = result.last, last.lines.upperBound + 1 == line, last.value == value {
+                result[result.count - 1].lines = last.lines.lowerBound...line
+            } else {
+                result.append((line...line, value))
+            }
+        }
+        return result
     }
 
     private static func block(json block: TableBlock, _ sheet: Sheet, _ workbook: Workbook) -> JSONValue {
@@ -89,8 +127,12 @@ enum AIReadTools {
 
     static func read(_ arguments: AIToolArguments) throws -> AIToolResult {
         let context = try AIWorkbooks.context(arguments)
-        let (named, range) = try AIFormat.range(try arguments.requiredString("range"))
+        let (named, asked) = try AIFormat.range(try arguments.requiredString("range"))
         let index = try (named ?? arguments.string("sheet")).map(context.sheetIndex) ?? context.session.sheetIndex
+        // 整列整行只读到用到的地方为止。
+        guard let range = AIFormat.clamped(asked, to: context.workbook.sheets[index].contentRange) else {
+            throw AIToolError("\(context.workbook.sheets[index].name) is empty in \(asked.label).")
+        }
         guard range.rowCount * range.columnCount <= readLimit else {
             throw AIToolError("""
                 \(range.a1) has \(range.rowCount * range.columnCount) cells; read_range returns at most \(readLimit). \
@@ -194,6 +236,7 @@ enum AIReadTools {
         let workbook = context.workbook
         let sheet = workbook.sheets[index]
         let range = try arguments.string("range").map { try AIFormat.range($0).range }
+            .flatMap { AIFormat.clamped($0, to: sheet.contentRange) }
             ?? AIWorkbookTools.usedRange(sheet).map { CellRange(CellAddress(row: 0, column: 0), $0.end) }
         guard let range else { throw AIToolError("\(sheet.name) is empty: there is nothing to export.") }
         let data = CSVWriter.analysisData(sheet, range: range, styles: workbook.styles, dateSystem: workbook.dateSystem)

@@ -2,24 +2,29 @@ import AppKit
 import SkySheetCore
 import SkySheetDisplay
 
-/// 画一张 sheet 要用的东西：几何、样式、字体、合并单元格。换 sheet 或者缩放时重建一份。
+/// 画一张 sheet 要用的东西：几何、样式、字体、合并单元格。换 sheet、改了工作簿、缩放、拖边线时重建一份。
 @MainActor
 final class SheetCanvas {
     let sheet: Sheet
     let geometry: SheetGeometry
     let styles: StyleResolver
     let dateSystem: DateSystem
-    let fonts = FontBook()
+    let fonts: FontBook
+    /// 默认字体里数字的最大宽度（100% 缩放）：Excel 列宽的单位，拖边线时换算用。
+    let digitWidth: Double
     /// 这一轮 AI 改过的格子：淡紫色高亮（设计 8.3 节）。
     let aiTouched: Set<CellAddress>
 
-    init(session: SheetSession) {
-        sheet = session.sheet
+    /// `fonts` 由表格视图带着，重建画布时接着用：拖边线时每动一下都要重建。
+    init(session: SheetSession, fonts: FontBook) {
+        self.fonts = fonts
+        sheet = session.displayedSheet
         styles = session.styles
         dateSystem = session.workbook.dateSystem
         aiTouched = session.aiTouched[session.sheet.id] ?? []
-        geometry = SheetGeometry(sheet: session.sheet, baseFontSize: session.styles.baseFontSize,
-                                 digitWidth: fonts.digitWidth(session.styles.style(0).font), zoom: session.zoom)
+        digitWidth = fonts.digitWidth(session.styles.style(0).font)
+        geometry = SheetGeometry(sheet: sheet, baseFontSize: session.styles.baseFontSize, digitWidth: digitWidth,
+                                 zoom: session.zoom)
     }
 
     var frozenRows: Int { min(sheet.frozen?.rows ?? 0, geometry.rowCount) }

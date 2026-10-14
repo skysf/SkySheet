@@ -121,7 +121,7 @@ func aiCoreChecks() {
         checkEqual(cells[CellAddress(a1: "C2")!]?.value, .text("x"), "values copied")
 
         let range = CellRange(a1: "A1:B2")!
-        workbook.restyle(range, sheet: 0, Workbook.CellStyleChange(numberFormat: "0.00%", bold: true, fillColor: "FFFFF2CC"))
+        workbook.restyle(range, sheet: 0, Workbook.CellStyleChange(numberFormat: "0.00%", bold: true, fillColor: .rgb("FFFFF2CC")))
         let style = workbook.sheets[0].cells[CellAddress(a1: "A2")!]?.styleIndex ?? 0
         checkEqual(workbook.styles.formatCode(forStyle: style), "0.00%", "number format")
         checkEqual(workbook.styles.cellFormats[style].numberFormatID, 10, "a builtin id when the code is a standard one")
@@ -129,7 +129,7 @@ func aiCoreChecks() {
         checkEqual(workbook.styles.fills[workbook.styles.cellFormats[style].fillID].foreground, StyleColor(.rgb("FFFFF2CC")), "fill")
         check(workbook.sheets[0].cells.entries(in: range).allSatisfy { $0.value.styleIndex == style }, "one style reused")
         let formats = workbook.styles.cellFormats.count
-        workbook.restyle(range, sheet: 0, Workbook.CellStyleChange(numberFormat: "0.00%", bold: true, fillColor: "FFFFF2CC"))
+        workbook.restyle(range, sheet: 0, Workbook.CellStyleChange(numberFormat: "0.00%", bold: true, fillColor: .rgb("FFFFF2CC")))
         checkEqual(workbook.styles.cellFormats.count, formats, "styling again adds nothing")
         workbook.restyle(CellRange(a1: "D5")!, sheet: 0, Workbook.CellStyleChange(numberFormat: "\"¥\"#,##0.00"))
         check(workbook.sheets[0].cells[CellAddress(a1: "D5")!] != nil, "empty cells get the style too")

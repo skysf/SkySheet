@@ -124,7 +124,7 @@ enum AIFormat {
         decimal.map { .number(DecimalMath.double($0)) } ?? .null
     }
 
-    /// "B2"、"A1:C3"、"Loan!A1:C3" 这样的区域。带了 sheet 名就把它也拆出来。
+    /// "B2"、"A1:C3"、"Loan!A1:C3" 这样的区域，也可以是整列 "C:E"、整行 "3:5"。带了 sheet 名就把它也拆出来。
     static func range(_ text: String) throws -> (sheet: String?, range: CellRange) {
         var body = text.trimmingCharacters(in: .whitespaces)
         var sheet: String?
@@ -136,10 +136,36 @@ enum AIFormat {
             sheet = name
             body = String(body[body.index(after: bang)...])
         }
-        guard let range = CellRange(a1: body) else {
-            throw AIToolError("\(text) is not a cell or range like B2 or A1:C10.")
+        guard let range = CellRange.parse(body) else {
+            throw AIToolError("\(text) is not a cell or range like B2, A1:C10, C:E or 3:5.")
         }
         return (sheet, range)
+    }
+
+    /// 整列整行的区域只算到 `used` 的右下角为止（整列有一百多万格）：读、导出按有内容的格子（Sheet.contentRange），
+    /// 改格式按刷过样式的也算（cells.usedRange，和界面上一样）。截完是空的返回 nil。
+    static func clamped(_ range: CellRange, to used: CellRange?) -> CellRange? {
+        guard range.coversAllRows || range.coversAllColumns else { return range }
+        guard let used else { return nil }
+        return range.intersection(CellRange(CellAddress(row: 0, column: 0), used.end))
+    }
+
+    /// edit_rows_columns 的 rows（"3"、"3:5"）或 columns（"C"、"B:D"）。
+    static func lines(_ axis: SheetAxis, _ text: String) throws -> ClosedRange<Int> {
+        switch axis {
+        case .rows:
+            guard let span = CellRange.rowSpan(a1: text) else { throw AIToolError("rows must be like \"3\" or \"3:5\".") }
+            return span
+        case .columns:
+            guard let span = CellRange.columnSpan(a1: text) else { throw AIToolError("columns must be like \"C\" or \"B:D\".") }
+            return span
+        }
+    }
+
+    /// 几行（列）的写法："5"、"5:7"、"C"、"B:D"。
+    static func label(_ axis: SheetAxis, _ lines: ClosedRange<Int>) -> String {
+        let name: (Int) -> String = { axis == .rows ? String($0 + 1) : CellAddress.columnName($0) }
+        return lines.count == 1 ? name(lines.lowerBound) : name(lines.lowerBound) + ":" + name(lines.upperBound)
     }
 
     static func address(_ text: String) throws -> CellAddress {
@@ -147,6 +173,12 @@ enum AIFormat {
             throw AIToolError("\(text) is not a cell like B2.")
         }
         return address
+    }
+
+    /// 颜色，或者 `automatic` 里的词（字色 auto、底色 none）表示「自动」。
+    static func colorChoice(_ text: String, key: String, automatic: Set<String>) throws -> Workbook.CellStyleChange.Color {
+        if automatic.contains(text.trimmingCharacters(in: .whitespaces).lowercased()) { return .automatic }
+        return .rgb(try color(text, key: key))
     }
 
     /// "#C00000"、"C00000"、"#FFC00000" → ARGB "FFC00000"。

@@ -31,7 +31,7 @@ public enum MCPInstructions {
     Tools by need:
     - Workbooks: get_status, open_file, save_copy
     - Read: describe_sheet, read_range, query, evaluate, export_sheet
-    - Write (AI sheets only): add_sheet, write_cells, format_cells, edit_sheet, undo
+    - Write (AI sheets only): add_sheet, write_cells, format_cells, edit_rows_columns, edit_sheet, undo
     - Point the user: show
     """
 }

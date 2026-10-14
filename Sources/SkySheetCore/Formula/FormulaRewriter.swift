@@ -18,6 +18,49 @@ public enum FormulaRewriter {
         }
     }
 
+    /// 插删行列以后改公式里的引用（设计第 11 条）：指向 `sheet` 的引用按 `shift` 挪，指向被删掉的格子的变成 #REF!
+    /// （带 sheet 名的写成 `Loan!#REF!`，和 Excel 一样）。`local` 表示公式就在这张 sheet 上：不写 sheet 名的引用也指它。
+    /// 没变的引用一个字不动（原文里的小写、多余的 $ 都留着）。切不了词返回 nil：调用方不能悄悄跳过，引用会对不上。
+    public static func shiftLines(in formula: String, sheet: String, local: Bool, _ shift: LineShift) -> String? {
+        guard let tokens = try? FormulaLexer.tokenize(formula) else { return nil }
+        var result = ""
+        var cursor = formula.startIndex
+        for token in tokens {
+            guard case .reference(let reference) = token.kind,
+                  reference.sheet.map({ $0.caseInsensitiveCompare(sheet) == .orderedSame }) ?? local else { continue }
+            let moved = shifted(reference, shift)
+            guard moved != reference else { continue }
+            let original = formula[token.range]
+            let prefix = reference.sheet == nil ? "" : String(original[...original.lastIndex(of: "!")!])
+            result += formula[cursor..<token.range.lowerBound] + prefix + (moved.map(ReferenceShift.render) ?? "#REF!")
+            cursor = token.range.upperBound
+        }
+        return result + formula[cursor...]
+    }
+
+    /// 一个引用插删行列以后的样子；指向的格子整个被删掉（或挤出表外）是 nil。整列引用不受插删行影响，整行引用不受插删列影响。
+    static func shifted(_ reference: ReferenceToken, _ shift: LineShift) -> ReferenceToken? {
+        let rows = shift.axis == .rows
+        func line(_ point: ReferencePoint) -> Int? { rows ? point.row : point.column }
+        func set(_ point: inout ReferencePoint, _ value: Int) {
+            if rows { point.row = value } else { point.column = value }
+        }
+        var moved = reference
+        guard let first = line(reference.start) else { return reference }
+        guard let end = reference.end else {
+            guard let mapped = shift.map(first) else { return nil }
+            set(&moved.start, mapped)
+            return moved
+        }
+        guard let second = line(end), var movedEnd = moved.end else { return reference }
+        // 原文可能倒着写（B9:A1），挪完按原来的先后放回去。
+        guard let span = shift.map(min(first, second)...max(first, second)) else { return nil }
+        set(&moved.start, first <= second ? span.lowerBound : span.upperBound)
+        set(&movedEnd, first <= second ? span.upperBound : span.lowerBound)
+        moved.end = movedEnd
+        return moved
+    }
+
     /// 写进 xlsx 的写法：不带开头的 "="；Excel 2010 以后才有的函数加上 `_xlfn.` 前缀，不加的话 Excel 打开是 #NAME?。
     public static func storageForm(_ formula: String) -> String {
         let text = formula.hasPrefix("=") ? String(formula.dropFirst()) : formula

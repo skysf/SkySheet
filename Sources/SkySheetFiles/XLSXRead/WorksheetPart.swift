@@ -10,8 +10,6 @@ import SkySheetCore
 /// - 共享公式（`<f t="shared" si="0">`，Excel 大量使用）：跟随者用 ReferenceShift 从主公式平移出来。
 final class WorksheetPart: XMLScanHandler {
     private(set) var sheet: Sheet
-    /// 用了富文本共用字符串的格子 → 那条的编号。保存时这些格子文字没变就接着用原来那条，格式不丢。
-    private(set) var richCells: [CellAddress: Int] = [:]
     private let sharedStrings: [String]
     private let richIndices: Set<Int>
     private let dateSystem: DateSystem
@@ -130,7 +128,7 @@ final class WorksheetPart: XMLScanHandler {
         switch pending.type {
         case "s":
             guard let index = pending.value.flatMap({ Int($0) }), sharedStrings.indices.contains(index) else { return .empty }
-            if richIndices.contains(index) { richCells[pending.address] = index }
+            if richIndices.contains(index) { sheet.richTextSources[pending.address] = index }
             return .text(sharedStrings[index])
         case "str":
             return .text(XMLText.decodeEscapes(pending.value ?? ""))

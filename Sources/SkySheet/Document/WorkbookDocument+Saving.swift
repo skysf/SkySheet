@@ -10,7 +10,7 @@ import UniformTypeIdentifiers
 /// 4. 第一次覆盖前备份原文件（BackupStore）；另存时盖掉一个已有的文件，也先备份它。
 /// 5. 恢复副本见 RecoveryCoordinator。
 /// 6. 文件在打开以后被别的程序改过：先问，可以另存为新文件、重新载入或者仍然覆盖。
-/// 另外：csv 只能放一张表，有好几张 sheet 时先问是另存成 xlsx 还是只存当前这张。
+/// 另外：csv 只能放一张表、只存值，有好几张 sheet 或者新改了格式时先问是另存成 xlsx 还是只存 csv。
 extension WorkbookDocument {
     nonisolated static let xlsxType = "org.openxmlformats.spreadsheetml.sheet"
     nonisolated static let csvType = "public.comma-separated-values-text"
@@ -169,20 +169,35 @@ extension WorkbookDocument {
         }
     }
 
-    // MARK: - csv 只能放一张表
+    // MARK: - csv 只能放一张表，只存值
 
+    /// csv 放不下的：好几张表，或者这张表上新改了 csv 存不下的样子（格式、合并单元格、冻结……，CSVWriter.losesFormatting；
+    /// 2026-10-14 起界面上能改这些了）。先问是另存成 xlsx，还是只存 csv。
     private func checkSheetsFitCSV(_ url: URL, _ typeName: String, then next: @escaping (Bool) -> Void) {
-        guard DocumentLoader.isDelimitedText(typeName: typeName), let session, session.workbook.sheets.count > 1,
-              let window = windowForSheet else { return next(true) }
+        guard DocumentLoader.isDelimitedText(typeName: typeName), let session, let window = windowForSheet else { return next(true) }
+        let workbook = session.workbook
         let name = session.sheet.name
+        let manySheets = workbook.sheets.count > 1
+        let before = baseline?.sheets.first { $0.id == session.sheet.id }
+        guard manySheets || CSVWriter.losesFormatting(session.sheet, styles: workbook.styles, comparedTo: before,
+                                                      baselineStyles: baseline?.styles) else { return next(true) }
         let alert = NSAlert()
-        alert.messageText = String(localized: "This workbook has \(session.workbook.sheets.count) sheets, but a .csv file holds only one.")
-        alert.informativeText = String(localized: """
-            Save as .xlsx keeps every sheet in a new file and leaves the .csv as it is. \
-            Save Only “\(name)” writes just the sheet you're looking at; the other sheets aren't saved.
-            """)
+        if manySheets {
+            alert.messageText = String(localized: "This workbook has \(workbook.sheets.count) sheets, but a .csv file holds only one.")
+            alert.informativeText = String(localized: """
+                Save as .xlsx keeps every sheet in a new file and leaves the .csv as it is. \
+                Save Only “\(name)” writes just the sheet you're looking at; the other sheets aren't saved.
+                """)
+        } else {
+            alert.messageText = String(localized: "A .csv file can't keep the formatting of “\(name)”.")
+            alert.informativeText = String(localized: """
+                Save as .xlsx keeps the formatting, merged cells, hidden rows and columns and frozen panes in a new file \
+                and leaves the .csv as it is. Save Only the Data writes the values to the .csv; the formatting is gone \
+                the next time you open it.
+                """)
+        }
         alert.addButton(withTitle: String(localized: "Save as .xlsx…"))
-        alert.addButton(withTitle: String(localized: "Save Only “\(name)”"))
+        alert.addButton(withTitle: manySheets ? String(localized: "Save Only “\(name)”") : String(localized: "Save Only the Data"))
         alert.addButton(withTitle: String(localized: "Cancel"))
         alert.beginSheetModal(for: window) { response in
             switch response {

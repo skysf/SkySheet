@@ -71,6 +71,7 @@ final class AIToolRouter {
         case .addSheet: return try AIWriteTools.addSheet(arguments)
         case .writeCells: return try AIWriteTools.writeCells(arguments)
         case .formatCells: return try AIWriteTools.formatCells(arguments)
+        case .editRowsColumns: return try AIRowColumnTools.edit(arguments)
         case .editSheet: return try AIWriteTools.editSheet(arguments)
         case .undo: return try AIWriteTools.undo(arguments)
         }

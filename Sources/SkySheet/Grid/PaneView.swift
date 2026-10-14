@@ -36,6 +36,11 @@ class PaneView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
+    /// 右键菜单由表格视图统一给（点在哪一格它来算）。
+    override func menu(for event: NSEvent) -> NSMenu? {
+        spreadsheet?.menu(for: event)
+    }
+
     override func draw(_ dirtyRect: NSRect) {
         guard let spreadsheet, let canvas = spreadsheet.canvas, let context = NSGraphicsContext.current?.cgContext else {
             return
@@ -73,93 +78,4 @@ class PaneView: NSView {
 @MainActor
 final class MainPaneView: PaneView {
     override class var isCompatibleWithResponsiveScrolling: Bool { false }
-}
-
-/// 列标（A、B、C…）或行号（1、2、3…）。冻结的部分不动，其余跟着主区滚。选中的那几行 / 几列加深显示。
-@MainActor
-final class HeaderView: NSView {
-    enum Axis {
-        case columns, rows
-    }
-
-    let axis: Axis
-    weak var spreadsheet: SpreadsheetView?
-
-    /// 主区滚了多远（这个方向上）。
-    var scroll: CGFloat = 0 {
-        didSet { if scroll != oldValue { needsDisplay = true } }
-    }
-
-    init(axis: Axis) {
-        self.axis = axis
-        super.init(frame: .zero)
-        clipsToBounds = true
-    }
-
-    @available(*, unavailable)
-    required init?(coder: NSCoder) { fatalError("not used") }
-
-    override var isFlipped: Bool { true }
-    override var isOpaque: Bool { true }
-
-    override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0.965, alpha: 1).setFill()
-        bounds.fill()
-        guard let spreadsheet, let canvas = spreadsheet.canvas else { return }
-        let geometry = canvas.geometry
-        let isColumns = axis == .columns
-        let frozen = isColumns ? canvas.frozenColumns : canvas.frozenRows
-        let frozenExtent = isColumns ? canvas.frozenWidth : canvas.frozenHeight
-        let length = isColumns ? bounds.width : bounds.height
-        let count = isColumns ? geometry.columnCount : geometry.rowCount
-        let selected = spreadsheet.session.selection.range
-        let selectedSpan = isColumns ? selected.start.column...selected.end.column : selected.start.row...selected.end.row
-
-        func position(_ index: Int) -> (start: CGFloat, size: CGFloat) {
-            let start = isColumns ? geometry.x(ofColumn: index) : geometry.y(ofRow: index)
-            let size = isColumns ? geometry.columnWidth(index) : geometry.rowHeight(index)
-            return index < frozen ? (start, size) : (start - scroll, size)
-        }
-        var indices = Array(0..<frozen)
-        let firstScrolling = max(frozen, (isColumns ? geometry.column(atX: frozenExtent + scroll)
-                                                    : geometry.row(atY: frozenExtent + scroll)))
-        var index = firstScrolling
-        while index < count, position(index).start < length {
-            indices.append(index)
-            index += 1
-        }
-
-        let font = NSFont.systemFont(ofSize: 11 * min(max(geometry.zoom, 0.8), 1.4))
-        for index in indices {
-            let (start, size) = position(index)
-            guard size > 0, index < frozen || start + size > frozenExtent else { continue }
-            let rect = isColumns ? CGRect(x: start, y: 0, width: size, height: bounds.height)
-                                 : CGRect(x: 0, y: start, width: bounds.width, height: size)
-            NSGraphicsContext.saveGraphicsState()
-            if index >= frozen {   // 滚动的部分不能盖到冻结的部分上
-                (isColumns ? CGRect(x: frozenExtent, y: 0, width: length, height: bounds.height)
-                           : CGRect(x: 0, y: frozenExtent, width: bounds.width, height: length)).clip()
-            }
-            let isSelected = selectedSpan.contains(index)
-            if isSelected {
-                NSColor.controlAccentColor.withAlphaComponent(0.18).setFill()
-                rect.fill()
-            }
-            let label = isColumns ? CellAddress.columnName(index) : String(index + 1)
-            let attributes: [NSAttributedString.Key: Any] = [
-                .font: font,
-                .foregroundColor: isSelected ? NSColor.controlAccentColor : NSColor.secondaryLabelColor,
-            ]
-            let labelSize = (label as NSString).size(withAttributes: attributes)
-            (label as NSString).draw(at: CGPoint(x: rect.midX - labelSize.width / 2, y: rect.midY - labelSize.height / 2),
-                                     withAttributes: attributes)
-            NSColor(white: 0.82, alpha: 1).setFill()
-            (isColumns ? CGRect(x: rect.maxX - 1, y: 0, width: 1, height: bounds.height)
-                       : CGRect(x: 0, y: rect.maxY - 1, width: bounds.width, height: 1)).fill()
-            NSGraphicsContext.restoreGraphicsState()
-        }
-        NSColor(white: 0.78, alpha: 1).setFill()
-        (isColumns ? CGRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1)
-                   : CGRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height)).fill()
-    }
 }

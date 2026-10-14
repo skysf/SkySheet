@@ -39,7 +39,8 @@ enum AIWorkbookTools {
             if sheet.visibility != .visible { item["hidden"] = true }
             return .object(item)
         }
-        var selection = session.selection.range.a1
+        // 整列整行写成 C:E、3:5。
+        var selection = session.selection.range.label
         if session.selection.range.start == session.selection.range.end { selection = session.selection.cursor.a1 }
         return [
             "workbook": .string(AIWorkbooks.label(document)),
@@ -53,18 +54,9 @@ enum AIWorkbookTools {
         ]
     }
 
-    /// 有内容的格子（有值或公式）围成的范围；只刷了样式的空格子不算。
+    /// 有内容的格子（有值或公式）围成的范围；只刷了样式的空格子不算（Sheet.contentRange）。
     static func usedRange(_ sheet: Sheet) -> CellRange? {
-        var top = Int.max, left = Int.max, bottom = -1, right = -1
-        sheet.cells.forEach { address, cell in
-            guard cell.value != .empty || cell.formula != nil else { return }
-            top = min(top, address.row)
-            bottom = max(bottom, address.row)
-            left = min(left, address.column)
-            right = max(right, address.column)
-        }
-        guard bottom >= 0 else { return nil }
-        return CellRange(CellAddress(row: top, column: left), CellAddress(row: bottom, column: right))
+        sheet.contentRange
     }
 
     static func byline(_ mark: AIAuthorship.Mark) -> String {
@@ -97,12 +89,10 @@ enum AIWorkbookTools {
         let index = try context.sheetIndex(try arguments.requiredString("sheet"))
         context.session.showSheet(index)
         if let text = try arguments.string("range") {
-            let range = try AIFormat.range(text).range
-            context.session.select(range.start)
-            context.session.select(range.end, extend: true)
+            context.session.select(try AIFormat.range(text).range)
         }
         context.document.windowControllers.first?.window?.orderFrontRegardless()
-        return .ok(["shown": .string("\(context.workbook.sheets[index].name)!\(context.session.selection.range.a1)")])
+        return .ok(["shown": .string("\(context.workbook.sheets[index].name)!\(context.session.selection.range.label)")])
     }
 
     // MARK: - save_copy

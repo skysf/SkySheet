@@ -13,8 +13,12 @@ final class WorkbookDocument: NSDocument {
     nonisolated(unsafe) var loaded: DocumentLoader.Loaded?
     /// 窗口建好以后的编辑状态。保存时从这里拿工作簿。
     nonisolated(unsafe) var session: SheetSession?
-    /// 原包：保存时没改过的部件照抄（设计 7.2 节）。打开的是 csv 时没有。
-    nonisolated(unsafe) var source: XLSXSource?
+    /// 原包：保存时没改过的部件照抄（设计 7.2 节）。打开的是 csv 时没有。换了原包（存过、重新载入）就重新判断哪些表能插删行列。
+    nonisolated(unsafe) var source: XLSXSource? {
+        didSet { structureLocks = [:] }
+    }
+    /// 每张表能不能插删行列（StructureLock，设计第 11 条）：要解压、扫一遍包，按 sheet 编号记下来。
+    nonisolated(unsafe) private var structureLocks: [Int: StructureLock?] = [:]
     /// 打开（或上次保存）时的工作簿：判断哪张 sheet 改过。
     nonisolated(unsafe) var baseline: Workbook?
     /// 打开的是 csv 时原来的写法（编码、分隔符、换行）。
@@ -43,6 +47,7 @@ final class WorkbookDocument: NSDocument {
         guard let loaded else { return }
         let session = SheetSession(workbook: loaded.workbook)
         session.undoManager = undoManager
+        session.structureLock = { [weak self] id in self?.structureLock(forSheet: id) }
         self.session = session
         addWindowController(WorkbookWindowController(session: session))
     }
@@ -56,6 +61,14 @@ final class WorkbookDocument: NSDocument {
         session.resetSelection()
         undoManager?.removeAllActions()
         backedUp = false
+    }
+
+    /// 这张表（按编号）为什么不能插删行列；能就是 nil。这次新建、复制、导入的表不在原包里，总是能。
+    func structureLock(forSheet id: Int) -> StructureLock? {
+        if let known = structureLocks[id] { return known }
+        let lock = source?.structureLock(forSheet: id)
+        structureLocks[id] = lock
+        return lock
     }
 
     override func close() {

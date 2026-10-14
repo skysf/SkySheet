@@ -2,7 +2,8 @@ import AppKit
 import SkySheetCore
 
 /// 截图模式：`SkySheet --snapshot-input 文件.xlsx --snapshot-output 输出.png [--sheet 名字] [--size 1280x800] [--select K60]`。
-/// `--select` 选中一格或一块（A1 写法），表格会滚过去：用来看滚动以后冻结窗格、行号列标对不对。
+/// `--select` 选中一格或一块（A1 写法），表格会滚过去：用来看滚动以后冻结窗格、行号列标对不对；也可以是整列（C:E）、
+/// 整行（3:5），看列标行号选中的样子。
 /// 在屏幕外开一个窗口，把整个窗口画成 PNG 就退出。开发时用来核对显示（不用录屏权限），也方便以后给 AI 看表格的样子。
 ///
 /// 参数全都带「-」：AppKit 会把命令行里不带「-」的参数当成要打开的文件。打包好的 App 认得文档类型，
@@ -37,9 +38,8 @@ enum SnapshotRenderer {
             if let name = request.sheetName, let index = loaded.workbook.sheetIndex(named: name) {
                 session.showSheet(index)
             }
-            if let range = request.selection.flatMap({ CellRange(a1: $0) }) {
-                session.select(range.start)
-                session.select(range.end, extend: true)
+            if let range = request.selection.flatMap({ CellRange.parse($0) }) {
+                session.select(range)
             }
             let controller = WorkbookViewController(session: session)
             let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30_000, y: -30_000), size: request.size),

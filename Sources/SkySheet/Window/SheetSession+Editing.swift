@@ -125,14 +125,26 @@ extension SheetSession {
         editing = nil
     }
 
-    /// 光标挪几格。从合并单元格往外走时跳过整块。
+    /// 光标挪几格。从合并单元格往外走时跳过整块；藏起来的行、列跳过去，和 Excel 一样。
     func moveCursor(rows: Int, columns: Int, extend: Bool = false) {
         guard rows != 0 || columns != 0 else { return }
         let from = selection.cursor
         let merge = sheet.merges.first { $0.contains(from) }
-        let row = rows > 0 ? (merge?.end.row ?? from.row) + rows : from.row + rows
-        let column = columns > 0 ? (merge?.end.column ?? from.column) + columns : from.column + columns
-        select(CellAddress(row: max(row, 0), column: max(column, 0)), extend: extend)
+        var row = max(rows > 0 ? (merge?.end.row ?? from.row) + rows : from.row + rows, 0)
+        var column = max(columns > 0 ? (merge?.end.column ?? from.column) + columns : from.column + columns, 0)
+        if rows != 0 { row = visibleLine(.rows, from: row, step: rows > 0 ? 1 : -1) ?? from.row }
+        if columns != 0 { column = visibleLine(.columns, from: column, step: columns > 0 ? 1 : -1) ?? from.column }
+        select(CellAddress(row: row, column: column), extend: extend)
+    }
+
+    /// 从 `index` 起往 `step` 那边找第一行（列）没藏起来的；一直到表的边上都藏着就是 nil（光标不动）。
+    private func visibleLine(_ axis: SheetAxis, from index: Int, step: Int) -> Int? {
+        var line = min(index, axis.limit - 1)
+        while sheet.isHidden(axis, line) {
+            line += step
+            guard line >= 0, line < axis.limit else { return nil }
+        }
+        return line
     }
 
     /// 格子里存的东西的原始写法：公式栏显示的、双击编辑时的、复制到 SkySheet 自己剪贴板上的都是它。
@@ -167,9 +179,9 @@ extension SheetSession {
         apply(String(localized: "Clear")) { $0.clearContents(range, sheet: index) }
     }
 
-    /// 选区的原始写法，一格一格。
+    /// 选区的原始写法，一格一格。整列整行只到用到的地方为止。
     func clipOfSelection() -> CellClip {
-        let range = selection.range
+        let range = selectedCells ?? CellRange(selection.cursor)
         let rows = (range.start.row...range.end.row).map { row in
             (range.start.column...range.end.column).map { rawText(at: CellAddress(row: row, column: $0)) }
         }
@@ -180,7 +192,8 @@ extension SheetSession {
     /// 从 SkySheet 复制来的公式按位置差平移引用；别处来的文字按输入的规矩解析。
     func paste(_ rows: [[String]], from origin: CellAddress?, actionName: String = String(localized: "Paste")) {
         guard !rows.isEmpty else { return }
-        let target = selection.range
+        // 整列整行：贴到它的左上角；一格填满整列时只填到用到的地方为止。
+        let target = selection.kind == .cells ? selection.range : (selectedCells ?? CellRange(selection.range.start))
         let fills = rows.count == 1 && rows[0].count == 1 && (target.rowCount > 1 || target.columnCount > 1)
         var placements: [(address: CellAddress, text: String, source: CellAddress?)] = []
         if fills {

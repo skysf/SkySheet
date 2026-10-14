@@ -77,7 +77,6 @@ private struct PackagePatch {
             if let old, old.hasSameContent(as: sheet) { continue }
             guard let original = XMLFragments(try read(part.path)) else { throw XLSXWriteError.unreadablePart(part.path) }
             replaced[part.path.lowercased()] = WorksheetWriter.write(sheet, original: original, baseline: old,
-                                                                     richCells: source.richCells[sheet.id] ?? [:],
                                                                      defaultRowHeight: workbook.styles.defaultRowHeight,
                                                                      strings: &strings)
             regenerated.insert(sheet.id)

@@ -36,8 +36,10 @@ enum MCPReadTools {
                     Describes one sheet so you know where things are before reading: its used range; each table \
                     block (a header row and the rows under it, separated by empty rows) with the table name to use in \
                     query, and for each column its header, type (number, date, text, mixed), number format, count, \
-                    a few sample values, and sum, min and max for numbers; merged cells; frozen panes; how many \
-                    formulas; and cells SkySheet could not recalculate (they keep the value saved in the file).
+                    a few sample values, and sum, min and max for numbers; merged cells; frozen panes; column widths \
+                    and row heights that differ from the default; hidden rows and columns; whether rows and columns \
+                    can be inserted or deleted; how many formulas; and cells SkySheet could not recalculate (they keep \
+                    the value saved in the file).
                     """,
                 input: MCPSchema.object(["sheet": MCPSchema.sheet, "workbook": MCPSchema.workbook], required: ["sheet"]),
                 readOnly: true)
@@ -52,7 +54,7 @@ enum MCPReadTools {
                     for more, use query or export_sheet.
                     """,
                 input: MCPSchema.object([
-                    "range": MCPSchema.string("A1 range such as A1:K11, or with the sheet: Loan!A1:K11."),
+                    "range": MCPSchema.string("A1 range such as A1:K11, or with the sheet: Loan!A1:K11. Whole columns (C:E) read the rows in use."),
                     "sheet": MCPSchema.string("Sheet name, if range does not include it."),
                     "include": MCPSchema.array(of: MCPSchema.string("Extra", oneOf: MCPVocabulary.readExtras),
                                                "Extras to return besides values."),

@@ -3,7 +3,8 @@ import SkySheetCore
 import SkySheetFiles
 import SkySheetMCPKit
 
-// MARK: - 改东西的工具：add_sheet、write_cells、format_cells、edit_sheet、undo（设计 9.2、9.3 节）
+// MARK: - 改东西的工具：add_sheet、write_cells、format_cells、edit_sheet、undo（设计 9.2、9.3 节；edit_rows_columns 在
+// AIRowColumnTools）
 //
 // 只认 AI 的 sheet（AIContext.requireAISheet）。每个调用是一步撤销（AIContext.change），算进这一轮，
 // 改到的格子淡色高亮。
@@ -177,35 +178,85 @@ enum AIWriteTools {
             change.numberFormat = FormatPreset(rawValue: format.lowercased())?.code ?? format
         }
         change.bold = try arguments.bool("bold")
-        change.fontColor = try arguments.string("font_color").map { try AIFormat.color($0, key: "font_color") }
-        change.fillColor = try arguments.string("fill_color").map { try AIFormat.color($0, key: "fill_color") }
+        change.italic = try arguments.bool("italic")
+        change.fontColor = try arguments.string("font_color").map {
+            try AIFormat.colorChoice($0, key: "font_color", automatic: ["auto", "automatic", "default"])
+        }
+        change.fillColor = try arguments.string("fill_color").map {
+            try AIFormat.colorChoice($0, key: "fill_color", automatic: ["none", "no fill", "auto", "automatic"])
+        }
+        change.horizontal = try arguments.string("align").map { value in
+            guard let alignment = Workbook.CellStyleChange.Horizontal(rawValue: value.lowercased()) else {
+                throw AIToolError("align must be general, left, center or right.")
+            }
+            return alignment
+        }
+        change.vertical = try arguments.string("vertical_align").map { value in
+            let name = value.lowercased() == "middle" ? "center" : value.lowercased()
+            guard let alignment = Workbook.CellStyleChange.Vertical(rawValue: name) else {
+                throw AIToolError("vertical_align must be top, center or bottom.")
+            }
+            return alignment
+        }
+        change.wrapText = try arguments.bool("wrap")
+        let merge = try arguments.bool("merge")
+        // 2026-10-14 以前的说明里，列宽和冻结也在 format_cells：还开着的老会话照那份说明调，照做，新说明里不再写
+        // （挪到了 edit_rows_columns）。
         let width = try arguments.double("column_width")
         let freeze = try arguments.object("freeze")
-        let range = try arguments.string("range").map { try AIFormat.range($0).range }
-        guard !change.isEmpty || width != nil || freeze != nil else {
-            throw AIToolError("Give at least one of number_format, bold, font_color, fill_color, column_width, freeze.")
+        guard !change.isEmpty || merge != nil || width != nil || freeze != nil else {
+            throw AIToolError("Give at least one of number_format, bold, italic, font_color, fill_color, align, "
+                + "vertical_align, wrap, merge.")
         }
-        if (!change.isEmpty || width != nil), range == nil { throw AIToolError("range is required for those options.") }
+        let sheet = context.workbook.sheets[index]
+        let given = try arguments.string("range").map { try AIFormat.range($0).range }
+        let range = try given.map { asked -> CellRange in
+            guard let used = AIFormat.clamped(asked, to: sheet.cells.usedRange) else {
+                throw AIToolError("\(sheet.name) has nothing in \(asked.label) yet: write the cells first, then format them.")
+            }
+            return used
+        }
+        if (!change.isEmpty || merge != nil || width != nil), range == nil { throw AIToolError("range is required.") }
         if let range, !change.isEmpty, range.rowCount * range.columnCount > formatLimit {
             throw AIToolError("That range has more than \(formatLimit) cells; format the used part only.")
+        }
+        if merge == true, let given, given.coversAllRows || given.coversAllColumns {
+            throw AIToolError("merge needs a block of cells such as A1:D1, not whole rows or columns.")
         }
         if let width, !(0...255).contains(width) { throw AIToolError("column_width must be between 0 and 255.") }
         let frozenRows = try freeze.map { try AIToolArguments(.object($0)).int("rows") ?? 0 }
         let frozenColumns = try freeze.map { try AIToolArguments(.object($0)).int("columns") ?? 0 }
-        try context.change(String(localized: "AI: Format Cells"), { workbook in
-            if let range, !change.isEmpty { workbook.restyle(range, sheet: index, change) }
-            if let range, let width {
-                workbook.setColumnWidth(width, columns: range.start.column...range.end.column, sheet: index)
-            }
-            if let frozenRows, let frozenColumns {
-                workbook.freeze(rows: max(frozenRows, 0), columns: max(frozenColumns, 0), sheet: index)
-            }
-        }, cells: { workbook in
-            guard let range, range.rowCount * range.columnCount <= writeLimit else { return [:] }
-            return [workbook.sheets[index].id: addresses(in: range)]
-        })
+        do {
+            try context.change(String(localized: "AI: Format Cells"), { workbook in
+                if let range, !change.isEmpty { workbook.restyle(range, sheet: index, change) }
+                if let range, let merge {
+                    if merge { try workbook.merge(range, sheet: index) } else { workbook.unmerge(range, sheet: index) }
+                }
+                if let range, let width {
+                    workbook.setColumnWidth(width, columns: range.start.column...range.end.column, sheet: index)
+                }
+                if let frozenRows, let frozenColumns {
+                    workbook.freeze(rows: max(frozenRows, 0), columns: max(frozenColumns, 0), sheet: index)
+                }
+            }, cells: { workbook in
+                guard let range, range.rowCount * range.columnCount <= writeLimit else { return [:] }
+                return [workbook.sheets[index].id: addresses(in: range)]
+            })
+        } catch let MergeError.wouldDiscard(cells) {
+            // 先把几段话拼好再放进去：插值里套三目、再用 + 连起来，类型检查会慢到把整台机器拖垮（2026-10-14 编译时踩到）。
+            let shown: String = cells.prefix(10).map(\.a1).joined(separator: ", ")
+            let names: String = cells.count > 10 ? shown + "…" : shown
+            let verb: String = cells.count == 1 ? "has" : "have"
+            let pronoun: String = cells.count == 1 ? "it" : "them"
+            throw AIToolError("Merging keeps only the top-left cell, and \(names) \(verb) content. "
+                + "Clear \(pronoun) first (write_cells with null) if that is what you want.")
+        } catch let MergeError.overlapsMerge(existing) {
+            throw AIToolError("The range cuts through the merged cells \(existing.a1). Merge a range that contains them "
+                + "whole, or unmerge them first.")
+        }
         var payload: [String: JSONValue] = ["sheet": .string(context.workbook.sheets[index].name)]
         if let range { payload["range"] = .string(range.a1) }
+        if merge == true, let range { payload["merged"] = .string(range.a1) }
         return .ok(.object(payload), changed: true)
     }
 

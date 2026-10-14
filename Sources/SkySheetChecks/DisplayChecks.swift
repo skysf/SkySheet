@@ -142,4 +142,52 @@ func displayChecks() {
         checkEqual(summary.sum, 30, "sum")
         checkEqual(summary.average, 15, "average")
     }
+
+    group("display: fitting columns and rows to their content") {
+        let measure: (String, ResolvedStyle) -> Double = { text, _ in Double(text.count) * 7 }
+        var sheet = Sheet(id: 1, name: "S")
+        sheet.cells[0, 0] = Cell(value: .text("short"))
+        sheet.cells[1, 0] = Cell(value: .text("a much longer text"))   // 18 个字 × 7 = 126
+        sheet.cells[0, 1] = Cell(value: .text("a merged title across two columns"))
+        sheet.cells[0, 3] = Cell(value: .text("ab\ncdef"))
+        sheet.merges = [CellRange(a1: "B1:C1")!]
+        let styles = StyleResolver(workbook: Workbook())
+        func width(_ column: Int) -> Double? {
+            AutoFit.width(ofColumn: column, in: sheet, styles: styles, dateSystem: .from1900, digitWidth: 7, measure: measure)
+        }
+        checkEqual(width(0), 18.72, "the widest text plus the margins, rounded up to 0.01")
+        checkEqual(width(1), nil, "a cell merged across columns doesn't count; nothing left means the default width")
+        checkEqual(width(3), 4.72, "the longest line of a cell with line breaks")
+        checkEqual(width(5), nil, "an empty column goes back to the default width")
+
+        var workbook = Workbook(styles: StyleTable(cellFormats: [CellFormat(), CellFormat(wrapText: true), CellFormat(fontID: 1)],
+                                                   fonts: [FontStyle(name: "Calibri", size: 11), FontStyle(size: 20)]))
+        workbook.sheets = [Sheet(id: 1, name: "S")]
+        workbook.sheets[0].cells[0, 0] = Cell(value: .text("one line"))
+        workbook.sheets[0].cells[1, 0] = Cell(value: .text("two\nlines"))
+        workbook.sheets[0].cells[2, 0] = Cell(value: .text("wrapped into three"), styleIndex: 1)
+        workbook.sheets[0].cells[3, 0] = Cell(value: .number(5), styleIndex: 2)
+        let rowStyles = StyleResolver(workbook: workbook)
+        func height(_ row: Int) -> Double? {
+            AutoFit.height(ofRow: row, in: workbook.sheets[0], styles: rowStyles, dateSystem: .from1900, defaultHeight: 15,
+                           columnWidth: { _ in 64 }, lineCount: { _, _, width in width < 61 ? 3 : 1 })
+        }
+        checkEqual(height(0), nil, "one line of the default font is the default height")
+        checkEqual(height(1), 30, "two lines")
+        checkEqual(height(2), 45, "wrapped text folds at the column width (minus the margins)")
+        checkEqual(height(3), 27, "a 20-point number needs a taller row")
+        checkEqual(height(9), nil, "an empty row goes back to the default height")
+    }
+
+    group("display: sizes dragged on the headers") {
+        for digit in [7.0, 8.16, 9.3] {
+            for pixels in [1.0, 20, 64, 92, 300] {
+                let width = SheetGeometry.columnWidth(forPixels: pixels, digitWidth: digit)
+                checkEqual(SheetGeometry.columnPixels(width, digitWidth: digit), pixels, "\(pixels) px at digit width \(digit)")
+            }
+        }
+        checkEqual(SheetGeometry.columnWidth(forPixels: 0), 0, "zero stays zero")
+        checkEqual(SheetGeometry.rowHeight(forPixels: 20), 15, "20 px is the 15-point default row")
+        checkEqual(SheetGeometry.rowHeight(forPixels: 27.4), 20.25, "rounded to Excel's 0.75-point pixels")
+    }
 }

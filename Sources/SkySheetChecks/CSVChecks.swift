@@ -102,6 +102,37 @@ func csvChecks() {
         }
     }
 
+    group("csv: noticing formatting a csv can't keep") {
+        let opened = try CSVReader.read(Data("日期,金额,比例\n2025-12-01,1234.5,5%\n".utf8), sheetName: "明细").workbook
+        var workbook = opened
+        func loses() -> Bool {
+            CSVWriter.losesFormatting(workbook.sheets[0], styles: workbook.styles, comparedTo: opened.sheets[0],
+                                      baselineStyles: opened.styles)
+        }
+        check(!loses(), "nothing changed since opening")
+        workbook.enter(CellInput.parse("12%"), at: CellAddress(a1: "C3")!, sheet: 0)
+        workbook.enter(CellInput.parse("2025/12/5"), at: CellAddress(a1: "A3")!, sheet: 0)
+        workbook.setColumnWidth(30, columns: 1...1, sheet: 0)
+        try workbook.insert(1, .rows, at: 1, sheet: 0)
+        check(!loses(), "dates, percents, column widths and inserted rows all survive a csv")
+        let changes: [(String, (inout Workbook) -> Void)] = [
+            ("bold", { $0.restyle(CellRange(a1: "A1:C1")!, sheet: 0, .init(bold: true)) }),
+            ("a yuan format", { $0.restyle(CellRange(a1: "B2")!, sheet: 0, .init(numberFormat: FormatPreset.cny.code)) }),
+            ("a hidden column", { $0.setHidden(true, .columns, 2...2, sheet: 0) }),
+            ("a row height", { $0.setRowHeight(30, rows: 0...0, sheet: 0) }),
+            ("frozen panes", { $0.freeze(rows: 1, columns: 0, sheet: 0) }),
+            ("merged cells", { try? $0.merge(CellRange(a1: "D1:E1")!, sheet: 0) }),
+        ]
+        for (name, change) in changes {
+            var changed = workbook
+            change(&changed)
+            check(CSVWriter.losesFormatting(changed.sheets[0], styles: changed.styles, comparedTo: workbook.sheets[0],
+                                            baselineStyles: workbook.styles), "a csv can't keep \(name)")
+            check(!CSVWriter.losesFormatting(changed.sheets[0], styles: changed.styles, comparedTo: changed.sheets[0],
+                                             baselineStyles: changed.styles), "\(name): after saving the data once, no more asking")
+        }
+    }
+
     group("xlsx: fonts, fills, borders and theme of the fixture") {
         let workbook = try XLSXReader.read(contentsOf: fixtureURL("loan.xlsx"))
         let styles = workbook.styles

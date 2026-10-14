@@ -24,6 +24,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
     case addSheet = "add_sheet"
     case writeCells = "write_cells"
     case formatCells = "format_cells"
+    case editRowsColumns = "edit_rows_columns"
     case editSheet = "edit_sheet"
     case undo = "undo"
     case saveCopy = "save_copy"
@@ -32,7 +33,7 @@ public enum MCPToolName: String, CaseIterable, Sendable {
         switch self {
         case .getStatus, .openFile, .describeSheet, .readRange, .query, .evaluate, .exportSheet, .show, .saveCopy:
             return MCPReadTools.definition(for: self)
-        case .addSheet, .writeCells, .formatCells, .editSheet, .undo:
+        case .addSheet, .writeCells, .formatCells, .editRowsColumns, .editSheet, .undo:
             return MCPWriteTools.definition(for: self)
         }
     }
@@ -132,8 +133,13 @@ public enum MCPSchema {
 /// 工具参数里的选项词表。小程序不链接 SkySheetCore，拿不到 `FormatPreset`，只能抄一份；
 /// 抄的就会漂，自检逐项和 `FormatPreset.allCases` 对账。
 public enum MCPVocabulary {
-    /// = `FormatPreset.allCases` 的原始值：人民币两位小数、人民币取整、万元一位小数、万元精确、百分比、日期、中文日期。
-    public static let numberFormatPresets = ["cny", "cny_int", "wan", "wan_exact", "percent", "date_cn", "date"]
+    /// = `FormatPreset.allCases` 的原始值：常规、千分位两位小数、人民币两位小数、人民币取整、万元一位小数、万元精确、百分比、
+    /// 中文日期、日期。
+    public static let numberFormatPresets = ["general", "number", "cny", "cny_int", "wan", "wan_exact", "percent", "date_cn",
+                                             "date"]
+    /// format_cells 的对齐。
+    public static let horizontalAlignments = ["general", "left", "center", "right"]
+    public static let verticalAlignments = ["top", "center", "bottom"]
     /// read_range 可以多要的两样。
     public static let readExtras = ["text", "formulas"]
 }
