@@ -9,7 +9,8 @@
 SkySheet 是一个**给 AI 用的**轻量 macOS 表格工具：
 
 - 用户用它打开 xlsx / csv，**主要是看**，偶尔改几个数。
-- Claude Code 通过 MCP（服务名 `skysheet`）读表、算数，把结果**写进新的 sheet**；原始数据永远不动。
+- Claude Code（和 Claude 桌面版的聊天，第 17 条）通过 MCP（服务名 `skysheet`）读表、算数，把结果**写进新的 sheet**；
+  原始数据永远不动。
 - 典型问题（作者原话整理）：算一下这几笔贷款的利率；哪种贷款方式更合理；和我现在每个月的还款比，
   我应该贷多少、多少利率的贷款。
 - 数据规模：一张表最多几千行。
@@ -38,7 +39,7 @@ SkySheet 是一个**给 AI 用的**轻量 macOS 表格工具：
 | 14 | Python | 允许 Claude 用 Python / pandas 分析；数据进出只走 SkySheet 的工具，**不许用别的程序改用户的 xlsx / csv 文件** | 方便用自然语言操作；写回统一经过 SkySheet，才有撤销和保存安全 |
 | 15 | 保存 | 只有用户按 ⌘S 才写回原文件；六道保险（第十节） | 作者定：哪种更能保证数据安全就选哪种 |
 | 16 | 用户编辑 | 基础编辑：改值、改公式、撤销 / 重做、复制粘贴、sheet 的重命名 / 删除 / 复制 | 作者要求「基础的修改功能」 |
-| 17 | AI 客户端 | 第一版只接 Claude Code | 协议层是通用的，以后加 Claude 桌面版、Codex 很便宜 |
+| 17 | AI 客户端 | Claude Code 和 Claude 桌面版的普通聊天（9.5 节） | 协议层是通用的。第一版只接 Claude Code；2026-10-09 作者要桌面版的普通聊天（不是它的 Code 页，那里跑的就是 Claude Code）也能用。Codex 等以后要了再加 |
 | 18 | 敏感信息 | 不做脱敏 | 作者确认数据里没有身份证号、手机号这类信息 |
 | 19 | 测试数据 | 只提交 `Fixtures/loan.xlsx`（从作者表格里抽出的 Loan 表，来历见 `Fixtures/README.md`）；`SampleData/` 永不入库 | 仓库是公开的；真实表格里还有房产、装修、理财等个人信息 |
 | 20 | 仓库流程 | main 禁止直推，走 PR，CI 绿了才合；CI 只占 1 台 macOS 机器 | 和 SrtFlow 一样；免费档同时最多 5 台 macOS，是整个账号共用的 |
@@ -64,8 +65,8 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 | `SkySheetFiles` | 库 | SkySheetCore、SkyZip | xlsx 读写（含原样保留）、csv 读写（含编码识别） |
 | `SkySheetDisplay` | 库 | SkySheetCore | 画表格要做的决定：颜色换算、样式继承、行列几何、格子显示成什么、文字溢出、csv 自动列宽。和 AppKit 无关，自检能测（M2 加的） |
 | `SkySheetMCPKit` | 库 | Foundation | MCP 协议、工具清单（唯一一份）、和 App 之间的通道；小程序和 App 共用 |
-| `SkySheetMCP` | 可执行，产物 `skysheet-mcp` | SkySheetMCPKit | Claude Code 启动它；清单当场回，调用转给 App；App 没开就 `open -g` 拉起来 |
-| `SkySheet` | 可执行（App） | 以上全部 | 文档、表格视图、编辑、保存安全、AI 层、「连接 Claude Code」 |
+| `SkySheetMCP` | 可执行，产物 `skysheet-mcp` | SkySheetMCPKit | Claude Code、Claude 桌面版启动它；清单当场回，调用转给 App；App 没开就 `open -g` 拉起来 |
+| `SkySheet` | 可执行（App） | 以上全部 | 文档、表格视图、编辑、保存安全、AI 层、「连接 Claude Code / Claude 桌面版」 |
 | `SkySheetChecks` | 可执行 | Core、Files、Display、MCPKit | 自检（第十二节） |
 
 Core 和 Files 分开：公式、格式的自检不用造 xlsx；文件格式的改动不碰公式引擎。
@@ -379,8 +380,9 @@ Rules:
   add_sheet copy_from=<sheet> and edit the copy.
 - Prefer formulas that reference the original cells, e.g. =RATE(Loan!C5,-Loan!F5,Loan!B5)*12, over
   typed-in numbers, so the user can trace every result.
-- Python is fine for heavy analysis: export_sheet gives a CSV path; bring results back with add_sheet
-  from_csv or write_cells. Never open, change or save the user's .xlsx/.csv files with other programs.
+- Python is fine for heavy analysis if you can run it on this Mac: export_sheet gives a local CSV path;
+  bring results back with add_sheet from_csv or write_cells. Never open, change or save the user's
+  .xlsx/.csv files with other programs.
 - Only open files the user named or these tools returned.
 - Nothing reaches the user's file until they press Cmd+S. save_copy only writes a new file.
 - A round of edits can be undone in one step (undo round=true).
@@ -392,9 +394,11 @@ Tools by need:
 - Point the user: show
 ```
 
-### 9.5 连接 Claude Code
+### 9.5 连接 Claude Code 和 Claude 桌面版
 
-- 设置页一个按钮「连接 Claude Code」：
+设置页「AI」一节，两家各一行，一行一个按钮（第 17 条）。
+
+- 「连接 Claude Code」：
   - 跑 `claude mcp add --scope user skysheet <App 包里 skysheet-mcp 的路径>`。不直接改 `~/.claude.json`：
     正在跑的 Claude Code 会整份重写它，直接改会被冲掉。
   - 往 `~/.claude/settings.json` 的 `permissions.allow` 里加 `mcp__skysheet`（第一次改之前先备份），免得每个工具都问一次。
@@ -402,7 +406,23 @@ Tools by need:
     v0.3.0 整份解析再写回，键被排序、冒号两边的空格和末尾换行全变了（内容没变），v0.3.1 改掉。
     文件是软链接（dotfiles）就写进它指向的文件，链接留着。
   - 找不到 `claude` 命令行，就给「复制一段话」，让用户贴给 Claude Code 自己装。
-- 状态有四种：没装 Claude Code / 没连接 / 已连接 / 连着另一份 SkySheet（App 挪过位置）。
+  - 状态有五种：没装 / 没连接 / 已连接 / 连着但每个工具都问（没放行）/ 连着另一份 SkySheet（App 挪过位置）。
+- 「连接 Claude 桌面版」（2026-10-09 加，第 17 条）：管的是桌面版的**普通聊天**；它的 Code 页跑的是 Claude Code，
+  用上面那一行的连接。
+  - 往 `~/Library/Application Support/Claude/claude_desktop_config.json` 的 `mcpServers` 里加
+    `"skysheet": {"command": <App 包里 skysheet-mcp 的路径>, "args": []}`。官方就是让用户改这个文件，没有命令行。
+    和 settings.json 一样**按原文只动这一项**（断开只删这一项，mcpServers 空了留着 `{}`）、文件格式不对就报错不写、
+    第一次改之前备份（复制一份，权限跟着原文件：它是 0600，里面有账号的东西）。连着另一份 SkySheet 时只换 command。
+  - **桌面版开着的时候，改了会被它盖掉**（2026-10-09 读 Claude 2.31226.0 的代码和日志确认）：它启动时把整个文件读进
+    内存，之后每次存自己的偏好（开 Code 会话、切窗格……作者的机器上一天十几次）都把内存里那份整份写回，不先重读；
+    退出时不写（日志里 63 次退出，一次都没写）；mcpServers 也只在启动时读。所以点「连接」时它没开就直接改，打开就有；它开着就先改、记下要的结果，
+    提示用户退出再打开 Claude，**在它退出那一刻再写一遍**（那时没人盖了；断开也一样）。这一步要 SkySheet 开着：
+    SkySheet 先退出、它又刚好盖过，设置里会显示没连上，再点一次就好。没选「替用户退出 Claude」：会打断它正在跑的
+    Code 会话，让用户自己挑时候。
+  - 放行：桌面版的「总是允许」存在它自己那里，SkySheet 写不了；连上后的提示里告诉用户在对话里点、或者在它的
+    Connectors 设置里一次设好。
+  - 状态：没装 / 没连接 / 已连接 / 连着另一份 SkySheet / 重启 Claude 才算完（这次运行里改了、它还没退出过）。
+- 两家共用的：读 `mcpServers.skysheet.command`、改文件的规矩（`AIClientConfig`）；按原文改 JSON（`JSONText`）。
 
 ### 9.6 一个完整的例子
 
@@ -527,6 +547,9 @@ Tools by need:
 - 剪切不是「粘贴时才移走」，而是复制后马上清掉。
 - 公式里还不能对区域做数组运算（`SUMPRODUCT(--(A1:A5>B1))`、`(A1:A5>B1)*1`）：AI 碰到会换成 COUNTIF / RANK 这类写法。
 - AI 的模型名是自报的；同一个客户端后面的调用沿用它报过的那个，换了模型没报就还是旧的。
+- Claude 桌面版：「总是允许」只能用户自己在它的界面里设；它开着时点的连接 / 断开，要等它退出、而且 SkySheet 那时还开着
+  才算数（9.5 节）；它的聊天一般没法在这台 Mac 上跑 Python，用不上 export_sheet 写在本机的 csv（总说明里写了「能在这台
+  Mac 上跑才用」）。
 
 ## 变更记录
 
@@ -543,3 +566,7 @@ Tools by need:
   长期约束写进 `docs/architecture/mcp.md`。
 - 2026-10-09 v0.3.1：作者装到本机点「Connect」时发现 settings.json 被整份重排（键按字母排、冒号两边加空格、末尾换行没了）。
   改成按原文插进或删掉那一条（9.5 节），软链接也留着。
+- 2026-10-09 作者要求 Claude 桌面版的普通聊天（不是它的 Code 页）也能用 SkySheet：第 17 条改成两家；设置里多一行
+  「Claude Desktop」，按原文改它的 claude_desktop_config.json。它开着时会拿内存里的那份把文件盖掉，所以在它退出那一刻
+  再写一遍（9.5 节）。顺带：总说明和 export_sheet 的说明点明 Python 要能在这台 Mac 上跑（桌面版的聊天不行）；
+  「请重启 Claude Code」的两句改成按客户端说；备份配置文件改成连权限一起复制。

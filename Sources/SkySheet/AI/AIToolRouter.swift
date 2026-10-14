@@ -22,8 +22,10 @@ final class AIToolRouter {
 
     func handle(_ request: MCPBridge.Request) async -> JSONValue {
         guard request.bridge == MCPBridge.version else {
+            // 重启的是对面那个客户端（Claude Code 或 Claude 桌面版），它才会换上新的小程序。
+            let app = request.client.flatMap { $0.isEmpty ? nil : AIAuthorship.brand(ofClient: $0) } ?? "their AI app"
             return MCPBridge.textResult(
-                "This SkySheet and its AI helper come from different versions. Ask the user to restart Claude Code.",
+                "This SkySheet and its AI helper come from different versions. Ask the user to restart \(app).",
                 isError: true)
         }
         guard let tool = MCPToolName(rawValue: request.tool) else {

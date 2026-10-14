@@ -97,10 +97,10 @@ enum MCPReadTools {
                 .exportSheet, title: "Export sheet as CSV",
                 description: """
                     Writes a sheet, or a range of it, to a UTF-8 CSV file in SkySheet's cache folder and returns its \
-                    path, for Python or pandas. Numbers are written raw (no thousands separators; percents as \
-                    fractions), dates as YYYY-MM-DD, formulas as their values; the first row is written as it is \
-                    (usually the header). Bring results back with add_sheet from_csv or write_cells. Never change \
-                    the user's own files with other programs.
+                    local path, for Python or pandas running on this Mac. Numbers are written raw (no thousands \
+                    separators; percents as fractions), dates as YYYY-MM-DD, formulas as their values; the first row \
+                    is written as it is (usually the header). Bring results back with add_sheet from_csv or \
+                    write_cells. Never change the user's own files with other programs.
                     """,
                 input: MCPSchema.object([
                     "sheet": MCPSchema.sheet,

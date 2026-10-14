@@ -1,6 +1,6 @@
 # M4 MCP：真机检查清单
 
-> 自检够不着的部分（设计第十二节）：和真的 Claude Code 对话、窗口里的横幅和页签、连接按钮。v0.3.0 起每次发版前走一遍，
+> 自检够不着的部分（设计第十二节）：和真的 Claude Code、Claude 桌面版对话、窗口里的横幅和页签、连接按钮。v0.3.0 起每次发版前走一遍，
 > M2、M3 的清单照旧。
 >
 > 2026-10-09 开发时已经自动走过的标了「已自动测」：用 JSON-RPC 直接跟包里的 skysheet-mcp 说话走完 14 个工具，
@@ -15,6 +15,22 @@
       `diff ~/.claude/settings.json.skysheet-backup ~/.claude/settings.json` 只差这一行（和上一行末尾的逗号）；
       原来就有 allow 列表的话，点 Disconnect 再 diff，一个字节不差（v0.3.1 起）。
 - [ ] 新开一个 Claude Code 会话，`/mcp` 里能看到 skysheet 和 14 个工具。
+
+## Claude 桌面版的聊天（2026-10-09 加，设计 9.5 节）
+
+> 别在桌面版的 Code 页里做这一节：要退出 Claude，那个会话会一起被关掉。
+
+- [ ] Claude 没开时：设置 → Claude Desktop 那一行「Not connected」→ Connect →「Connected」。
+      `~/Library/Application Support/Claude/claude_desktop_config.json` 末尾多了 `mcpServers.skysheet`，旁边有一份
+      `claude_desktop_config.json.skysheet-backup`；`ls -l` 两个都是 `-rw-------`；和备份 `diff` 只差这几行。
+- [ ] 打开 Claude、新开一个聊天：工具里有 skysheet 的 14 个工具。问「打开 loan.xlsx 的副本，哪笔分期最贵？」：
+      第一次用每个工具会问，选 Always allow；新 sheet 的页签小标写 Claude（写的是别的就记下来，那是桌面版报的客户端名）。
+- [ ] Claude 开着时点 Connect：状态变成「Restart Claude to finish」，提示让你退出再打开。先在 Claude 里开一个 Code 会话
+      （它会写一次配置，把 skysheet 那项冲掉），再 ⌘Q：SkySheet 的提示变成「Connected. Open Claude…」、状态「Connected」，
+      配置里那一项又在了；打开 Claude，skysheet 在。
+- [ ] Claude 开着时点 Disconnect：「Restart Claude to finish」→ ⌘Q Claude →「Disconnected.」；配置里没有 skysheet 了
+      （mcpServers 剩 `{}` 或别的 server），别的字节没动。
+- [ ] 桌面版的 Code 页里 `/mcp`：skysheet 是 Claude Code 那一行连的，和这一行无关。
 
 ## 三类典型问题（M4 的验收）
 
