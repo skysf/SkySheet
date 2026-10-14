@@ -52,6 +52,9 @@
 
 ## 边边角角
 
+- [ ] 问 Claude「SkySheet 是什么版本、什么时候的」（桌面版的聊天和 Claude Code 各问一次）：它调 get_status，当场答出版本号
+      （和「关于 SkySheet」里的一样）和打包那天，不上网搜。
+
 - [ ] 退出 SkySheet 再问 Claude 一个问题：SkySheet 在后台自己打开（没有「打开」面板），Claude 说「刚启动，要重新 open_file」。（已自动测）
 - [ ] 让 Claude 存一份副本（save_copy）到已经有的文件名：它被拒绝、换个名字。（已自动测）
 - [ ] 让 Claude 用 Python 分析（export_sheet 给它一个 csv 路径），结果用 add_sheet from_csv 带回来。

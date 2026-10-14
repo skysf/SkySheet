@@ -61,6 +61,8 @@ rm -f "${APP}/Contents/Resources/Info.plist"
 
 cp packaging/Info.plist "${APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${APP}/Contents/Info.plist"
+# 打包时间：用户问 AI「SkySheet 是什么时候的」，get_status 当场答，不用上网找。
+/usr/libexec/PlistBuddy -c "Set :SkySheetBuildDate $(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APP}/Contents/Info.plist"
 
 echo "==> 生成图标"
 ICON_WORK="$(mktemp -d)"

@@ -35,6 +35,27 @@ func mcpChecks() {
         }
     }
 
+    group("mcp: SkySheet's version and build date") {
+        // 模型看不到握手里的 serverInfo，只能从 get_status 知道版本和打包时间：说明里要提；版本的读法和小程序报
+        // serverInfo 的是同一个。打包时间是 build-app.sh 写进 Info.plist 的，模板里是空的占位。
+        let description = MCPToolName.getStatus.definition.description
+        check(description.contains("version") && description.contains("build date"), "get_status says what it gives")
+        checkEqual(MCPBridge.appVersion(of: nil), "dev", "no bundle: a development build")
+        checkEqual(MCPBridge.appBuildDate(of: nil), nil, "no bundle: no build date")
+        func packaged(_ info: [String: String]) throws -> Bundle? {
+            let app = try makeTemporaryDirectory().appendingPathComponent("Versioned.app")
+            try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+            try PropertyListSerialization.data(fromPropertyList: info.merging(["CFBundleIdentifier": "check.versioned"]) { $1 },
+                                               format: .xml, options: 0)
+                .write(to: app.appendingPathComponent("Contents/Info.plist"))
+            return Bundle(url: app)
+        }
+        let built = try packaged(["CFBundleShortVersionString": "9.8.7", "SkySheetBuildDate": "2026-10-14T05:30:00Z"])
+        checkEqual(MCPBridge.appVersion(of: built), "9.8.7", "the packaged version is read from Info.plist")
+        checkEqual(MCPBridge.appBuildDate(of: built), "2026-10-14T05:30:00Z", "so is the build date")
+        checkEqual(MCPBridge.appBuildDate(of: try packaged(["SkySheetBuildDate": ""])), nil, "the template's empty placeholder")
+    }
+
     guard let helper = helperURL() else {
         group("mcp: helper") { fail("skysheet-mcp is not next to SkySheetChecks; build with swift build first") }
         return
