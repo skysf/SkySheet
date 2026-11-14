@@ -4,9 +4,11 @@ import SkySheetDisplay
 import SkySheetFiles
 
 /// 测速模式（2026-11-14，设计 8.2 节「性能」）：
-/// `SkySheet --benchmark synthetic:data|synthetic:formulas|synthetic:styles|文件.xlsx [--sheet 名字] [--size 1280x800]
-///  [--frames 40] [--benchmark-only scroll|select|edit|resize|switch] [--benchmark-file 存合成表的路径.xlsx]
-///  [--benchmark-json 结果.json]`
+/// `SkySheet --benchmark synthetic:data|synthetic:formulas|synthetic:styles|文件.xlsx [--sheet 名字 | --sheet-index 2]
+///  [--size 1280x800] [--frames 40] [--benchmark-only scroll|select|edit|resize|switch] [--benchmark-scale 0.2]
+///  [--benchmark-file 存合成表的路径.xlsx] [--benchmark-json 结果.json]`
+/// `--benchmark-scale` 把合成的表按比例缩小（0.2 就是 2 万行），调试时跑得快；`--sheet-index` 按第几张（从 1 数）选表，
+/// 不用在命令行里写 sheet 名。
 ///
 /// 把作者说卡的六类动作（打开、滚动、移动选区、改格子、拖列宽行高、换 sheet 和缩放）各做若干帧，打印每类的中位数、
 /// p95、最大值。合成的表先写成 xlsx 再打开：「打开」走的和双击文件是同一条路。
@@ -26,6 +28,8 @@ struct BenchmarkRequest {
 
     let source: Source
     let sheetName: String?
+    let sheetIndex: Int?
+    let scale: Double
     let size: NSSize
     let frames: Int
     /// 合成的表存在哪（留着给截图模式比对用）；不给就写进临时目录，跑完删掉。
@@ -46,6 +50,8 @@ struct BenchmarkRequest {
             source = .file(URL(fileURLWithPath: input))
         }
         sheetName = option("--sheet")
+        sheetIndex = option("--sheet-index").flatMap(Int.init).map { $0 - 1 }
+        scale = option("--benchmark-scale").flatMap(Double.init) ?? 1
         let parts = option("--size")?.split(separator: "x").compactMap { Double($0) } ?? []
         size = parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : NSSize(width: 1280, height: 800)
         frames = option("--frames").flatMap(Int.init) ?? 40
@@ -168,7 +174,7 @@ private final class Benchmark {
             return url
         case .synthetic(let kind):
             let started = ContinuousClock.now
-            let workbook = kind.make()
+            let workbook = kind.make(scale: request.scale)
             let data = try XLSXWriter.write(workbook, source: nil, baseline: nil).data
             let url = request.keepFile ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("SkySheetBenchmark-\(UUID().uuidString).xlsx")
@@ -198,7 +204,7 @@ private final class Benchmark {
         DrawStats.reset()
         DrawStats.tracksDirtyRects = true
         session = SheetSession(workbook: workbook)
-        if let name = request.sheetName, let index = workbook.sheetIndex(named: name) { session.showSheet(index) }
+        if let index = request.sheetIndex ?? request.sheetName.flatMap(workbook.sheetIndex(named:)) { session.showSheet(index) }
         let controller = WorkbookViewController(session: session)
         window = OffscreenWindow.make(controller, size: request.size)
         spreadsheet = controller.spreadsheet
