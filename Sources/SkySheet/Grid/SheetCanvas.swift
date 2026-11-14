@@ -3,6 +3,10 @@ import SkySheetCore
 import SkySheetDisplay
 
 /// 画一张 sheet 要用的东西：几何、样式、字体、合并单元格。换 sheet、改了工作簿、缩放、拖边线时重建一份。
+///
+/// 重建很频繁（拖边线时每动一下都重建），所以和上一份比：格子没变就接着用上一份数出来的用到范围，合并单元格没变就
+/// 接着用上一份的查找表，行列大小的设置没变就接着用上一份排好的那个方向（2026-11-14，设计 8.2 节「性能」）。
+/// 没改过的东西和上一份是同一份存储，`==` 当场就有结果。
 @MainActor
 final class SheetCanvas {
     let sheet: Sheet
@@ -19,17 +23,23 @@ final class SheetCanvas {
     /// 画字用的属性，按（样式编号、颜色、对齐）缓存；缩放一变就是一份新的画布，跟着重建。
     private var textAttributes: [TextStyleKey: TextAttributes] = [:]
 
-    /// `fonts` 由表格视图带着，重建画布时接着用：拖边线时每动一下都要重建。
-    init(session: SheetSession, fonts: FontBook) {
+    /// `fonts` 由表格视图带着，重建画布时接着用：拖边线时每动一下都要重建。`previous` 是上一份画布。
+    init(session: SheetSession, fonts: FontBook, previous: SheetCanvas? = nil) {
+        let sheet = session.displayedSheet
+        let digitWidth = fonts.digitWidth(session.styles.style(0).font)
         self.fonts = fonts
-        sheet = session.displayedSheet
+        self.sheet = sheet
+        self.digitWidth = digitWidth
         styles = session.styles
         dateSystem = session.workbook.dateSystem
         aiTouched = session.aiTouched[session.sheet.id] ?? []
-        digitWidth = fonts.digitWidth(session.styles.style(0).font)
+        let reusable = previous?.sheet.id == sheet.id ? previous : nil
+        let usedRange = if let reusable, reusable.sheet.cells == sheet.cells { reusable.geometry.usedRange }
+                        else { sheet.cells.usedRange }
         geometry = SheetGeometry(sheet: sheet, baseFontSize: session.styles.baseFontSize, digitWidth: digitWidth,
-                                 zoom: session.zoom)
-        mergeIndex = MergeIndex(sheet.merges)
+                                 zoom: session.zoom, usedRange: usedRange, reusing: reusable?.geometry)
+        mergeIndex = if let reusable, reusable.sheet.merges == sheet.merges { reusable.mergeIndex }
+                     else { MergeIndex(sheet.merges) }
     }
 
     var frozenRows: Int { min(sheet.frozen?.rows ?? 0, geometry.rowCount) }
@@ -133,13 +143,18 @@ final class FontBook {
     }
 
     private var cache: [Key: NSFont] = [:]
+    /// 每种默认字体量出来的数字宽度：重建画布时不用再量十个数字。
+    private var digitWidths: [ResolvedFont: Double] = [:]
 
     /// 默认字体（100% 缩放）里数字的最大宽度：Excel 的列宽单位（SheetGeometry 的说明）。
     /// 不取整：苹方 13.3 点的数字宽 8.16，舍成 8 的话列窄了 2%，「150234.55」就放不下了（2026-10-08 截图）。
     func digitWidth(_ font: ResolvedFont) -> Double {
+        if let known = digitWidths[font] { return known }
         let probe = self.font(font, points: font.size * SheetGeometry.pixelsPerPoint)
         let widths = "0123456789".map { (String($0) as NSString).size(withAttributes: [.font: probe]).width }
-        return widths.max() ?? 7
+        let width = widths.max() ?? 7
+        digitWidths[font] = width
+        return width
     }
 
     /// 一段文字按这个样式（100% 缩放）画出来多宽。

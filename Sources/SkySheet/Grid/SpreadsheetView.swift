@@ -123,7 +123,7 @@ final class SpreadsheetView: NSView {
 
     private func rebuildCanvas() {
         DrawStats.canvasBuilds += 1
-        canvas = SheetCanvas(session: session, fonts: fonts)
+        canvas = SheetCanvas(session: session, fonts: fonts, previous: canvas)
         needsLayout = true
         if canvasKey?.sheet != session.sheet.id || canvasKey?.zoom != session.zoom { needsInitialScroll = true }
         canvasKey = (session.sheet.id, session.zoom)
