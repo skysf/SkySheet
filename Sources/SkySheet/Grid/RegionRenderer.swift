@@ -4,6 +4,12 @@ import SkySheetDisplay
 
 /// 画 sheet 的一块（若干行 × 若干列）。坐标是 sheet 坐标：调用方已经把画布平移好了。
 /// 顺序和 Excel 一样：底色 → 网格线 → 填充（盖住网格线）→ 文字 → 边框 → 选区。合并单元格按一整块画。
+///
+/// 画一帧要过几百上千个格子，这里的写法照顾速度（2026-11-14，设计 8.2 节「性能」），画出来的和原来一模一样：
+/// - 每一行看得见的格子只取一次（SparseGrid.entries(inRow:columns:)），三遍（填充、文字、边框）共用；
+/// - 合并单元格查 MergeIndex，不再每格把整张表的合并单元格过一遍；
+/// - 循环里不把闭包交给别的模块的函数：主线程上的闭包，Swift 6 每调一次都要核对一遍是不是在主线程上，
+///   几千个格子下来比画字还贵（2026-11-14 实测）。要传闭包的放到 nonisolated 的静态函数里。
 @MainActor
 struct RegionRenderer {
     let canvas: SheetCanvas
@@ -20,12 +26,17 @@ struct RegionRenderer {
         NSColor.white.setFill()
         clip.fill()
         guard !rows.isEmpty, !columns.isEmpty else { return }
-        let merges = canvas.sheet.merges.filter { canvas.rect(of: $0).intersects(clip) }
+        let merges = canvas.merges(intersecting: clip)
+        var lines: [[(column: Int, value: Cell)]] = []
+        lines.reserveCapacity(rows.count)
+        for row in rows {
+            lines.append(canvas.sheet.cells.entries(inRow: row, columns: columns))
+        }
         drawGridLines()
-        drawFills(merges)
+        drawFills(lines, merges)
         drawAITouched()
         drawText(merges)
-        drawBorders(merges)
+        drawBorders(lines, merges)
         if let selection { drawSelection(selection) }
     }
 
@@ -53,12 +64,12 @@ struct RegionRenderer {
     }
 
     /// 有填充的格子盖住自己四周的网格线（和 Excel 一样）；合并单元格整块填（没填充就填白，盖掉里面的网格线）。
-    private func drawFills(_ merges: [CellRange]) {
-        for row in rows {
-            for (column, cell) in canvas.sheet.cells.row(row) where columns.contains(column) {
+    private func drawFills(_ lines: [[(column: Int, value: Cell)]], _ merges: [CellRange]) {
+        for (offset, line) in lines.enumerated() {
+            let row = rows.lowerBound + offset
+            for (column, cell) in line {
                 let address = CellAddress(row: row, column: column)
-                guard let fill = canvas.styles.style(cell.styleIndex).fill,
-                      !merges.contains(where: { $0.contains(address) }) else { continue }
+                guard let fill = canvas.styles.style(cell.styleIndex).fill, !Self.contains(merges, address) else { continue }
                 NSColor(fill).setFill()
                 canvas.rect(of: CellRange(address)).insetBy(dx: -0.5, dy: -0.5).fill()
             }
@@ -85,7 +96,7 @@ struct RegionRenderer {
         // 看得见的列左右各多看 32 列：左边格子里的长文字可能溢进来，右对齐的也可能从右边溢进来。
         let scan = max(paneColumns.lowerBound, columns.lowerBound - 32)..<min(paneColumns.upperBound, columns.upperBound + 32)
         for row in rows {
-            for (column, cell) in canvas.sheet.cells.row(row) where scan.contains(column) {
+            for (column, cell) in canvas.sheet.cells.entries(inRow: row, columns: scan) {
                 let address = CellAddress(row: row, column: column)
                 guard canvas.merge(containing: address) == nil else { continue }
                 draw(cell, at: address, in: canvas.rect(of: CellRange(address)), canOverflow: true)
@@ -112,11 +123,9 @@ struct RegionRenderer {
         let size = (text as NSString).size(withAttributes: attributes)
         var area = rect
         if canOverflow, content.kind == .text, size.width > rect.width - 2 * padding {
-            let span = CellDisplay.overflowColumns(
-                column: address.column, textWidth: size.width + 2 * padding, placement: content.placement,
-                columnWidth: { geometry.columnWidth($0) },
-                isEmpty: { paneColumns.contains($0) && canvas.isEmpty(row: address.row, column: $0) },
-                columnCount: paneColumns.upperBound)
+            let span = Self.overflowSpan(column: address.column, row: address.row, textWidth: size.width + 2 * padding,
+                                         placement: content.placement, geometry: geometry, cells: canvas.sheet.cells,
+                                         merges: canvas.mergeIndex, paneColumns: paneColumns)
             area = canvas.rect(of: CellRange(CellAddress(row: address.row, column: span.lowerBound),
                                              CellAddress(row: address.row, column: span.upperBound)))
         }
@@ -173,14 +182,31 @@ struct RegionRenderer {
         return attributes
     }
 
+    /// 文字往旁边空格子溢出能占到哪几列（CellDisplay.overflowColumns）。闭包在这里（nonisolated）建，不带主线程检查。
+    private nonisolated static func overflowSpan(column: Int, row: Int, textWidth: Double, placement: HorizontalPlacement,
+                                                geometry: SheetGeometry, cells: SparseGrid<Cell>, merges: MergeIndex,
+                                                paneColumns: Range<Int>) -> ClosedRange<Int> {
+        CellDisplay.overflowColumns(
+            column: column, textWidth: textWidth, placement: placement,
+            columnWidth: { geometry.columnWidth($0) },
+            isEmpty: { neighbour in
+                guard paneColumns.contains(neighbour) else { return false }
+                let address = CellAddress(row: row, column: neighbour)
+                if let cell = cells[address], cell.value != .empty { return false }
+                return merges.merge(containing: address) == nil
+            },
+            columnCount: paneColumns.upperBound)
+    }
+
     // MARK: - 边框和选区
 
     /// 每个格子画自己的四条边；合并单元格用左上角那一格的样式画整块的外框，里面的格子不画。
-    private func drawBorders(_ merges: [CellRange]) {
-        for row in rows {
-            for (column, cell) in canvas.sheet.cells.row(row) where columns.contains(column) {
+    private func drawBorders(_ lines: [[(column: Int, value: Cell)]], _ merges: [CellRange]) {
+        for (offset, line) in lines.enumerated() {
+            let row = rows.lowerBound + offset
+            for (column, cell) in line {
                 let address = CellAddress(row: row, column: column)
-                if let merge = merges.first(where: { $0.contains(address) }) {
+                if let merge = Self.first(merges, containing: address) {
                     if merge.start == address { strokeEdges(canvas.styles.style(cell.styleIndex), canvas.rect(of: merge)) }
                     continue
                 }
@@ -190,25 +216,26 @@ struct RegionRenderer {
     }
 
     private func strokeEdges(_ style: ResolvedStyle, _ rect: CGRect) {
-        let edges: [(ResolvedEdge?, CGPoint, CGPoint)] = [
-            (style.left, CGPoint(x: rect.minX - 0.5, y: rect.minY), CGPoint(x: rect.minX - 0.5, y: rect.maxY)),
-            (style.right, CGPoint(x: rect.maxX - 0.5, y: rect.minY), CGPoint(x: rect.maxX - 0.5, y: rect.maxY)),
-            (style.top, CGPoint(x: rect.minX, y: rect.minY - 0.5), CGPoint(x: rect.maxX, y: rect.minY - 0.5)),
-            (style.bottom, CGPoint(x: rect.minX, y: rect.maxY - 0.5), CGPoint(x: rect.maxX, y: rect.maxY - 0.5)),
-        ]
-        for case let (edge?, from, to) in edges {
-            let path = NSBezierPath()
-            path.move(to: from)
-            path.line(to: to)
-            path.lineWidth = max(1, edge.width * geometry.zoom)
-            switch edge.pattern {
-            case .dashed: path.setLineDash([3, 2], count: 2, phase: 0)
-            case .dotted: path.setLineDash([1, 1], count: 2, phase: 0)
-            case .solid, .double: break
-            }
-            NSColor(edge.color).setStroke()
-            path.stroke()
+        guard style.left != nil || style.right != nil || style.top != nil || style.bottom != nil else { return }
+        stroke(style.left, from: CGPoint(x: rect.minX - 0.5, y: rect.minY), to: CGPoint(x: rect.minX - 0.5, y: rect.maxY))
+        stroke(style.right, from: CGPoint(x: rect.maxX - 0.5, y: rect.minY), to: CGPoint(x: rect.maxX - 0.5, y: rect.maxY))
+        stroke(style.top, from: CGPoint(x: rect.minX, y: rect.minY - 0.5), to: CGPoint(x: rect.maxX, y: rect.minY - 0.5))
+        stroke(style.bottom, from: CGPoint(x: rect.minX, y: rect.maxY - 0.5), to: CGPoint(x: rect.maxX, y: rect.maxY - 0.5))
+    }
+
+    private func stroke(_ edge: ResolvedEdge?, from: CGPoint, to: CGPoint) {
+        guard let edge else { return }
+        let path = NSBezierPath()
+        path.move(to: from)
+        path.line(to: to)
+        path.lineWidth = max(1, edge.width * geometry.zoom)
+        switch edge.pattern {
+        case .dashed: path.setLineDash([3, 2], count: 2, phase: 0)
+        case .dotted: path.setLineDash([1, 1], count: 2, phase: 0)
+        case .solid, .double: break
         }
+        NSColor(edge.color).setStroke()
+        path.stroke()
     }
 
     private func drawSelection(_ selection: Selection) {
@@ -224,5 +251,16 @@ struct RegionRenderer {
         outline.lineWidth = 2
         NSColor.controlAccentColor.setStroke()
         outline.stroke()
+    }
+
+    // MARK: - 小工具（不用闭包，见类型说明）
+
+    private static func contains(_ merges: [CellRange], _ address: CellAddress) -> Bool {
+        first(merges, containing: address) != nil
+    }
+
+    private static func first(_ merges: [CellRange], containing address: CellAddress) -> CellRange? {
+        for merge in merges where merge.contains(address) { return merge }
+        return nil
     }
 }

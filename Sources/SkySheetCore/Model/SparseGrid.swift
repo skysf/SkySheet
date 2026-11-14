@@ -39,6 +39,28 @@ public struct SparseGrid<Value: Sendable>: Sendable {
         (rows[index] ?? [:]).sorted { $0.key < $1.key }.map { (column: $0.key, value: $0.value) }
     }
 
+    /// 一行里落在 `columns` 里的格子，从左到右；和 `row(_:)` 再按列筛一遍的结果一样，但不把整行连值一起排序。
+    /// 画表格每一帧对每一行都要这么取：整行（值是带文字的 Cell）排一次序曾经占了一帧的四成（2026-11-14 实测）。
+    /// 看的列比这一行的格子少，就按列一格一格查；否则只把这一段的列号排序。
+    /// 返回数组而不是收一个闭包：主线程上的代码传进来的闭包，Swift 6 每调一次都要核对一遍是不是在主线程上，画的时候很贵。
+    public func entries(inRow index: Int, columns: Range<Int>) -> [(column: Int, value: Value)] {
+        guard let line = rows[index], !columns.isEmpty else { return [] }
+        var result: [(column: Int, value: Value)] = []
+        if columns.count <= line.count {
+            for column in columns {
+                if let value = line[column] { result.append((column, value)) }
+            }
+        } else {
+            var keys: [Int] = []
+            keys.reserveCapacity(line.count)
+            for column in line.keys where columns.contains(column) { keys.append(column) }
+            keys.sort()
+            result.reserveCapacity(keys.count)
+            for column in keys { result.append((column, line[column]!)) }
+        }
+        return result
+    }
+
     /// 按行优先的顺序遍历所有格子。
     public func forEach(_ body: (CellAddress, Value) throws -> Void) rethrows {
         for rowIndex in rowIndices {

@@ -14,6 +14,8 @@ final class SheetCanvas {
     let digitWidth: Double
     /// 这一轮 AI 改过的格子：淡紫色高亮（设计 8.3 节）。
     let aiTouched: Set<CellAddress>
+    /// 合并单元格的查找表：画的时候每格都要问一次（MergeIndex 的说明）。
+    let mergeIndex: MergeIndex
 
     /// `fonts` 由表格视图带着，重建画布时接着用：拖边线时每动一下都要重建。
     init(session: SheetSession, fonts: FontBook) {
@@ -25,6 +27,7 @@ final class SheetCanvas {
         digitWidth = fonts.digitWidth(session.styles.style(0).font)
         geometry = SheetGeometry(sheet: sheet, baseFontSize: session.styles.baseFontSize, digitWidth: digitWidth,
                                  zoom: session.zoom)
+        mergeIndex = MergeIndex(sheet.merges)
     }
 
     var frozenRows: Int { min(sheet.frozen?.rows ?? 0, geometry.rowCount) }
@@ -41,7 +44,18 @@ final class SheetCanvas {
     }
 
     func merge(containing address: CellAddress) -> CellRange? {
-        sheet.merges.first { $0.contains(address) }
+        mergeIndex.merge(containing: address)
+    }
+
+    /// 和 `clip`（sheet 坐标）有重叠的合并单元格，按 sheet 里原来的顺序。
+    func merges(intersecting clip: CGRect) -> [CellRange] {
+        guard !mergeIndex.isEmpty else { return [] }
+        var result: [CellRange] = []
+        let rows = geometry.row(atY: clip.minY)...geometry.row(atY: clip.maxY)
+        for merge in mergeIndex.merges(touchingRows: rows) where rect(of: merge).intersects(clip) {
+            result.append(merge)
+        }
+        return result
     }
 
     /// 文字溢出时，旁边的格子算不算空：没有值、也不在合并单元格里。
