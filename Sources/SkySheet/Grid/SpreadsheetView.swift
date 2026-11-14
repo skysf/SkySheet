@@ -186,19 +186,19 @@ final class SpreadsheetView: NSView {
         scrollToCursor()
     }
 
-    /// 选区变了要重画哪里（2026-11-14，设计 8.2 节「性能」）。原来四块窗格整块重画：按一下方向键就把一屏的字全画一遍，
-    /// 小表一帧也要 30 毫秒。现在只标脏旧选区、新选区各自经过的那几行（再往外让出选区框和抗锯齿画出界的那一点），每块窗格里
-    /// 横着整条。行号列标还是整条重画，便宜。局部重画和整块重画画出来的一模一样（RegionRenderer 的说明），
+    /// 选区变了要重画哪里（2026-11-14，设计 8.2 节「性能」）。原来四块窗格、行号列标整块重画：按一下方向键就把一屏的字
+    /// 全画一遍，小表一帧也要 30 毫秒。现在只标脏旧选区、新选区各自经过的那几行（再往外让出选区框和抗锯齿画出界的那一点），
+    /// 每块窗格里横着整条；行号列标只重画选中过的那几条。局部重画和整块重画画出来的一模一样（RegionRenderer 的说明），
     /// 由测速模式的 verify 核对（BenchmarkVerify）。
     private func invalidateSelection(from old: Selection?, to new: Selection) {
-        columnHeader.needsDisplay = true
-        rowHeader.needsDisplay = true
         let panes = [cornerPane, frozenRowsPane, frozenColumnsPane, mainPane]
         guard let canvas, let old else {
-            for pane in panes { pane.needsDisplay = true }
+            for view in panes + [columnHeader, rowHeader] as [NSView] { view.needsDisplay = true }
             return
         }
         for selection in [old, new] {
+            columnHeader.setNeedsDisplay(lines: selection.lines(.columns))
+            rowHeader.setNeedsDisplay(lines: selection.lines(.rows))
             let cursor = canvas.rect(of: canvas.merge(containing: selection.cursor) ?? CellRange(selection.cursor))
             let area = canvas.rect(of: selection.range).union(cursor)
             let spill = canvas.geometry.spill
