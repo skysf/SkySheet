@@ -15,12 +15,14 @@ public struct DecimalSum: Sendable {
     public private(set) var needsFallback = false
 
     static let scale = 18
-    /// 尾数的上限：|和| × 10¹⁸ 不能超过它（10³⁸ < 2¹²⁸，Decimal 的尾数放得下）。
-    static let limit: Int128 = {
-        var value: Int128 = 1
-        for _ in 0..<38 { value *= 10 }
-        return value
+    /// 10 的 0…38 次方。
+    static let powers: [UInt128] = {
+        var values: [UInt128] = [1]
+        for _ in 0..<38 { values.append(values.last! * 10) }
+        return values
     }()
+    /// 尾数的上限：|和| × 10¹⁸ 不能超过它（10³⁸ < 2¹²⁸，Decimal 的尾数放得下）。
+    static let limit = Int128(powers[38])
 
     public init() {}
 
@@ -82,9 +84,10 @@ public struct DecimalSum: Sendable {
             magnitude /= 10
             shift += 1
         }
-        for _ in 0..<shift {
-            let (product, overflow) = magnitude.multipliedReportingOverflow(by: 10)
-            guard !overflow, product < UInt128(limit) else { return nil }
+        if shift > 0 {
+            guard shift < powers.count else { return nil }
+            let (product, overflow) = magnitude.multipliedReportingOverflow(by: powers[shift])
+            guard !overflow else { return nil }
             magnitude = product
         }
         guard magnitude < UInt128(limit) else { return nil }

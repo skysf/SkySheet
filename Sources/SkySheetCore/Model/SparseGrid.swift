@@ -3,7 +3,9 @@ import Foundation
 /// 稀疏的二维存储：只存有东西的格子（行 → 列 → 值）。
 /// 单元格、AI 这一轮改过的高亮……凡是「按格子记点什么」的都用它，不各写一份（设计第四节）。
 public struct SparseGrid<Value: Sendable>: Sendable {
-    private var rows: [Int: [Int: Value]] = [:]
+    /// `@usableFromInline`：几个热循环（`forEachUnordered(in:)`）标了 @inlinable，要在调用的模块里按具体类型展开，
+    /// 不然跨模块调泛型函数每格都要查一遍类型信息（2026-11-14 实测全选时占了合计的大半）。
+    @usableFromInline var rows: [Int: [Int: Value]] = [:]
     public private(set) var count = 0
 
     public init() {}
@@ -85,6 +87,37 @@ public struct SparseGrid<Value: Sendable>: Sendable {
         var result: [(address: CellAddress, value: Value)] = []
         forEach(in: range) { address, value in result.append((address, value)) }
         return result
+    }
+
+    /// 区域里有东西的格子，顺序不定（和 `forEach(in:)` 是同一批）。区域比表小就按区域的行列查，否则直接走存储、不排序：
+    /// 全选十万行的表求合计、计数时，排序和跨模块的泛型开销曾经占了一大半（2026-11-14）。
+    @inlinable
+    public func forEachUnordered(in range: CellRange, _ body: (CellAddress, Value) throws -> Void) rethrows {
+        let rowSpan = range.start.row...range.end.row
+        let columnSpan = range.start.column...range.end.column
+        if rowSpan.count < rows.count {
+            for row in rowSpan {
+                if let line = rows[row] { try Self.visit(line, row: row, columns: columnSpan, body) }
+            }
+        } else {
+            for (row, line) in rows where rowSpan.contains(row) {
+                try Self.visit(line, row: row, columns: columnSpan, body)
+            }
+        }
+    }
+
+    @inlinable
+    static func visit(_ line: [Int: Value], row: Int, columns: ClosedRange<Int>,
+                      _ body: (CellAddress, Value) throws -> Void) rethrows {
+        if columns.count < line.count {
+            for column in columns {
+                if let value = line[column] { try body(CellAddress(row: row, column: column), value) }
+            }
+        } else {
+            for (column, value) in line where columns.contains(column) {
+                try body(CellAddress(row: row, column: column), value)
+            }
+        }
     }
 
     /// 和 `entries(in:)` 一样的顺序挨个交给 `body`，不先攒成数组：全选十万行的表时，攒数组本身就要几百毫秒
