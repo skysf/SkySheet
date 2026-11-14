@@ -123,9 +123,19 @@ final class SpreadsheetView: NSView {
 
     // MARK: - 排布
 
+    /// 最近看过的几张表的画布（按 sheet 编号）：换回来时接着用它数好的用到范围、排好的行列、合并单元格查找表、记下的
+    /// 显示文字（SheetCanvas 会拿内容比过才用）。十万行的表换回来不用再把所有格子数一遍（2026-11-14）。
+    private var recentCanvases: [Int: SheetCanvas] = [:]
+
     private func rebuildCanvas() {
         DrawStats.canvasBuilds += 1
-        canvas = SheetCanvas(session: session, fonts: fonts, previous: canvas)
+        if let canvas { recentCanvases[canvas.sheet.id] = canvas }
+        let sheetIDs = Set(session.workbook.sheets.map(\.id))
+        recentCanvases = recentCanvases.filter { sheetIDs.contains($0.key) }
+        if recentCanvases.count > 8, let oldest = recentCanvases.keys.first(where: { $0 != session.sheet.id }) {
+            recentCanvases[oldest] = nil
+        }
+        canvas = SheetCanvas(session: session, fonts: fonts, previous: recentCanvases[session.sheet.id])
         needsLayout = true
         if canvasKey?.sheet != session.sheet.id || canvasKey?.zoom != session.zoom { needsInitialScroll = true }
         canvasKey = (session.sheet.id, session.zoom)
