@@ -288,7 +288,7 @@ private final class Benchmark {
         }
         var all: [FrameSample] = []
         var single: [FrameSample] = []
-        for _ in 0..<Swift.min(request.frames, 8) {
+        for _ in 0..<limited(8) {
             all.append(await frame { session.selectAll() })
             single.append(await frame { session.select(start) })
         }
@@ -301,7 +301,7 @@ private final class Benchmark {
         await idle { session.select(target) }
         let original = session.rawText(at: target)
         // 打字那几帧不算：从按回车（提交）量起，到重算、重画完。
-        await measure("edit a cell + commit", frames: Swift.min(request.frames, 12), prepare: { [session] index in
+        await measure("edit a cell + commit", frames: limited(12), prepare: { [session] index in
             session?.editing = CellEditing(address: target, text: String(100 + index), origin: .typing)
         }) { _ in
             session.commitEditing()
@@ -330,7 +330,7 @@ private final class Benchmark {
         if let other = session.tabIndices.first(where: { $0 != measured }) {
             var away: [FrameSample] = []
             var back: [FrameSample] = []
-            for _ in 0..<Swift.min(request.frames, 10) {
+            for _ in 0..<limited(10) {
                 away.append(await frame { session.showSheet(other) })
                 back.append(await frame { session.showSheet(measured) })
             }
@@ -343,6 +343,11 @@ private final class Benchmark {
     }
 
     // MARK: - 量
+
+    /// 慢的几类（全选、改格子、换 sheet）平时少做几帧；只量这一类（--benchmark-only，给 sample 采样）时照 --frames 做。
+    private func limited(_ frames: Int) -> Int {
+        request.only == nil ? Swift.min(request.frames, frames) : request.frames
+    }
 
     /// 选区、编辑从这里开始：冻结区右下的第一格。
     private var firstBodyCell: CellAddress {
