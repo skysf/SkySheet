@@ -36,6 +36,12 @@ class PaneView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
+    /// 测速模式要知道哪里标了脏（DrawStats）。
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        DrawStats.invalidated(self, invalidRect)
+    }
+
     /// 右键菜单由表格视图统一给（点在哪一格它来算）。
     override func menu(for event: NSEvent) -> NSMenu? {
         spreadsheet?.menu(for: event)
@@ -47,6 +53,8 @@ class PaneView: NSView {
         }
         let dirtyRect = dirtyRect.intersection(self.bounds)
         guard !dirtyRect.isEmpty else { return }
+        DrawStats.paneDraws += 1
+        DrawStats.paneArea += dirtyRect.width * dirtyRect.height
         let bounds = spreadsheet.cellRanges(for: role)
         let sheetRect = dirtyRect.offsetBy(dx: origin.x, dy: origin.y)
         let geometry = canvas.geometry

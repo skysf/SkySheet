@@ -44,6 +44,12 @@ final class HeaderView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
+    /// 测速模式要知道哪里标了脏（DrawStats）。
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        DrawStats.invalidated(self, invalidRect)
+    }
+
     // MARK: - 排布
 
     /// 一条看得见的行（列）：序号、在这块视图里从哪开始、多大（藏起来的是 0）。
@@ -114,6 +120,7 @@ final class HeaderView: NSView {
     // MARK: - 画
 
     override func draw(_ dirtyRect: NSRect) {
+        DrawStats.headerDraws += 1
         NSColor(white: 0.965, alpha: 1).setFill()
         bounds.fill()
         guard let spreadsheet, let canvas = spreadsheet.canvas else { return }

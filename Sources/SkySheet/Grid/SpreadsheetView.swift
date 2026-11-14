@@ -122,6 +122,7 @@ final class SpreadsheetView: NSView {
     // MARK: - 排布
 
     private func rebuildCanvas() {
+        DrawStats.canvasBuilds += 1
         canvas = SheetCanvas(session: session, fonts: fonts)
         needsLayout = true
         if canvasKey?.sheet != session.sheet.id || canvasKey?.zoom != session.zoom { needsInitialScroll = true }
@@ -218,6 +219,12 @@ final class SpreadsheetView: NSView {
 @MainActor
 final class CornerBox: NSView {
     weak var spreadsheet: SpreadsheetView?
+
+    /// 测速模式要知道哪里标了脏（DrawStats）。
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        DrawStats.invalidated(self, invalidRect)
+    }
 
     override func draw(_ dirtyRect: NSRect) {
         NSColor(white: 0.93, alpha: 1).setFill()

@@ -4,7 +4,8 @@ import SkySheetCore
 /// 截图模式：`SkySheet --snapshot-input 文件.xlsx --snapshot-output 输出.png [--sheet 名字] [--size 1280x800] [--select K60]`。
 /// `--select` 选中一格或一块（A1 写法），表格会滚过去：用来看滚动以后冻结窗格、行号列标对不对；也可以是整列（C:E）、
 /// 整行（3:5），看列标行号选中的样子。
-/// 在屏幕外开一个窗口，把整个窗口画成 PNG 就退出。开发时用来核对显示（不用录屏权限），也方便以后给 AI 看表格的样子。
+/// 建一个不放上屏幕的窗口（OffscreenWindow），把整个窗口画成 PNG 就退出。开发时用来核对显示（不用录屏权限），
+/// 也方便以后给 AI 看表格的样子。2026-11-14 以前是把窗口放在屏幕外很远的地方再 orderFront，现在连放都不放。
 ///
 /// 参数全都带「-」：AppKit 会把命令行里不带「-」的参数当成要打开的文件。打包好的 App 认得文档类型，
 /// 打不开 .png 就弹一个模态的错误框，截图模式就卡死在那里（2026-10-08 实测；debug 版不是 .app，没有这个问题）。
@@ -42,17 +43,10 @@ enum SnapshotRenderer {
                 session.select(range)
             }
             let controller = WorkbookViewController(session: session)
-            let window = NSWindow(contentRect: NSRect(origin: NSPoint(x: -30_000, y: -30_000), size: request.size),
-                                  styleMask: [.titled], backing: .buffered, defer: false)
-            window.contentViewController = controller
-            window.setContentSize(request.size)
-            window.orderFrontRegardless()
-            // 让 SwiftUI 和自动布局排完、画完。
-            RunLoop.current.run(until: Date().addingTimeInterval(0.6))
-            guard let view = window.contentView, let bitmap = view.bitmapImageRepForCachingDisplay(in: view.bounds) else {
-                throw CocoaError(.fileWriteUnknown)
-            }
-            view.cacheDisplay(in: view.bounds, to: bitmap)
+            // 窗口不放上屏幕（OffscreenWindow）：等 SwiftUI 和自动布局排完，直接画进位图。
+            let window = OffscreenWindow.make(controller, size: request.size)
+            OffscreenWindow.settle(window, for: 0.6)
+            guard let bitmap = OffscreenWindow.render(window) else { throw CocoaError(.fileWriteUnknown) }
             guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
             try png.write(to: request.output)
             print("snapshot written to \(request.output.path)")
