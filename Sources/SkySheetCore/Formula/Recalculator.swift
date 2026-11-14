@@ -21,12 +21,43 @@ public struct RecalcOptions: Sendable {
 /// 一个窗口一份（SheetSession 带着），读文件时那一次重算也用它，打开后第一次编辑就不用再排。
 public final class RecalcCache: Sendable {
     private let state = Mutex<(layout: FormulaLayout, plan: RecalcPlan)?>(nil)
+    /// 每张表（按编号）上一次看到的格子和里面的公式：下一次只看改过的行（SparseGrid.rowsDiffering），
+    /// 十万行的表改一格不用再把两百万个格子走一遍找公式。
+    private let sheets = Mutex<[Int: (cells: SparseGrid<Cell>, formulas: FormulaLayout.SheetFormulas)]>([:])
     private let builds = Mutex(0)
+    private let scans = Mutex(0)
 
     public init() {}
 
     /// 一共从头排过几次计划（自检数它：只改值的编辑不该再排）。
     var planBuilds: Int { builds.withLock { $0 } }
+    /// 一共整张表从头找过几次公式（自检数它：编辑以后只看改过的行）。
+    var fullScans: Int { scans.withLock { $0 } }
+
+    /// 工作簿里的公式：上一次见过的表只看改过的行，结果和整本从头找一样。
+    func layout(for workbook: Workbook) -> FormulaLayout {
+        let known = sheets.withLock { $0 }
+        var next: [Int: (cells: SparseGrid<Cell>, formulas: FormulaLayout.SheetFormulas)] = [:]
+        var perSheet: [FormulaLayout.SheetFormulas] = []
+        for sheet in workbook.sheets {
+            var formulas: FormulaLayout.SheetFormulas
+            if let previous = known[sheet.id] {
+                formulas = previous.formulas
+                if previous.cells != sheet.cells {
+                    for row in sheet.cells.rowsDiffering(from: previous.cells) {
+                        formulas[row] = FormulaLayout.formulas(inRow: row, of: sheet.cells)
+                    }
+                }
+            } else {
+                formulas = FormulaLayout.formulas(in: sheet.cells)
+                scans.withLock { $0 += 1 }
+            }
+            next[sheet.id] = (sheet.cells, formulas)
+            perSheet.append(formulas)
+        }
+        sheets.withLock { $0 = next }
+        return FormulaLayout(workbook, sheets: perSheet)
+    }
 
     /// 这个工作簿的计划：公式和上一次一样就用上一次的，否则排一份新的记下来。
     func plan(for workbook: Workbook, layout: FormulaLayout) -> RecalcPlan {
@@ -50,7 +81,7 @@ public struct RecalcReport: Sendable {
 public enum Recalculator {
     @discardableResult
     public static func recalculate(_ workbook: inout Workbook, options: RecalcOptions = RecalcOptions()) -> RecalcReport {
-        let layout = FormulaLayout(workbook)
+        let layout = options.cache?.layout(for: workbook) ?? FormulaLayout(workbook)
         let plan = options.cache?.plan(for: workbook, layout: layout) ?? RecalcPlan(layout: layout, workbook: workbook)
         let today = options.today ?? CivilDate.today()
         let state = RecalcState(workbook: workbook, todaySerial: DateSerial.serial(from: today, system: workbook.dateSystem))

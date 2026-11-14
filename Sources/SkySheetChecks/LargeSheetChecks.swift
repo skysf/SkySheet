@@ -111,6 +111,22 @@ func largeSheetChecks() {
                       "row \(row) columns \(columns)")
             }
         }
+        // 改过几格以后：只看改过的行，算出来的用到范围和从头数一样（改到边上的、删掉边上的都试）。
+        for step in 0..<400 {
+            var changed = grid
+            for _ in 0..<(1 + random.next(4)) {
+                let row = random.next(45), column = random.next(320)
+                changed[row, column] = random.next(3) == 0 ? nil : step
+            }
+            if step % 7 == 0, let used = grid.usedRange { changed[used.end.row, used.start.column] = nil }
+            let rows = changed.rowsDiffering(from: grid)
+            check(Set(rows) == Set((0..<50).filter { changed.row($0).map(\.column) != grid.row($0).map(\.column)
+                                                       || changed.row($0).map(\.value) != grid.row($0).map(\.value) }),
+                  "changed rows found (step \(step))")
+            checkEqual(changed.usedRange(previous: grid.usedRange, of: grid, changedRows: rows), changed.usedRange,
+                       "used range after edits (step \(step))")
+            grid = changed
+        }
         var unordered: [CellAddress: Int] = [:]
         grid.forEachUnordered { address, value in unordered[address] = value }
         var ordered: [CellAddress: Int] = [:]
@@ -172,12 +188,17 @@ func largeSheetChecks() {
             check(workbook == fresh, "value edit \(step): same results as recalculating from scratch")
         }
         checkEqual(cache.planBuilds, 1, "value edits keep the plan")
+        checkEqual(cache.fullScans, 2, "after the first look, edits only look at the rows they changed")
+        checkEqual(cache.layout(for: workbook), FormulaLayout(workbook), "formulas found from the changed rows")
         workbook.sheets[0].cells[CellAddress(a1: "D7")!] = Cell(formula: CellFormula(source: "$H$2*2"))
         var fresh = workbook
         Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday, cache: cache))
         Recalculator.recalculate(&fresh, options: RecalcOptions(today: checkToday))
         check(workbook == fresh, "formula edit: same results as recalculating from scratch")
         checkEqual(cache.planBuilds, 2, "a changed formula builds a new plan")
+        workbook.sheets[0].cells[CellAddress(a1: "D9")!] = nil
+        workbook.sheets[0].cells[CellAddress(a1: "Q3")!] = Cell(formula: CellFormula(source: "SUM(F1:F9)"))
+        checkEqual(cache.layout(for: workbook), FormulaLayout(workbook), "formulas found after removing and adding some")
         workbook.sheets[0].name = "Plan"
         Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday, cache: cache))
         checkEqual(cache.planBuilds, 3, "renaming a sheet builds a new plan (references go by name)")

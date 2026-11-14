@@ -106,6 +106,43 @@ public struct SparseGrid<Value: Sendable>: Sendable {
         }
     }
 
+    /// 和 `other`（同一张表的上一版）比，内容不一样的行（只在一边有的也算），顺序不定。
+    /// 没改过的行两边是同一份存储，比的时候当场有结果：十万行的表整张比一遍也只是每行查一次（2026-11-14，编辑以后
+    /// 只看改过的行，不再把两百万个格子从头走一遍）。
+    public func rowsDiffering(from other: SparseGrid) -> [Int] where Value: Equatable {
+        var changed: [Int] = []
+        for (row, line) in rows where other.rows[row] != line { changed.append(row) }
+        for row in other.rows.keys where rows[row] == nil { changed.append(row) }
+        return changed
+    }
+
+    /// 一行里的格子，顺序不定。
+    public func forEach(inRowUnordered row: Int, _ body: (Int, Value) throws -> Void) rethrows {
+        guard let line = rows[row] else { return }
+        for (column, value) in line { try body(column, value) }
+    }
+
+    /// 已知上一版 `other` 用到的范围是 `previous`、两版只有 `changedRows` 这几行不一样，算这一版用到的范围：
+    /// 改过的行原来都不在边上（不在最上最下那一行、没有格子在最左最右那一列）时，只把改过的行并进去；否则从头数。
+    /// 结果和 `usedRange` 一样。
+    public func usedRange(previous: CellRange?, of other: SparseGrid, changedRows: [Int]) -> CellRange? {
+        guard let previous else { return usedRange }
+        var top = previous.start.row, bottom = previous.end.row
+        var left = previous.start.column, right = previous.end.column
+        for row in changedRows {
+            if row == top || row == bottom { return usedRange }
+            if let old = other.rows[row], old.keys.contains(where: { $0 == left || $0 == right }) { return usedRange }
+            guard let line = rows[row], !line.isEmpty else { continue }
+            top = min(top, row)
+            bottom = max(bottom, row)
+            for column in line.keys {
+                left = min(left, column)
+                right = max(right, column)
+            }
+        }
+        return CellRange(CellAddress(row: top, column: left), CellAddress(row: bottom, column: right))
+    }
+
     /// 用到的范围：有东西的最上、最下、最左、最右围成的矩形。空的返回 nil。
     public var usedRange: CellRange? {
         guard let top = rows.keys.min(), let bottom = rows.keys.max() else { return nil }

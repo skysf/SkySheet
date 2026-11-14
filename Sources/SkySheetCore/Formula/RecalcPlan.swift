@@ -18,27 +18,55 @@ public struct FormulaLocation: Hashable, Comparable, Sendable {
 
 /// 工作簿里的公式：每个公式格子的位置、原文、数组公式的范围，加上 sheet 名的顺序（公式按名字找 sheet）。
 /// 重算的计划（RecalcPlan）只由它定：两次重算之间它没变（只改了值，这是最常见的编辑），上一次排好的计划整个接着用
-/// （RecalcCache，2026-11-14）。收集时不按格子排序（顺序和计划无关），十万行的表也只是挨个看一遍。
+/// （RecalcCache，2026-11-14）。收集时不按格子排序（顺序和计划无关）。
 struct FormulaLayout: Equatable {
     struct Entry: Equatable {
         let source: String
         let arrayRange: CellRange?
     }
 
+    /// 一张表里的公式，按行：行 → 列 → 公式。
+    typealias SheetFormulas = [Int: [Int: Entry]]
+
     let sheetNames: [String]
     let formulas: [FormulaLocation: Entry]
 
     init(_ workbook: Workbook) {
+        self.init(workbook, sheets: workbook.sheets.map { Self.formulas(in: $0.cells) })
+    }
+
+    /// `sheets` 是每张表（按位置）里的公式（`formulas(in:)` 的结果，或者 RecalcCache 只改了几行的那一份）。
+    init(_ workbook: Workbook, sheets: [SheetFormulas]) {
         sheetNames = workbook.sheets.map(\.name)
         var formulas: [FormulaLocation: Entry] = [:]
-        for (sheetIndex, sheet) in workbook.sheets.enumerated() {
-            sheet.cells.forEachUnordered { address, cell in
-                guard let formula = cell.formula else { return }
-                formulas[FormulaLocation(sheet: sheetIndex, address: address)] = Entry(source: formula.source,
-                                                                                      arrayRange: formula.arrayRange)
+        for (sheetIndex, rows) in sheets.enumerated() {
+            for (row, columns) in rows {
+                for (column, entry) in columns {
+                    formulas[FormulaLocation(sheet: sheetIndex, address: CellAddress(row: row, column: column))] = entry
+                }
             }
         }
         self.formulas = formulas
+    }
+
+    /// 一张表里的公式（整张走一遍，不排序）。
+    static func formulas(in cells: SparseGrid<Cell>) -> SheetFormulas {
+        var rows: SheetFormulas = [:]
+        cells.forEachUnordered { address, cell in
+            guard let formula = cell.formula else { return }
+            rows[address.row, default: [:]][address.column] = Entry(source: formula.source, arrayRange: formula.arrayRange)
+        }
+        return rows
+    }
+
+    /// 一行里的公式；没有就是 nil。
+    static func formulas(inRow row: Int, of cells: SparseGrid<Cell>) -> [Int: Entry]? {
+        var columns: [Int: Entry] = [:]
+        cells.forEach(inRowUnordered: row) { column, cell in
+            guard let formula = cell.formula else { return }
+            columns[column] = Entry(source: formula.source, arrayRange: formula.arrayRange)
+        }
+        return columns.isEmpty ? nil : columns
     }
 }
 

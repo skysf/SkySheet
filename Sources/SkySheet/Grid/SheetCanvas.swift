@@ -38,8 +38,14 @@ final class SheetCanvas {
         self.dateSystem = dateSystem
         aiTouched = session.aiTouched[session.sheet.id] ?? []
         let reusable = previous?.sheet.id == sheet.id ? previous : nil
-        let usedRange = if let reusable, reusable.sheet.cells == sheet.cells { reusable.geometry.usedRange }
-                        else { sheet.cells.usedRange }
+        // 用到的范围：格子没变就接着用；改过几格（编辑以后）只看改过的行（SparseGrid.usedRange(previous:of:changedRows:)）。
+        let usedRange = if let reusable {
+            reusable.sheet.cells == sheet.cells ? reusable.geometry.usedRange
+                : sheet.cells.usedRange(previous: reusable.geometry.usedRange, of: reusable.sheet.cells,
+                                        changedRows: sheet.cells.rowsDiffering(from: reusable.sheet.cells))
+        } else {
+            sheet.cells.usedRange
+        }
         geometry = SheetGeometry(sheet: sheet, baseFontSize: session.styles.baseFontSize, digitWidth: digitWidth,
                                  zoom: session.zoom, usedRange: usedRange, reusing: reusable?.geometry)
         mergeIndex = if let reusable, reusable.sheet.merges == sheet.merges { reusable.mergeIndex }
