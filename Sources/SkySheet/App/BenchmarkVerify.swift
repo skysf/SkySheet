@@ -161,6 +161,15 @@ extension Benchmark {
             clip.scroll(to: .zero)
             scroller.reflectScrolledClipView(clip)
         }))
+        // 改格子：数字、长文字、清掉（改过的格子要按新内容画，记着的旧样子不能用）。
+        let edited = CellAddress(row: start.row + 3, column: start.column + 1)
+        for text in ["12345.678", "A rather long piece of text that spills over", "-0.5", ""] {
+            steps.append(("edit \(edited.a1) to \(text)", {
+                session.select(edited)
+                session.editing = CellEditing(address: edited, text: text, origin: .typing)
+                session.commitEditing()
+            }))
+        }
         // 合并单元格（有的话）：点进去、点出来。
         for merge in session.sheet.merges.prefix(40) where merge.end.row < start.row + 25 && merge.end.column < start.column + 10 {
             steps.append(("click in merge \(merge.a1)", { session.select(merge.end) }))

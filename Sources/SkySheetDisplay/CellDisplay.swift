@@ -22,6 +22,26 @@ public struct DisplayContent: Sendable {
     public var isGeneralNumber: Bool
 }
 
+/// 画过的格子显示成什么，按位置记下来（2026-11-14，设计 8.2 节「性能」）。
+///
+/// 每画一帧都把每个格子重新按数字格式排一遍字（ValueFormatter），整块重画时占了画字的两成；同一个格子没变，结果就一样。
+/// 取的时候拿格子本身比一下（值、公式、样式编号），一样才用记下的，所以改过的格子不会显示旧的。显示只由格子、样式表和
+/// 日期系统定：这两样一变就换一份新的（SheetCanvas 管）。记的条数有上限，满了清空重来。
+public final class DisplayContentCache {
+    private var entries: [CellAddress: (cell: Cell, content: DisplayContent)] = [:]
+    private static let limit = 50_000
+
+    public init() {}
+
+    public func content(of cell: Cell, at address: CellAddress, style: ResolvedStyle, dateSystem: DateSystem) -> DisplayContent {
+        if let entry = entries[address], entry.cell == cell { return entry.content }
+        let content = CellDisplay.content(of: cell, style: style, dateSystem: dateSystem)
+        if entries.count >= Self.limit { entries.removeAll(keepingCapacity: true) }
+        entries[address] = (cell, content)
+        return content
+    }
+}
+
 /// 格子显示成什么（设计 8.2 节）：文字、放在哪边、什么颜色；数字放不下怎么办；文字往旁边空格子溢出到哪。
 public enum CellDisplay {
     public static func content(of cell: Cell, style: ResolvedStyle, dateSystem: DateSystem) -> DisplayContent {

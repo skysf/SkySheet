@@ -127,7 +127,7 @@ struct RegionRenderer {
     }
 
     private func draw(_ cell: Cell, at address: CellAddress, in rect: CGRect, canOverflow: Bool) {
-        let (content, style) = canvas.content(of: cell)
+        let (content, style) = canvas.content(of: cell, at: address)
         guard content.kind != .empty, !content.text.isEmpty else { return }
         let attributes = canvas.textAttributes(cell, style: style, content: content)
 
@@ -136,12 +136,12 @@ struct RegionRenderer {
             return
         }
         // 量一次：放得下（绝大多数）就是它；数字放不下才按「常规」缩短或者变成 ###（CellDisplay.fitNumber）。
-        var line = attributes.line(content.text)
-        var size = line.size()
+        var text = content.text
+        var size = attributes.size(of: text)
         let room = rect.width - 2 * padding
         if content.kind == .number, size.width > room {
-            line = attributes.line(CellDisplay.fitNumber(content, width: room, measure: { attributes.line($0).size().width }))
-            size = line.size()
+            text = attributes.fit(content, width: room)
+            size = attributes.size(of: text)
         }
         var area = rect
         if canOverflow, content.kind == .text, size.width > rect.width - 2 * padding {
@@ -164,7 +164,7 @@ struct RegionRenderer {
         }
         NSGraphicsContext.saveGraphicsState()
         area.intersection(clip).clip()
-        line.draw(at: CGPoint(x: x, y: y))
+        attributes.line(text).draw(at: CGPoint(x: x, y: y))
         NSGraphicsContext.restoreGraphicsState()
     }
 

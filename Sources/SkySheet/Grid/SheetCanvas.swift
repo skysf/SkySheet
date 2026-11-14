@@ -22,16 +22,20 @@ final class SheetCanvas {
     let mergeIndex: MergeIndex
     /// 画字用的属性，按（样式编号、颜色、对齐）缓存；缩放一变就是一份新的画布，跟着重建。
     private var textAttributes: [TextStyleKey: TextAttributes] = [:]
+    /// 画过的格子显示成什么（DisplayContentCache）：同一张表、样式表和日期系统没变，就接着用上一份画布的。
+    let contents: DisplayContentCache
 
     /// `fonts` 由表格视图带着，重建画布时接着用：拖边线时每动一下都要重建。`previous` 是上一份画布。
     init(session: SheetSession, fonts: FontBook, previous: SheetCanvas? = nil) {
         let sheet = session.displayedSheet
         let digitWidth = fonts.digitWidth(session.styles.style(0).font)
+        let styles = session.styles
+        let dateSystem = session.workbook.dateSystem
         self.fonts = fonts
         self.sheet = sheet
         self.digitWidth = digitWidth
-        styles = session.styles
-        dateSystem = session.workbook.dateSystem
+        self.styles = styles
+        self.dateSystem = dateSystem
         aiTouched = session.aiTouched[session.sheet.id] ?? []
         let reusable = previous?.sheet.id == sheet.id ? previous : nil
         let usedRange = if let reusable, reusable.sheet.cells == sheet.cells { reusable.geometry.usedRange }
@@ -40,6 +44,8 @@ final class SheetCanvas {
                                  zoom: session.zoom, usedRange: usedRange, reusing: reusable?.geometry)
         mergeIndex = if let reusable, reusable.sheet.merges == sheet.merges { reusable.mergeIndex }
                      else { MergeIndex(sheet.merges) }
+        contents = if let reusable, reusable.styles == styles, reusable.dateSystem == dateSystem { reusable.contents }
+                   else { DisplayContentCache() }
     }
 
     var frozenRows: Int { min(sheet.frozen?.rows ?? 0, geometry.rowCount) }
@@ -82,6 +88,12 @@ final class SheetCanvas {
         return (CellDisplay.content(of: cell, style: style, dateSystem: dateSystem), style)
     }
 
+    /// 和 `content(of:)` 一样，画的时候用：按位置记着（DisplayContentCache），没变的格子不再重新排字。
+    func content(of cell: Cell, at address: CellAddress) -> (DisplayContent, ResolvedStyle) {
+        let style = styles.style(cell.styleIndex)
+        return (contents.content(of: cell, at: address, style: style, dateSystem: dateSystem), style)
+    }
+
     /// 这一格的字用什么属性画（字体按当前缩放）。
     func textAttributes(_ cell: Cell, style: ResolvedStyle, content: DisplayContent) -> TextAttributes {
         let key = TextStyleKey(styleIndex: cell.styleIndex, color: content.color, placement: content.placement)
@@ -106,8 +118,22 @@ private struct TextStyleKey: Hashable {
 /// Swift 字典桥接一遍：2026-11-14 实测这一项占了画一帧的三成。现在每种样式只建一次；字串和属性直接拼成
 /// CFAttributedString（不经过 Swift 字典），量和画都用它。属性和原来一模一样：字体、颜色、段落样式（对齐、按词换行），
 /// 有下划线、删除线的加上。
+///
+/// 量出来的宽高、数字放不下时显示成什么（CellDisplay.fitNumber）也按文字记在这里：同一种样式、同一个缩放，同一段文字
+/// 量出来总是一样（整块重画时，量字、缩数字曾经占了画字的两成，2026-11-14）。条数有上限，满了清空重来。
 final class TextAttributes {
     private let dictionary: CFDictionary
+    private var sizes: [String: CGSize] = [:]
+    private var fitted: [FitKey: String] = [:]
+    private static let limit = 20_000
+
+    /// 「常规」格式放不下时按数的全精度缩短：显示文字一样的两个数可能缩出来不一样，所以数也算进去。
+    private struct FitKey: Hashable {
+        let text: String
+        let number: Decimal?
+        let general: Bool
+        let width: Double
+    }
 
     init(font: NSFont, color: RGBAColor, placement: HorizontalPlacement, underline: Bool, strikethrough: Bool) {
         let paragraph = NSMutableParagraphStyle()
@@ -129,6 +155,25 @@ final class TextAttributes {
     /// 一段文字带上这些属性。
     func line(_ text: String) -> NSAttributedString {
         CFAttributedStringCreate(kCFAllocatorDefault, text as CFString, dictionary) as NSAttributedString
+    }
+
+    /// 这段文字画出来多大（`line(text).size()`，记着）。
+    func size(of text: String) -> CGSize {
+        if let known = sizes[text] { return known }
+        let size = line(text).size()
+        if sizes.count >= Self.limit { sizes.removeAll(keepingCapacity: true) }
+        sizes[text] = size
+        return size
+    }
+
+    /// 数字在 `width` 这么宽里显示成什么（CellDisplay.fitNumber，记着：结果只由显示文字、数、是不是「常规」和宽度定）。
+    func fit(_ content: DisplayContent, width: Double) -> String {
+        let key = FitKey(text: content.text, number: content.number, general: content.isGeneralNumber, width: width)
+        if let known = fitted[key] { return known }
+        let text = CellDisplay.fitNumber(content, width: width, measure: { self.size(of: $0).width })
+        if fitted.count >= Self.limit { fitted.removeAll(keepingCapacity: true) }
+        fitted[key] = text
+        return text
     }
 }
 
