@@ -185,22 +185,30 @@ private final class Benchmark {
         }
     }
 
-    /// 打开：读 xlsx、整本重算、建窗口、画出第一屏，分开量（墙上时间：打开时主线程一直在忙）。
+    /// 打开：读 xlsx、整本重算、建窗口、画出第一屏，分开量。也记主线程 CPU 时间：机器忙的时候（测速是 nice 着跑的）
+    /// 墙上时间里有一大段是在等 CPU，CPU 时间才是这几步自己的活；墙上时间另外打印出来。
     private func open(_ url: URL) async throws {
-        var started = ContinuousClock.now
+        var wall = ContinuousClock.now
+        var cpu = threadCPU()
         var workbook: Workbook
+        var walls: [String] = []
+        func lap(_ name: String) {
+            record(name, [FrameSample(ms: threadCPU() - cpu, builds: DrawStats.canvasBuilds, panes: DrawStats.paneDraws,
+                                      headers: DrawStats.headerDraws, area: DrawStats.paneArea)])
+            walls.append(String(format: "%@ %.0f ms", name, milliseconds(since: wall)))
+            wall = ContinuousClock.now
+            cpu = threadCPU()
+        }
         if DocumentLoader.isDelimitedText(url: url, typeName: nil) {
             workbook = try DocumentLoader.load(contentsOf: url).workbook
-            record("open: read + recalc (csv)", [FrameSample(ms: milliseconds(since: started))])
+            lap("open: read + recalc (csv)")
         } else {
             workbook = try XLSXReader.readDocument(Data(contentsOf: url)).workbook
-            record("open: read xlsx", [FrameSample(ms: milliseconds(since: started))])
-            started = ContinuousClock.now
+            lap("open: read xlsx")
             Recalculator.recalculate(&workbook)
-            record("open: recalculate", [FrameSample(ms: milliseconds(since: started))])
+            lap("open: recalculate")
         }
 
-        started = ContinuousClock.now
         DrawStats.reset()
         DrawStats.tracksDirtyRects = true
         session = SheetSession(workbook: workbook)
@@ -217,9 +225,8 @@ private final class Benchmark {
         // 第一屏：每个格子视图看得见的部分整个画一遍。
         DrawStats.dirty = [:]
         for view in gridViews(in: spreadsheet) { draw(view, view.visibleRect) }
-        record("open: window + first screen", [FrameSample(ms: milliseconds(since: started), builds: DrawStats.canvasBuilds,
-                                                           panes: DrawStats.paneDraws, headers: DrawStats.headerDraws,
-                                                           area: DrawStats.paneArea)])
+        lap("open: window + first screen")
+        print("wall clock: " + walls.joined(separator: ", "))
         // 主区滚动时新露出来的部分要画（系统在屏幕上也只画这一部分）。
         let clip = spreadsheet.scrollView.contentView
         lastVisible = clip.bounds
@@ -389,14 +396,18 @@ private final class Benchmark {
     /// 一帧：见 BenchmarkRequest 的说明。
     private func frame(_ action: () -> Void) async -> FrameSample {
         DrawStats.reset()
-        let started = clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)
+        let started = threadCPU()
         action()
         await settle()
         for (view, rect) in DrawStats.dirty.values { draw(view, rect.intersection(view.visibleRect)) }
         DrawStats.dirty = [:]
-        let used = Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID) - started) / 1e6
-        return FrameSample(ms: used, builds: DrawStats.canvasBuilds, panes: DrawStats.paneDraws,
+        return FrameSample(ms: threadCPU() - started, builds: DrawStats.canvasBuilds, panes: DrawStats.paneDraws,
                            headers: DrawStats.headerDraws, area: DrawStats.paneArea)
+    }
+
+    /// 主线程到现在用掉的 CPU 时间（毫秒）。
+    private func threadCPU() -> Double {
+        Double(clock_gettime_nsec_np(CLOCK_THREAD_CPUTIME_ID)) / 1e6
     }
 
     /// observeChanges 的回调是排在主线程上的 Task：先让一下，它们就排在前面跑完（主线程上的 Task 先来先跑）。
@@ -469,7 +480,7 @@ private final class Benchmark {
                            result.average { Double($0.panes) }, result.average { Double($0.headers) },
                            result.average(\.area) / 1000))
         }
-        print("(milliseconds of main-thread CPU per frame; open rows are wall-clock)")
+        print("(milliseconds of main-thread CPU time; wall clock of the open steps is printed above)")
     }
 
     private func pad(_ text: String, _ width: Int, right: Bool = false) -> String {
