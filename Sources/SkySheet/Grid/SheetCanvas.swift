@@ -38,13 +38,15 @@ final class SheetCanvas {
         self.dateSystem = dateSystem
         aiTouched = session.aiTouched[session.sheet.id] ?? []
         let reusable = previous?.sheet.id == sheet.id ? previous : nil
-        // 用到的范围：格子没变就接着用；改过几格（编辑以后）只看改过的行（SparseGrid.usedRange(previous:of:changedRows:)）。
-        let usedRange = if let reusable {
-            reusable.sheet.cells == sheet.cells ? reusable.geometry.usedRange
-                : sheet.cells.usedRange(previous: reusable.geometry.usedRange, of: reusable.sheet.cells,
-                                        changedRows: sheet.cells.rowsDiffering(from: reusable.sheet.cells))
+        // 用到的范围：格子没变就接着用；改过几行（编辑以后）只看改过的行（SparseGrid.usedRange(previous:of:changedRows:)）。
+        // 改过的行很多（公式多的表重算以后每个公式格子都是新值）就从头数：逐行比内容反而更贵。
+        let usedRange: CellRange?
+        if let reusable, reusable.sheet.cells == sheet.cells {
+            usedRange = reusable.geometry.usedRange
+        } else if let reusable, let rows = sheet.cells.rowsDiffering(from: reusable.sheet.cells, limit: 256) {
+            usedRange = sheet.cells.usedRange(previous: reusable.geometry.usedRange, of: reusable.sheet.cells, changedRows: rows)
         } else {
-            sheet.cells.usedRange
+            usedRange = sheet.cells.usedRange
         }
         geometry = SheetGeometry(sheet: sheet, baseFontSize: session.styles.baseFontSize, digitWidth: digitWidth,
                                  zoom: session.zoom, usedRange: usedRange, reusing: reusable?.geometry)

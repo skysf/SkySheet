@@ -181,7 +181,7 @@ func largeSheetChecks() {
         checkEqual(cache.planBuilds, 1, "first recalculation builds the plan")
         let rate = CellAddress(a1: "H1")!
         for step in 1...5 {
-            workbook.sheets[0].cells[rate] = Cell(value: .number(Decimal(step) / 10000))
+            workbook.sheets[0].cells[rate] = Cell(value: .number(Decimal(step + 1) / 10000))
             var fresh = workbook
             Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday, cache: cache))
             Recalculator.recalculate(&fresh, options: RecalcOptions(today: checkToday))
@@ -189,6 +189,7 @@ func largeSheetChecks() {
         }
         checkEqual(cache.planBuilds, 1, "value edits keep the plan")
         checkEqual(cache.fullScans, 2, "after the first look, edits only look at the rows they changed")
+        checkEqual(cache.rowsRescanned, 5, "each edit of H1 looks at one row (results written back don't count as edits)")
         checkEqual(cache.layout(for: workbook), FormulaLayout(workbook), "formulas found from the changed rows")
         workbook.sheets[0].cells[CellAddress(a1: "D7")!] = Cell(formula: CellFormula(source: "$H$2*2"))
         var fresh = workbook
@@ -198,10 +199,21 @@ func largeSheetChecks() {
         checkEqual(cache.planBuilds, 2, "a changed formula builds a new plan")
         workbook.sheets[0].cells[CellAddress(a1: "D9")!] = nil
         workbook.sheets[0].cells[CellAddress(a1: "Q3")!] = Cell(formula: CellFormula(source: "SUM(F1:F9)"))
+        fresh = workbook
+        Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday, cache: cache))
+        Recalculator.recalculate(&fresh, options: RecalcOptions(today: checkToday))
+        check(workbook == fresh, "removing and adding formulas: same results as recalculating from scratch")
         checkEqual(cache.layout(for: workbook), FormulaLayout(workbook), "formulas found after removing and adding some")
+        checkEqual(cache.planBuilds, 3, "removed and added formulas build a new plan")
         workbook.sheets[0].name = "Plan"
         Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday, cache: cache))
-        checkEqual(cache.planBuilds, 3, "renaming a sheet builds a new plan (references go by name)")
+        checkEqual(cache.planBuilds, 4, "renaming a sheet builds a new plan (references go by name)")
+        workbook.sheets.swapAt(0, 1)
+        fresh = workbook
+        Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday, cache: cache))
+        Recalculator.recalculate(&fresh, options: RecalcOptions(today: checkToday))
+        check(workbook == fresh, "reordered sheets: same results as recalculating from scratch")
+        checkEqual(cache.planBuilds, 5, "reordering sheets builds a new plan (locations go by position)")
     }
 
     group("large sheets: whole-sheet passes stay linear") {

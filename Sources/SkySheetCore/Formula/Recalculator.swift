@@ -20,12 +20,14 @@ public struct RecalcOptions: Sendable {
 /// 一样就直接用上一次的计划，只把值重新算一遍。结果和从头排一模一样：计划只由这几样定。
 /// 一个窗口一份（SheetSession 带着），读文件时那一次重算也用它，打开后第一次编辑就不用再排。
 public final class RecalcCache: Sendable {
-    private let state = Mutex<(layout: FormulaLayout, plan: RecalcPlan)?>(nil)
+    /// 上一次的计划，和排它时 sheet 的顺序（编号）、名字。
+    private let state = Mutex<(sheetIDs: [Int], sheetNames: [String], plan: RecalcPlan)?>(nil)
     /// 每张表（按编号）上一次看到的格子和里面的公式：下一次只看改过的行（SparseGrid.rowsDiffering），
     /// 十万行的表改一格不用再把两百万个格子走一遍找公式。
     private let sheets = Mutex<[Int: (cells: SparseGrid<Cell>, formulas: FormulaLayout.SheetFormulas)]>([:])
     private let builds = Mutex(0)
     private let scans = Mutex(0)
+    private let rescans = Mutex(0)
 
     public init() {}
 
@@ -33,39 +35,67 @@ public final class RecalcCache: Sendable {
     var planBuilds: Int { builds.withLock { $0 } }
     /// 一共整张表从头找过几次公式（自检数它：编辑以后只看改过的行）。
     var fullScans: Int { scans.withLock { $0 } }
+    /// 一共重新看过几行（自检数它：改一格只看那一行）。
+    var rowsRescanned: Int { rescans.withLock { $0 } }
 
-    /// 工作簿里的公式：上一次见过的表只看改过的行，结果和整本从头找一样。
-    func layout(for workbook: Workbook) -> FormulaLayout {
+    /// 算完、值写回去以后的格子记下来：下一次编辑只和它比。要是记的是写回之前的，公式多的表每个公式格子的值都变了，
+    /// 下一次就成了每一行都「改过」（2026-11-14 实测，一万行的还款表改一格从约 95 毫秒退到 150）。写回只改值和状态，
+    /// 公式本身（原文、数组范围）没变，记下的公式接着用。
+    func noteCalculated(_ workbook: Workbook) {
+        sheets.withLock { known in
+            for sheet in workbook.sheets {
+                guard let previous = known[sheet.id] else { continue }
+                known[sheet.id] = (sheet.cells, previous.formulas)
+            }
+        }
+    }
+
+    /// 这个工作簿的计划。上一次见过的表只看改过的行：改过的行里公式（原文、数组范围）都没变、sheet 的顺序和名字也没变，
+    /// 就是上一次的计划（计划只由这几样定），连整本的公式表都不用拼、不用比；否则拼出整本的公式（FormulaLayout）重排。
+    func plan(for workbook: Workbook) -> RecalcPlan {
         let known = sheets.withLock { $0 }
         var next: [Int: (cells: SparseGrid<Cell>, formulas: FormulaLayout.SheetFormulas)] = [:]
         var perSheet: [FormulaLayout.SheetFormulas] = []
+        var formulasChanged = known.count != workbook.sheets.count
         for sheet in workbook.sheets {
             var formulas: FormulaLayout.SheetFormulas
             if let previous = known[sheet.id] {
                 formulas = previous.formulas
                 if previous.cells != sheet.cells {
-                    for row in sheet.cells.rowsDiffering(from: previous.cells) {
-                        formulas[row] = FormulaLayout.formulas(inRow: row, of: sheet.cells)
+                    let changed = sheet.cells.rowsDiffering(from: previous.cells)
+                    for row in changed {
+                        let now = FormulaLayout.formulas(inRow: row, of: sheet.cells)
+                        if now != formulas[row] {
+                            formulas[row] = now
+                            formulasChanged = true
+                        }
                     }
+                    rescans.withLock { $0 += changed.count }
                 }
             } else {
                 formulas = FormulaLayout.formulas(in: sheet.cells)
+                formulasChanged = true
                 scans.withLock { $0 += 1 }
             }
             next[sheet.id] = (sheet.cells, formulas)
             perSheet.append(formulas)
         }
         sheets.withLock { $0 = next }
-        return FormulaLayout(workbook, sheets: perSheet)
-    }
-
-    /// 这个工作簿的计划：公式和上一次一样就用上一次的，否则排一份新的记下来。
-    func plan(for workbook: Workbook, layout: FormulaLayout) -> RecalcPlan {
-        if let known = state.withLock({ $0 }), known.layout == layout { return known.plan }
-        let plan = RecalcPlan(layout: layout, workbook: workbook)
-        state.withLock { $0 = (layout, plan) }
+        let ids = workbook.sheets.map(\.id)
+        let names = workbook.sheets.map(\.name)
+        if !formulasChanged, let previous = state.withLock({ $0 }), previous.sheetIDs == ids, previous.sheetNames == names {
+            return previous.plan
+        }
+        let plan = RecalcPlan(layout: FormulaLayout(workbook, sheets: perSheet), workbook: workbook)
+        state.withLock { $0 = (ids, names, plan) }
         builds.withLock { $0 += 1 }
         return plan
+    }
+
+    /// 整本的公式（自检拿它和从头找的对照）。
+    func layout(for workbook: Workbook) -> FormulaLayout {
+        let known = sheets.withLock { $0 }
+        return FormulaLayout(workbook, sheets: workbook.sheets.map { known[$0.id]?.formulas ?? FormulaLayout.formulas(in: $0.cells) })
     }
 }
 
@@ -81,8 +111,7 @@ public struct RecalcReport: Sendable {
 public enum Recalculator {
     @discardableResult
     public static func recalculate(_ workbook: inout Workbook, options: RecalcOptions = RecalcOptions()) -> RecalcReport {
-        let layout = options.cache?.layout(for: workbook) ?? FormulaLayout(workbook)
-        let plan = options.cache?.plan(for: workbook, layout: layout) ?? RecalcPlan(layout: layout, workbook: workbook)
+        let plan = options.cache?.plan(for: workbook) ?? RecalcPlan(layout: FormulaLayout(workbook), workbook: workbook)
         let today = options.today ?? CivilDate.today()
         let state = RecalcState(workbook: workbook, todaySerial: DateSerial.serial(from: today, system: workbook.dateSystem))
 
@@ -116,6 +145,7 @@ public enum Recalculator {
             cell.formula = formula
             workbook.sheets[location.sheet].cells[location.address] = cell
         }
+        options.cache?.noteCalculated(workbook)
         report.circular = plan.circular
         return report
     }

@@ -142,10 +142,24 @@ public struct SparseGrid<Value: Sendable>: Sendable {
     /// 和 `other`（同一张表的上一版）比，内容不一样的行（只在一边有的也算），顺序不定。
     /// 没改过的行两边是同一份存储，比的时候当场有结果：十万行的表整张比一遍也只是每行查一次（2026-11-14，编辑以后
     /// 只看改过的行，不再把两百万个格子从头走一遍）。
+    @inlinable
     public func rowsDiffering(from other: SparseGrid) -> [Int] where Value: Equatable {
+        rowsDiffering(from: other, limit: .max)!
+    }
+
+    /// 同上；不一样的行超过 `limit` 就不再比下去，返回 nil（调用方从头算更省：比一行内容不同的行要逐格比）。
+    /// @inlinable：在 App 里按 Cell 展开，跨模块调泛型版本每一行都要查类型信息，慢十倍（2026-11-14 实测）。
+    @inlinable
+    public func rowsDiffering(from other: SparseGrid, limit: Int) -> [Int]? where Value: Equatable {
         var changed: [Int] = []
-        for (row, line) in rows where other.rows[row] != line { changed.append(row) }
-        for row in other.rows.keys where rows[row] == nil { changed.append(row) }
+        for (row, line) in rows where other.rows[row] != line {
+            changed.append(row)
+            if changed.count > limit { return nil }
+        }
+        for row in other.rows.keys where rows[row] == nil {
+            changed.append(row)
+            if changed.count > limit { return nil }
+        }
         return changed
     }
 
@@ -158,6 +172,7 @@ public struct SparseGrid<Value: Sendable>: Sendable {
     /// 已知上一版 `other` 用到的范围是 `previous`、两版只有 `changedRows` 这几行不一样，算这一版用到的范围：
     /// 改过的行原来都不在边上（不在最上最下那一行、没有格子在最左最右那一列）时，只把改过的行并进去；否则从头数。
     /// 结果和 `usedRange` 一样。
+    @inlinable
     public func usedRange(previous: CellRange?, of other: SparseGrid, changedRows: [Int]) -> CellRange? {
         guard let previous else { return usedRange }
         var top = previous.start.row, bottom = previous.end.row
@@ -177,6 +192,7 @@ public struct SparseGrid<Value: Sendable>: Sendable {
     }
 
     /// 用到的范围：有东西的最上、最下、最左、最右围成的矩形。空的返回 nil。
+    @inlinable
     public var usedRange: CellRange? {
         guard let top = rows.keys.min(), let bottom = rows.keys.max() else { return nil }
         var left = Int.max
@@ -191,5 +207,12 @@ public struct SparseGrid<Value: Sendable>: Sendable {
     }
 }
 
-extension SparseGrid: Equatable where Value: Equatable {}
+extension SparseGrid: Equatable where Value: Equatable {
+    /// 和合成的一样（比格子，再比个数），写出来是为了标 @inlinable：App 里比两版表格（重建画布时）按 Cell 展开，
+    /// 存储是同一份时当场有结果。
+    @inlinable
+    public static func == (lhs: SparseGrid, rhs: SparseGrid) -> Bool {
+        lhs.rows == rhs.rows && lhs.count == rhs.count
+    }
+}
 extension SparseGrid: Hashable where Value: Hashable {}
