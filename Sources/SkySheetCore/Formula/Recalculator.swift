@@ -21,14 +21,19 @@ public struct RecalcOptions: Sendable {
 /// 一个窗口一份（SheetSession 带着），读文件时那一次重算也用它，打开后第一次编辑就不用再排。
 public final class RecalcCache: Sendable {
     private let state = Mutex<(layout: FormulaLayout, plan: RecalcPlan)?>(nil)
+    private let builds = Mutex(0)
 
     public init() {}
+
+    /// 一共从头排过几次计划（自检数它：只改值的编辑不该再排）。
+    var planBuilds: Int { builds.withLock { $0 } }
 
     /// 这个工作簿的计划：公式和上一次一样就用上一次的，否则排一份新的记下来。
     func plan(for workbook: Workbook, layout: FormulaLayout) -> RecalcPlan {
         if let known = state.withLock({ $0 }), known.layout == layout { return known.plan }
         let plan = RecalcPlan(layout: layout, workbook: workbook)
         state.withLock { $0 = (layout, plan) }
+        builds.withLock { $0 += 1 }
         return plan
     }
 }

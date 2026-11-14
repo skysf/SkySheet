@@ -61,6 +61,9 @@ public struct SheetGeometry: Sendable {
     /// 十万行的表数一遍格子、排一遍行高要几十毫秒，2026-11-14）。
     private let columnInputs: ColumnInputs
     private let rowInputs: RowInputs
+    /// 这份几何的两个方向是不是直接用的上一份（自检数它）。
+    let reusedColumns: Bool
+    let reusedRows: Bool
 
     private struct ColumnInputs: Equatable, Sendable {
         let formats: [ColumnFormat]
@@ -94,7 +97,8 @@ public struct SheetGeometry: Sendable {
         self.usedRange = usedRange
         let digit = max(digitWidth, 1)
         columnInputs = ColumnInputs(formats: sheet.columns, defaultWidth: sheet.defaultColumnWidth, digit: digit, zoom: zoom)
-        if let previous, previous.columnInputs == columnInputs {
+        reusedColumns = previous?.columnInputs == columnInputs
+        if let previous, reusedColumns {
             columns = previous.columns
         } else {
             let defaultColumn = (sheet.defaultColumnWidth.map { Self.columnPixels($0, digitWidth: digit) }
@@ -114,6 +118,7 @@ public struct SheetGeometry: Sendable {
             previous.rowInputs.formats == sheet.rowFormats && previous.rowInputs.defaultHeight == sheet.defaultRowHeight
                 && previous.rowInputs.baseFontSize == baseFontSize && previous.rowInputs.zoom == zoom ? previous : nil
         }
+        self.reusedRows = reusedRows != nil
         if let reusedRows {
             rows = reusedRows.rows
             rowInputs = reusedRows.rowInputs
