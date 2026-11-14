@@ -10,6 +10,7 @@ import SkySheetDisplay
 /// - 合并单元格查 MergeIndex，不再每格把整张表的合并单元格过一遍；
 /// - 循环里不把闭包交给别的模块的函数：主线程上的闭包，Swift 6 每调一次都要核对一遍是不是在主线程上，
 ///   几千个格子下来比画字还贵（2026-11-14 实测）。要传闭包的放到 nonisolated 的静态函数里。
+/// - 画字的属性按样式缓存成 NSDictionary（TextAttributes），一格字只量一次。
 @MainActor
 struct RegionRenderer {
     let canvas: SheetCanvas
@@ -112,15 +113,20 @@ struct RegionRenderer {
     private func draw(_ cell: Cell, at address: CellAddress, in rect: CGRect, canOverflow: Bool) {
         let (content, style) = canvas.content(of: cell)
         guard content.kind != .empty, !content.text.isEmpty else { return }
-        let attributes = textAttributes(style, color: content.color, placement: content.placement)
-        let measure: (String) -> Double = { ($0 as NSString).size(withAttributes: attributes).width }
+        let attributes = canvas.textAttributes(cell, style: style, content: content)
 
         if style.wrapText, content.kind == .text {
-            drawWrapped(content.text, attributes: attributes, in: rect.insetBy(dx: padding, dy: 1), vertical: style.vertical)
+            drawWrapped(attributes.line(content.text), in: rect.insetBy(dx: padding, dy: 1), vertical: style.vertical)
             return
         }
-        let text = CellDisplay.fitNumber(content, width: rect.width - 2 * padding, measure: measure)
-        let size = (text as NSString).size(withAttributes: attributes)
+        // 量一次：放得下（绝大多数）就是它；数字放不下才按「常规」缩短或者变成 ###（CellDisplay.fitNumber）。
+        var line = attributes.line(content.text)
+        var size = line.size()
+        let room = rect.width - 2 * padding
+        if content.kind == .number, size.width > room {
+            line = attributes.line(CellDisplay.fitNumber(content, width: room, measure: { attributes.line($0).size().width }))
+            size = line.size()
+        }
         var area = rect
         if canOverflow, content.kind == .text, size.width > rect.width - 2 * padding {
             let span = Self.overflowSpan(column: address.column, row: address.row, textWidth: size.width + 2 * padding,
@@ -142,14 +148,13 @@ struct RegionRenderer {
         }
         NSGraphicsContext.saveGraphicsState()
         area.intersection(clip).clip()
-        (text as NSString).draw(at: CGPoint(x: x, y: y), withAttributes: attributes)
+        line.draw(at: CGPoint(x: x, y: y))
         NSGraphicsContext.restoreGraphicsState()
     }
 
-    private func drawWrapped(_ text: String, attributes: [NSAttributedString.Key: Any], in rect: CGRect,
-                             vertical: VerticalAlignment) {
-        let bounding = (text as NSString).boundingRect(with: CGSize(width: rect.width, height: .greatestFiniteMagnitude),
-                                                       options: [.usesLineFragmentOrigin], attributes: attributes)
+    private func drawWrapped(_ line: NSAttributedString, in rect: CGRect, vertical: VerticalAlignment) {
+        let bounding = line.boundingRect(with: CGSize(width: rect.width, height: .greatestFiniteMagnitude),
+                                         options: [.usesLineFragmentOrigin], context: nil)
         let height = min(bounding.height, rect.height)
         let y: CGFloat = switch vertical {
         case .top: rect.minY
@@ -158,28 +163,9 @@ struct RegionRenderer {
         }
         NSGraphicsContext.saveGraphicsState()
         rect.insetBy(dx: -padding, dy: -1).intersection(clip).clip()
-        (text as NSString).draw(with: CGRect(x: rect.minX, y: y, width: rect.width, height: bounding.height),
-                                options: [.usesLineFragmentOrigin], attributes: attributes)
+        line.draw(with: CGRect(x: rect.minX, y: y, width: rect.width, height: bounding.height),
+                  options: [.usesLineFragmentOrigin], context: nil)
         NSGraphicsContext.restoreGraphicsState()
-    }
-
-    private func textAttributes(_ style: ResolvedStyle, color: RGBAColor,
-                                placement: HorizontalPlacement) -> [NSAttributedString.Key: Any] {
-        let paragraph = NSMutableParagraphStyle()
-        paragraph.alignment = switch placement {
-        case .left: .left
-        case .center: .center
-        case .right: .right
-        }
-        paragraph.lineBreakMode = .byWordWrapping
-        var attributes: [NSAttributedString.Key: Any] = [
-            .font: canvas.fonts.font(style.font, points: geometry.fontPoints(style.font.size)),
-            .foregroundColor: NSColor(color),
-            .paragraphStyle: paragraph,
-        ]
-        if style.font.underline { attributes[.underlineStyle] = NSUnderlineStyle.single.rawValue }
-        if style.font.strikethrough { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
-        return attributes
     }
 
     /// 文字往旁边空格子溢出能占到哪几列（CellDisplay.overflowColumns）。闭包在这里（nonisolated）建，不带主线程检查。
