@@ -170,6 +170,19 @@ extension Benchmark {
                 session.commitEditing()
             }))
         }
+        // 换到别的表再换回来（换回来时接着用上一份画布），再改一格（改过的表换回来要按新内容画）。
+        let here = session.sheetIndex
+        if let other = session.tabIndices.first(where: { $0 != here }) {
+            steps.append(("switch away", { session.showSheet(other) }))
+            steps.append(("switch back", { session.showSheet(here) }))
+            steps.append(("edit after switching back", {
+                session.select(edited)
+                session.editing = CellEditing(address: edited, text: "777", origin: .typing)
+                session.commitEditing()
+            }))
+            steps.append(("switch away again", { session.showSheet(other) }))
+            steps.append(("switch back again", { session.showSheet(here) }))
+        }
         // 合并单元格（有的话）：点进去、点出来。
         for merge in session.sheet.merges.prefix(40) where merge.end.row < start.row + 25 && merge.end.column < start.column + 10 {
             steps.append(("click in merge \(merge.a1)", { session.select(merge.end) }))
