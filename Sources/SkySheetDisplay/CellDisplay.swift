@@ -135,13 +135,30 @@ public struct SelectionSummary: Equatable, Sendable {
         numericCount > 0 ? sum / Decimal(numericCount) : nil
     }
 
+    /// 全选十万行的表也要在一帧里算完（2026-11-14）：格子挨个看、不先攒成数组；加法用 DecimalSum，结果和用 Decimal
+    /// 一个一个加完全一样，碰到它管不了的数（38 位有效数字的、特别大的）就从头用 Decimal 再加一遍。
     public init(cells: SparseGrid<Cell>, range: CellRange) {
-        for (_, cell) in cells.entries(in: range) where cell.value != .empty {
+        var count = 0
+        var numericCount = 0
+        var fast = DecimalSum()
+        cells.forEach(in: range) { _, cell in
+            guard cell.value != .empty else { return }
             count += 1
             if let number = cell.value.number {
                 numericCount += 1
-                sum += number
+                fast.add(number)
             }
+        }
+        self.count = count
+        self.numericCount = numericCount
+        if fast.needsFallback {
+            var total: Decimal = 0
+            cells.forEach(in: range) { _, cell in
+                if let number = cell.value.number { total += number }
+            }
+            sum = total
+        } else {
+            sum = fast.value
         }
     }
 }

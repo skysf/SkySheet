@@ -72,22 +72,28 @@ public struct SparseGrid<Value: Sendable>: Sendable {
 
     /// 区域里有东西的格子，行优先。只碰存在的行和列：整列引用（A:A，一百多万行）也不慢。
     public func entries(in range: CellRange) -> [(address: CellAddress, value: Value)] {
+        var result: [(address: CellAddress, value: Value)] = []
+        forEach(in: range) { address, value in result.append((address, value)) }
+        return result
+    }
+
+    /// 和 `entries(in:)` 一样的顺序挨个交给 `body`，不先攒成数组：全选十万行的表时，攒数组本身就要几百毫秒
+    /// （2026-11-14，状态栏的合计）。注意：主线程上的代码传闭包进来，Swift 6 每调一次都要核对线程，热循环里别这么用。
+    public func forEach(in range: CellRange, _ body: (CellAddress, Value) throws -> Void) rethrows {
         let rowSpan = range.start.row...range.end.row
         let columnSpan = range.start.column...range.end.column
         let rowKeys: [Int] = rowSpan.count < rows.count
             ? rowSpan.filter { rows[$0] != nil }
             : rows.keys.filter { rowSpan.contains($0) }.sorted()
-        var result: [(address: CellAddress, value: Value)] = []
         for rowIndex in rowKeys {
             guard let line = rows[rowIndex] else { continue }
             let columns: [Int] = columnSpan.count < line.count
                 ? columnSpan.filter { line[$0] != nil }
                 : line.keys.filter { columnSpan.contains($0) }.sorted()
             for column in columns {
-                result.append((CellAddress(row: rowIndex, column: column), line[column]!))
+                try body(CellAddress(row: rowIndex, column: column), line[column]!)
             }
         }
-        return result
     }
 
     /// 用到的范围：有东西的最上、最下、最左、最右围成的矩形。空的返回 nil。
