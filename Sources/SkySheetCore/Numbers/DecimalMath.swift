@@ -78,7 +78,17 @@ public enum DecimalMath {
 
     /// 严格地把文字转成数字：整个字符串（去掉首尾空格）必须是一个数，比如 "12"、"-1.5"、"3e-2"、".5"、"12%"。
     /// 不能直接用 `Decimal(string:)`：它会只读到不认识的字符为止，"1,234" 会变成 1（2026-10-08 实测）。
+    ///
+    /// 读 xlsx 时每个数字格子都走这里（2026-11-14，原来这一步占读文件的两成多）：全是 ASCII、首尾没有空白的（文件里
+    /// 几乎都是）按字节检查格式，数还是交给同一个 `Decimal(string:locale:)` 去转，结果一模一样；`Locale` 只建一次。
+    /// 别的（带空白、非 ASCII）走原来的写法。
     public static func parse(_ text: String) -> Decimal? {
+        if let fast = parseASCII(text) { return fast }
+        return parseScalars(text)
+    }
+
+    /// 原来的写法（按 Unicode 标量，先去掉首尾空白）。带空白、非 ASCII 的文字走它；自检拿它和快速写法对照。
+    static func parseScalars(_ text: String) -> Decimal? {
         var scalars = Array(text.trimmingCharacters(in: .whitespaces).unicodeScalars)
         var percent = false
         if scalars.last == "%" {
@@ -104,8 +114,44 @@ public enum DecimalMath {
             guard digits() > 0 else { return nil }
         }
         guard index == scalars.count,
-              let value = Decimal(string: String(String.UnicodeScalarView(scalars)), locale: Locale(identifier: "en_US_POSIX"))
+              let value = Decimal(string: String(String.UnicodeScalarView(scalars)), locale: posix)
         else { return nil }
         return percent ? value / 100 : value
+    }
+
+    private static let posix = Locale(identifier: "en_US_POSIX")
+
+    /// `parse` 的快速写法：只管全是 ASCII、首尾不是空格和制表符的文字（别的返回 nil，走原来的写法）。外层的 Optional 是
+    /// 「管不管」，里面的是结果（不是数就是 nil）。格式检查和原来的逐条对应。
+    private static func parseASCII(_ text: String) -> Decimal?? {
+        var utf8 = Array(text.utf8)
+        guard let first = utf8.first, let last = utf8.last, first != 0x20, first != 0x09, last != 0x20, last != 0x09,
+              utf8.allSatisfy({ $0 < 0x80 }) else { return nil }
+        var percent = false
+        if last == UInt8(ascii: "%") {
+            percent = true
+            utf8.removeLast()
+        }
+        var index = 0
+        func digits() -> Int {
+            let start = index
+            while index < utf8.count, utf8[index] >= UInt8(ascii: "0"), utf8[index] <= UInt8(ascii: "9") { index += 1 }
+            return index - start
+        }
+        if index < utf8.count, utf8[index] == UInt8(ascii: "+") || utf8[index] == UInt8(ascii: "-") { index += 1 }
+        var mantissaDigits = digits()
+        if index < utf8.count, utf8[index] == UInt8(ascii: ".") {
+            index += 1
+            mantissaDigits += digits()
+        }
+        guard mantissaDigits > 0 else { return .some(nil) }
+        if index < utf8.count, utf8[index] == UInt8(ascii: "e") || utf8[index] == UInt8(ascii: "E") {
+            index += 1
+            if index < utf8.count, utf8[index] == UInt8(ascii: "+") || utf8[index] == UInt8(ascii: "-") { index += 1 }
+            guard digits() > 0 else { return .some(nil) }
+        }
+        guard index == utf8.count,
+              let value = Decimal(string: percent ? String(text.dropLast()) : text, locale: posix) else { return .some(nil) }
+        return .some(percent ? value / 100 : value)
     }
 }

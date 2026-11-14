@@ -15,7 +15,36 @@ public struct CellAddress: Hashable, Comparable, Sendable, CustomStringConvertib
     }
 
     /// 解析 "B12"、"$B$12"（$ 只是绝对引用的标记，这里忽略）。超出 Excel 的范围返回 nil。
+    /// 读 xlsx 时每个格子都要解析一次地址（`<c r="B12">`）：先按字节走一遍（2026-11-14，原来这一步占读文件的两成），
+    /// 规则和下面原来的写法一模一样：去掉所有 $，开头 1–3 个英文字母，后面全是 0–9，列不超过 XFD，行在 1…1,048,576。
     public init?(a1 text: some StringProtocol) {
+        var letters = 0
+        var column = 0
+        var digits = 0
+        var row = 0
+        for byte in text.utf8 {
+            switch byte {
+            case UInt8(ascii: "$"):
+                continue
+            case UInt8(ascii: "A")...UInt8(ascii: "Z"), UInt8(ascii: "a")...UInt8(ascii: "z"):
+                guard digits == 0, letters < 3 else { return nil }
+                letters += 1
+                column = column * 26 + Int(byte | 0x20) - 96
+            case UInt8(ascii: "0")...UInt8(ascii: "9"):
+                digits += 1
+                row = min(row * 10 + Int(byte - UInt8(ascii: "0")), CellAddress.maxRows + 1)
+            default:
+                return nil
+            }
+        }
+        guard letters > 0, digits > 0, column <= CellAddress.maxColumns, row >= 1, row <= CellAddress.maxRows else {
+            return nil
+        }
+        self.init(row: row - 1, column: column - 1)
+    }
+
+    /// 原来的写法（按 Unicode 标量）。留着给自检和上面的快速写法对照。
+    init?(slowA1 text: some StringProtocol) {
         let scalars = Array(text.unicodeScalars.filter { $0 != "$" })
         let letterCount = scalars.prefix { CellAddress.isASCIILetter($0) }.count
         let digits = scalars.dropFirst(letterCount)

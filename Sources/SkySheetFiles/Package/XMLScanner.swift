@@ -39,9 +39,13 @@ enum XMLScanner {
 
         func parser(_ parser: XMLParser, didStartElement elementName: String, namespaceURI: String?,
                     qualifiedName qName: String?, attributes attributeDict: [String: String] = [:]) {
-            var attributes: [String: String] = [:]
-            for (key, value) in attributeDict {
-                attributes[XMLScanner.localName(key)] = value
+            // 属性名都没有前缀（绝大多数）就直接用，不再抄一份：读十万行的表时每个格子都要抄（2026-11-14）。
+            var attributes = attributeDict
+            if attributeDict.keys.contains(where: { $0.contains(":") }) {
+                attributes = [:]
+                for (key, value) in attributeDict {
+                    attributes[XMLScanner.localName(key)] = value
+                }
             }
             texts.append("")
             handler.start(XMLScanner.localName(elementName), attributes: attributes)
