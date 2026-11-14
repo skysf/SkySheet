@@ -11,13 +11,28 @@ import SkySheetDisplay
 /// - 循环里不把闭包交给别的模块的函数：主线程上的闭包，Swift 6 每调一次都要核对一遍是不是在主线程上，
 ///   几千个格子下来比画字还贵（2026-11-14 实测）。要传闭包的放到 nonisolated 的静态函数里。
 /// - 画字的属性按样式缓存成 NSDictionary（TextAttributes），一格字只量一次。
+///
+/// 局部重画（只重画一条：选区移过的那几行、滚动新露出来的条）和整块重画画出来的必须一模一样：
+/// - 要画的格子（rows、columns）比重画的范围（clip）往外多看 spill 那么远（PaneView 算好的 `reach`）：旁边的格子画出界的
+///   那一点（填充、边框）会落进来；
+/// - 三件事按「整块重画时会画的行列」（visibleRows、visibleColumns）来定，而不是按这次要画的行列：合并单元格的边框（画到它
+///   左上角那一格时才画，左上角可能不在这次重画的行里）、AI 改过的格子的淡紫色（合并单元格整块盖）、往旁边溢出的长文字
+///   （看左右各 32 列）。
+/// 整块重画时两边一样，画出来和原来一模一样。局部重画由测速模式的 verify 逐像素核对（BenchmarkVerify）。
 @MainActor
 struct RegionRenderer {
     let canvas: SheetCanvas
+    /// 这次要重画的行列（和 `clip` 相交的）。
     let rows: Range<Int>
     let columns: Range<Int>
+    /// 这块窗格整块重画时会画的行列（看得见的）。
+    let visibleRows: Range<Int>
+    let visibleColumns: Range<Int>
     /// 这块窗格自己的列范围：文字溢出不越过它（冻结列里的字不溢到滚动区去）。
     let paneColumns: Range<Int>
+    /// 要画的格子覆盖的范围（clip 往外多看 spill）：合并单元格按它挑。
+    let reach: CGRect
+    /// 这次重画的范围（sheet 坐标）。
     let clip: CGRect
 
     private var geometry: SheetGeometry { canvas.geometry }
@@ -27,7 +42,7 @@ struct RegionRenderer {
         NSColor.white.setFill()
         clip.fill()
         guard !rows.isEmpty, !columns.isEmpty else { return }
-        let merges = canvas.merges(intersecting: clip)
+        let merges = canvas.merges(intersecting: reach)
         var lines: [[(column: Int, value: Cell)]] = []
         lines.reserveCapacity(rows.count)
         for row in rows {
@@ -86,7 +101,7 @@ struct RegionRenderer {
     private func drawAITouched() {
         guard !canvas.aiTouched.isEmpty else { return }
         NSColor.systemPurple.withAlphaComponent(0.13).setFill()
-        for address in canvas.aiTouched where rows.contains(address.row) && columns.contains(address.column) {
+        for address in canvas.aiTouched where visibleRows.contains(address.row) && visibleColumns.contains(address.column) {
             canvas.rect(of: canvas.merge(containing: address) ?? CellRange(address)).fill()
         }
     }
@@ -95,7 +110,8 @@ struct RegionRenderer {
 
     private func drawText(_ merges: [CellRange]) {
         // 看得见的列左右各多看 32 列：左边格子里的长文字可能溢进来，右对齐的也可能从右边溢进来。
-        let scan = max(paneColumns.lowerBound, columns.lowerBound - 32)..<min(paneColumns.upperBound, columns.upperBound + 32)
+        let scan = max(paneColumns.lowerBound, visibleColumns.lowerBound - 32)
+            ..< min(paneColumns.upperBound, visibleColumns.upperBound + 32)
         for row in rows {
             for (column, cell) in canvas.sheet.cells.entries(inRow: row, columns: scan) {
                 let address = CellAddress(row: row, column: column)
@@ -187,17 +203,37 @@ struct RegionRenderer {
     // MARK: - 边框和选区
 
     /// 每个格子画自己的四条边；合并单元格用左上角那一格的样式画整块的外框，里面的格子不画。
+    /// 合并单元格的外框在轮到左上角那一格时画。局部重画时左上角看得见、却不在这次重画的行列里的，照样画（裁在重画的
+    /// 范围里），按左上角的位置排进先后顺序：和整块重画时一样的先后，盖在一起的边框颜色才一样。
     private func drawBorders(_ lines: [[(column: Int, value: Cell)]], _ merges: [CellRange]) {
+        var outside: [(merge: CellRange, cell: Cell)] = []
+        for merge in merges {
+            let start = merge.start
+            guard visibleRows.contains(start.row), visibleColumns.contains(start.column),
+                  !(rows.contains(start.row) && columns.contains(start.column)),
+                  canvas.merge(containing: start) == merge, let cell = canvas.sheet.cells[start] else { continue }
+            outside.append((merge, cell))
+        }
+        outside.sort { $0.merge.start < $1.merge.start }
+        var next = 0
         for (offset, line) in lines.enumerated() {
             let row = rows.lowerBound + offset
             for (column, cell) in line {
                 let address = CellAddress(row: row, column: column)
+                while next < outside.count, outside[next].merge.start < address {
+                    strokeEdges(canvas.styles.style(outside[next].cell.styleIndex), canvas.rect(of: outside[next].merge))
+                    next += 1
+                }
                 if let merge = Self.first(merges, containing: address) {
                     if merge.start == address { strokeEdges(canvas.styles.style(cell.styleIndex), canvas.rect(of: merge)) }
                     continue
                 }
                 strokeEdges(canvas.styles.style(cell.styleIndex), canvas.rect(of: CellRange(address)))
             }
+        }
+        while next < outside.count {
+            strokeEdges(canvas.styles.style(outside[next].cell.styleIndex), canvas.rect(of: outside[next].merge))
+            next += 1
         }
     }
 

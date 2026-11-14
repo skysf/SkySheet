@@ -174,6 +174,12 @@ public struct SheetGeometry: Sendable {
 
     /// 字号（磅）换成屏幕点。
     public func fontPoints(_ size: Double) -> Double { size * Self.pixelsPerPoint * zoom }
+
+    // MARK: - 局部重画（2026-11-14，设计 8.2 节「性能」）
+
+    /// 一个格子画出来最多超出它的边多远（屏幕点）：填充往外 0.5；边框以「格线往里 0.5」为中心，最粗 3 磅 × 缩放；
+    /// 选区框 2 点宽、以选区的边为中心；再加一个像素的抗锯齿。局部重画时，离重画范围这么近的格子都要一起画上。
+    public var spill: Double { 1.5 + 1.5 * zoom }
 }
 
 extension [Int] {

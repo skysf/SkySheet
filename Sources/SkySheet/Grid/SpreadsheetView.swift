@@ -42,6 +42,8 @@ final class SpreadsheetView: NSView {
     private var needsInitialScroll = true
     /// 上次建画布时看的 sheet 和缩放：只有换了它们才滚到活动格。别的改动（改格子、拖列宽、AI 写东西）不挪用户看的地方。
     private var canvasKey: (sheet: Int, zoom: Double)?
+    /// 上一次画上去的选区：选区再变时，只重画它和新选区经过的那几行（invalidateSelection）。
+    private var drawnSelection: Selection?
 
     init(session: SheetSession) {
         self.session = session
@@ -179,10 +181,29 @@ final class SpreadsheetView: NSView {
     }
 
     private func selectionChanged() {
-        for view in [cornerPane, frozenRowsPane, frozenColumnsPane, mainPane, columnHeader, rowHeader] as [NSView] {
-            view.needsDisplay = true
-        }
+        invalidateSelection(from: drawnSelection, to: session.selection)
+        drawnSelection = session.selection
         scrollToCursor()
+    }
+
+    /// 选区变了要重画哪里（2026-11-14，设计 8.2 节「性能」）。原来四块窗格整块重画：按一下方向键就把一屏的字全画一遍，
+    /// 小表一帧也要 30 毫秒。现在只标脏旧选区、新选区各自经过的那几行（再往外让出选区框和抗锯齿画出界的那一点），每块窗格里
+    /// 横着整条。行号列标还是整条重画，便宜。局部重画和整块重画画出来的一模一样（RegionRenderer 的说明），
+    /// 由测速模式的 verify 核对（BenchmarkVerify）。
+    private func invalidateSelection(from old: Selection?, to new: Selection) {
+        columnHeader.needsDisplay = true
+        rowHeader.needsDisplay = true
+        let panes = [cornerPane, frozenRowsPane, frozenColumnsPane, mainPane]
+        guard let canvas, let old else {
+            for pane in panes { pane.needsDisplay = true }
+            return
+        }
+        for selection in [old, new] {
+            let cursor = canvas.rect(of: canvas.merge(containing: selection.cursor) ?? CellRange(selection.cursor))
+            let area = canvas.rect(of: selection.range).union(cursor)
+            let spill = canvas.geometry.spill
+            for pane in panes { pane.setNeedsDisplay(sheetTop: area.minY - spill, bottom: area.maxY + spill) }
+        }
     }
 
     /// 让活动格露出来。冻结区里的格子本来就看得见，只在滚动的那个方向上挪。

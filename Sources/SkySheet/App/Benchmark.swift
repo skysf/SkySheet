@@ -8,7 +8,7 @@ import SkySheetFiles
 ///  [--size 1280x800] [--frames 40] [--benchmark-only scroll|select|edit|resize|switch] [--benchmark-scale 0.2]
 ///  [--benchmark-file 存合成表的路径.xlsx] [--benchmark-json 结果.json]`
 /// `--benchmark-scale` 把合成的表按比例缩小（0.2 就是 2 万行），调试时跑得快；`--sheet-index` 按第几张（从 1 数）选表，
-/// 不用在命令行里写 sheet 名。
+/// 不用在命令行里写 sheet 名。`--benchmark-only verify` 不计时，核对局部重画和整块重画画出来的一不一样（BenchmarkVerify）。
 ///
 /// 把作者说卡的六类动作（打开、滚动、移动选区、改格子、拖列宽行高、换 sheet 和缩放）各做若干帧，打印每类的中位数、
 /// p95、最大值。合成的表先写成 xlsx 再打开：「打开」走的和双击文件是同一条路。
@@ -136,15 +136,15 @@ struct BenchmarkResult {
 }
 
 @MainActor
-private final class Benchmark {
+final class Benchmark {
     let request: BenchmarkRequest
     private var results: [BenchmarkResult] = []
-    private var window: NSWindow!
-    private var session: SheetSession!
-    private var spreadsheet: SpreadsheetView!
+    private(set) var window: NSWindow!
+    private(set) var session: SheetSession!
+    private(set) var spreadsheet: SpreadsheetView!
     /// 每帧画进这张位图（窗口大小 × 屏幕倍率），只建一次。
     private var canvasContext: CGContext!
-    private var scale: CGFloat = 2
+    private(set) var scale: CGFloat = 2
     private var lastVisible = CGRect.zero
 
     init(request: BenchmarkRequest) {
@@ -161,6 +161,7 @@ private final class Benchmark {
         if request.only == nil || request.only == "edit" { await editing() }
         if request.only == nil || request.only == "resize" { await resizing() }
         if request.only == nil || request.only == "switch" { await switching() }
+        if request.only == "verify" { await verifyPartialRedraws() }
         printResults()
         return results
     }
@@ -357,7 +358,7 @@ private final class Benchmark {
     }
 
     /// 选区、编辑从这里开始：冻结区右下的第一格。
-    private var firstBodyCell: CellAddress {
+    var firstBodyCell: CellAddress {
         CellAddress(row: session.sheet.frozen?.rows ?? 0, column: session.sheet.frozen?.columns ?? 0)
     }
 
@@ -412,7 +413,7 @@ private final class Benchmark {
 
     /// observeChanges 的回调是排在主线程上的 Task：先让一下，它们就排在前面跑完（主线程上的 Task 先来先跑）。
     /// 再睡一小会儿，run loop 走到「快睡了」那一步，SwiftUI 的更新在那时做；最后把自动布局排完。
-    private func settle() async {
+    func settle() async {
         await Task.yield()
         try? await Task.sleep(for: .milliseconds(4))
         window.layoutIfNeeded()
@@ -463,7 +464,7 @@ private final class Benchmark {
     }
 
     /// 表格自己画的那几个视图：四块窗格、行号列标、左上角。
-    private func gridViews(in view: NSView) -> [NSView] {
+    func gridViews(in view: NSView) -> [NSView] {
         view.subviews.flatMap { subview -> [NSView] in
             (subview is PaneView || subview is HeaderView || subview is CornerBox ? [subview] : []) + gridViews(in: subview)
         }
