@@ -193,6 +193,7 @@ final class Benchmark {
         var cpu = threadCPU()
         var workbook: Workbook
         var walls: [String] = []
+        let cache = RecalcCache()
         func lap(_ name: String) {
             record(name, [FrameSample(ms: threadCPU() - cpu, builds: DrawStats.canvasBuilds, panes: DrawStats.paneDraws,
                                       headers: DrawStats.headerDraws, area: DrawStats.paneArea)])
@@ -201,18 +202,19 @@ final class Benchmark {
             cpu = threadCPU()
         }
         if DocumentLoader.isDelimitedText(url: url, typeName: nil) {
-            workbook = try DocumentLoader.load(contentsOf: url).workbook
+            let loaded = try DocumentLoader.load(contentsOf: url)
+            workbook = loaded.workbook
             lap("open: read + recalc (csv)")
         } else {
             workbook = try XLSXReader.readDocument(Data(contentsOf: url)).workbook
             lap("open: read xlsx")
-            Recalculator.recalculate(&workbook)
+            Recalculator.recalculate(&workbook, options: RecalcOptions(cache: cache))
             lap("open: recalculate")
         }
 
         DrawStats.reset()
         DrawStats.tracksDirtyRects = true
-        session = SheetSession(workbook: workbook)
+        session = SheetSession(workbook: workbook, recalcCache: cache)
         if let index = request.sheetIndex ?? request.sheetName.flatMap(workbook.sheetIndex(named:)) { session.showSheet(index) }
         let controller = WorkbookViewController(session: session)
         window = OffscreenWindow.make(controller, size: request.size)

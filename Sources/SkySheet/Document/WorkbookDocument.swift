@@ -45,7 +45,7 @@ final class WorkbookDocument: NSDocument {
 
     override func makeWindowControllers() {
         guard let loaded else { return }
-        let session = SheetSession(workbook: loaded.workbook)
+        let session = SheetSession(workbook: loaded.workbook, recalcCache: loaded.recalcCache)
         session.undoManager = undoManager
         session.structureLock = { [weak self] id in self?.structureLock(forSheet: id) }
         self.session = session
@@ -83,14 +83,17 @@ enum DocumentLoader {
         var workbook: Workbook
         var source: XLSXSource?
         var csvFormat: CSVFormat?
+        /// 读进来那一次重算排好的计划：交给窗口，打开后第一次编辑就不用再从头排（RecalcCache）。
+        var recalcCache = RecalcCache()
     }
 
     static func load(contentsOf url: URL, typeName: String? = nil) throws -> Loaded {
         let data = try Data(contentsOf: url)
+        let cache = RecalcCache()
         if isDelimitedText(url: url, typeName: typeName) {
             let csv = try CSVReader.read(data, sheetName: url.deletingPathExtension().lastPathComponent)
             var workbook = csv.workbook
-            Recalculator.recalculate(&workbook)
+            Recalculator.recalculate(&workbook, options: RecalcOptions(cache: cache))
             // NSDocument 的 read 不在主线程隔离域里，但实际在主线程上调（WorkbookDocument 的说明）；截图模式也在主线程。
             // 量字体要在主线程：assumeIsolated 把这个前提写明，万一不在主线程会当场报错，而不是悄悄出问题。
             let fitted = MainActor.assumeIsolated { () -> Workbook in
@@ -98,12 +101,12 @@ enum DocumentLoader {
                 autoFitColumns(&copy)
                 return copy
             }
-            return Loaded(workbook: fitted, source: nil, csvFormat: csv.format)
+            return Loaded(workbook: fitted, source: nil, csvFormat: csv.format, recalcCache: cache)
         }
         var document = try XLSXReader.readDocument(data)
         // 读进来先整本重算一遍：TODAY() 是今天，我们算得了的公式用我们的结果，算不了的保留文件里的缓存值。
-        Recalculator.recalculate(&document.workbook)
-        return Loaded(workbook: document.workbook, source: document.source, csvFormat: nil)
+        Recalculator.recalculate(&document.workbook, options: RecalcOptions(cache: cache))
+        return Loaded(workbook: document.workbook, source: document.source, csvFormat: nil, recalcCache: cache)
     }
 
     /// csv 没有列宽：按内容定宽（设计 7.3 节，AutoFit 的说明）。量文字要用真正画的字体，所以在 App 这一层做。

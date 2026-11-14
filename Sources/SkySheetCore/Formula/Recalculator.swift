@@ -1,11 +1,35 @@
 import Foundation
+import Synchronization
 
 public struct RecalcOptions: Sendable {
     /// TODAY() 用哪一天。nil 是本机时区的今天；自检里固定成某一天。
     public var today: CivilDate?
+    /// 上一次重算排好的计划：公式没变就接着用（RecalcCache）。不给就每次从头排。
+    public var cache: RecalcCache?
 
-    public init(today: CivilDate? = nil) {
+    public init(today: CivilDate? = nil, cache: RecalcCache? = nil) {
         self.today = today
+        self.cache = cache
+    }
+}
+
+/// 两次重算之间留着的计划（2026-11-14，设计 5.5 节）。
+///
+/// 改一格的值（最常见的编辑）时，公式一个没变，计算顺序也就不变；原来每次都把所有公式从头解析、找依赖、排顺序，
+/// 一万行的还款表（5 万个公式）光这一步就占了重算的七成多。现在比一比工作簿里的公式（位置、原文、sheet 名），
+/// 一样就直接用上一次的计划，只把值重新算一遍。结果和从头排一模一样：计划只由这几样定。
+/// 一个窗口一份（SheetSession 带着），读文件时那一次重算也用它，打开后第一次编辑就不用再排。
+public final class RecalcCache: Sendable {
+    private let state = Mutex<(layout: FormulaLayout, plan: RecalcPlan)?>(nil)
+
+    public init() {}
+
+    /// 这个工作簿的计划：公式和上一次一样就用上一次的，否则排一份新的记下来。
+    func plan(for workbook: Workbook, layout: FormulaLayout) -> RecalcPlan {
+        if let known = state.withLock({ $0 }), known.layout == layout { return known.plan }
+        let plan = RecalcPlan(layout: layout, workbook: workbook)
+        state.withLock { $0 = (layout, plan) }
+        return plan
     }
 }
 
@@ -21,7 +45,8 @@ public struct RecalcReport: Sendable {
 public enum Recalculator {
     @discardableResult
     public static func recalculate(_ workbook: inout Workbook, options: RecalcOptions = RecalcOptions()) -> RecalcReport {
-        let plan = RecalcPlan(workbook: workbook)
+        let layout = FormulaLayout(workbook)
+        let plan = options.cache?.plan(for: workbook, layout: layout) ?? RecalcPlan(layout: layout, workbook: workbook)
         let today = options.today ?? CivilDate.today()
         let state = RecalcState(workbook: workbook, todaySerial: DateSerial.serial(from: today, system: workbook.dateSystem))
 

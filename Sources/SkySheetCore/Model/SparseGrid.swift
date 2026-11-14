@@ -61,6 +61,16 @@ public struct SparseGrid<Value: Sendable>: Sendable {
         return result
     }
 
+    /// 所有格子，不排序（顺序不定）。只要挨个看一遍、和顺序无关时用它：十万行的表按行列排好序再看，光排序就要几百毫秒
+    /// （重算前找公式，2026-11-14）。
+    public func forEachUnordered(_ body: (CellAddress, Value) throws -> Void) rethrows {
+        for (rowIndex, line) in rows {
+            for (column, value) in line {
+                try body(CellAddress(row: rowIndex, column: column), value)
+            }
+        }
+    }
+
     /// 按行优先的顺序遍历所有格子。
     public func forEach(_ body: (CellAddress, Value) throws -> Void) rethrows {
         for rowIndex in rowIndices {

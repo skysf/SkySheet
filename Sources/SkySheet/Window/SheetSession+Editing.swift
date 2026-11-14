@@ -45,7 +45,7 @@ extension SheetSession {
         try change(&changed)
         guard changed != workbook else { return }
         let edited = Self.editedSheets(changed, comparedTo: workbook)
-        Recalculator.recalculate(&changed)
+        Recalculator.recalculate(&changed, options: RecalcOptions(cache: recalcCache))
         Self.sign(&changed, sheets: edited, author: author)
         replaceWorkbook(changed)
         registerUndo(restoring: before, actionName)

@@ -30,9 +30,12 @@ final class SheetSession {
     @ObservationIgnored var structureLock: (@MainActor (_ sheetID: Int) -> StructureLock?)?
     /// 公式栏编辑完把键盘还给表格（窗口建好时接上）。
     @ObservationIgnored var focusGrid: (@MainActor () -> Void)?
+    /// 上一次重算排好的计划：公式没变的编辑接着用（RecalcCache，2026-11-14）。读文件时那一次重算排的也交过来。
+    @ObservationIgnored let recalcCache: RecalcCache
 
-    init(workbook: Workbook) {
+    init(workbook: Workbook, recalcCache: RecalcCache = RecalcCache()) {
         self.workbook = workbook
+        self.recalcCache = recalcCache
         styles = StyleResolver(workbook: workbook)
         sheetIndex = workbook.sheets.firstIndex { $0.visibility == .visible } ?? 0
         resetSelection()

@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// 一个公式格子的位置：第几张 sheet、哪一格。
 public struct FormulaLocation: Hashable, Comparable, Sendable {
@@ -15,6 +16,50 @@ public struct FormulaLocation: Hashable, Comparable, Sendable {
     }
 }
 
+/// 工作簿里的公式：每个公式格子的位置、原文、数组公式的范围，加上 sheet 名的顺序（公式按名字找 sheet）。
+/// 重算的计划（RecalcPlan）只由它定：两次重算之间它没变（只改了值，这是最常见的编辑），上一次排好的计划整个接着用
+/// （RecalcCache，2026-11-14）。收集时不按格子排序（顺序和计划无关），十万行的表也只是挨个看一遍。
+struct FormulaLayout: Equatable {
+    struct Entry: Equatable {
+        let source: String
+        let arrayRange: CellRange?
+    }
+
+    let sheetNames: [String]
+    let formulas: [FormulaLocation: Entry]
+
+    init(_ workbook: Workbook) {
+        sheetNames = workbook.sheets.map(\.name)
+        var formulas: [FormulaLocation: Entry] = [:]
+        for (sheetIndex, sheet) in workbook.sheets.enumerated() {
+            sheet.cells.forEachUnordered { address, cell in
+                guard let formula = cell.formula else { return }
+                formulas[FormulaLocation(sheet: sheetIndex, address: address)] = Entry(source: formula.source,
+                                                                                      arrayRange: formula.arrayRange)
+            }
+        }
+        self.formulas = formulas
+    }
+}
+
+/// 解析过的公式（原文 → 语法树），跨重算留着：一万行的还款表每次重算都把 5 万个公式从头切词、解析一遍，
+/// 占了重算的三成多（2026-11-14 实测）。解析只看原文，同一个原文结果一样。条目太多就整个清掉重来，内存有个上限。
+final class FormulaParseCache: Sendable {
+    static let shared = FormulaParseCache()
+    private static let limit = 500_000
+    private let storage = Mutex<[String: Result<FormulaNode, FormulaSyntaxError>]>([:])
+
+    func parse(_ source: String) -> Result<FormulaNode, FormulaSyntaxError> {
+        if let hit = storage.withLock({ $0[source] }) { return hit }
+        let result = Result { () throws(FormulaSyntaxError) -> FormulaNode in try FormulaParser.parse(source) }
+        storage.withLock { cache in
+            if cache.count >= Self.limit { cache.removeAll(keepingCapacity: true) }
+            cache[source] = result
+        }
+        return result
+    }
+}
+
 /// 一次重算的准备（设计 5.5 节）：解析每个公式、挑出算不了的、找出公式之间的依赖、排好先后。
 ///
 /// 排序不用递归：几百行的还款计划表每一行都引用上一行，递归深度就是行数，会把后台线程的栈撑爆。
@@ -27,33 +72,35 @@ struct RecalcPlan {
     private(set) var circular: Set<FormulaLocation> = []
 
     init(workbook: Workbook) {
+        self.init(layout: FormulaLayout(workbook), workbook: workbook)
+    }
+
+    /// `layout` 是 `workbook` 里的公式（FormulaLayout）。计划只由公式的位置、原文和 sheet 名定，和别的格子的值无关。
+    init(layout: FormulaLayout, workbook: Workbook) {
         // 每张 sheet 上哪些格子有公式：sheet → 列 → 行（从小到大）。找依赖时按列二分查找。
         var formulaCells: [Int: [Int: [Int]]] = [:]
-        var cache: [String: Result<FormulaNode, FormulaSyntaxError>] = [:]
-        for (sheetIndex, sheet) in workbook.sheets.enumerated() {
-            sheet.cells.forEach { address, cell in
-                guard let formula = cell.formula else { return }
-                let location = FormulaLocation(sheet: sheetIndex, address: address)
-                formulaCells[sheetIndex, default: [:]][address.column, default: []].append(address.row)
-                if formula.arrayRange != nil {
-                    unsupported[location] = "array formulas are not supported yet"
-                    return
-                }
-                let result = cache[formula.source] ?? Result { () throws(FormulaSyntaxError) -> FormulaNode in
-                    try FormulaParser.parse(formula.source)
-                }
-                cache[formula.source] = result
-                switch result {
-                case .failure(let error):
-                    unsupported[location] = "could not read the formula (\(error))"
-                case .success(let node):
-                    if let reason = Self.unsupportedReason(node, workbook: workbook) {
-                        unsupported[location] = reason
-                    } else {
-                        parsed[location] = node
-                    }
+        for (location, formula) in layout.formulas {
+            formulaCells[location.sheet, default: [:]][location.address.column, default: []].append(location.address.row)
+            if formula.arrayRange != nil {
+                unsupported[location] = "array formulas are not supported yet"
+                continue
+            }
+            switch FormulaParseCache.shared.parse(formula.source) {
+            case .failure(let error):
+                unsupported[location] = "could not read the formula (\(error))"
+            case .success(let node):
+                if let reason = Self.unsupportedReason(node, workbook: workbook) {
+                    unsupported[location] = reason
+                } else {
+                    parsed[location] = node
                 }
             }
+        }
+        // 每张 sheet 有公式的列，从左到右：找依赖时按这个顺序，排出来的计算顺序（和循环引用里标哪几格）每次都一样。
+        // 以前按字典的顺序走，每次启动可能不同。
+        var formulaColumns: [Int: [(column: Int, rows: [Int])]] = [:]
+        for (sheet, columns) in formulaCells {
+            formulaColumns[sheet] = columns.keys.sorted().map { (column: $0, rows: columns[$0]!.sorted()) }
         }
 
         var dependencies: [FormulaLocation: [FormulaLocation]] = [:]
@@ -61,7 +108,7 @@ struct RecalcPlan {
             var found: [FormulaLocation] = []
             Self.forEachReference(in: node) { reference in
                 guard let sheet = reference.sheet.map({ workbook.sheetIndex(named: $0) }) ?? location.sheet,
-                      let columns = formulaCells[sheet] else { return }
+                      let columns = formulaColumns[sheet] else { return }
                 let range = reference.range
                 for (column, rows) in columns where (range.start.column...range.end.column).contains(column) {
                     var index = rows.lowerBound(of: range.start.row)
