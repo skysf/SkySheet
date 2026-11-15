@@ -139,7 +139,10 @@ extension SheetSession {
 
     /// 公式栏和双击编辑时用的写法；内部复制直接取 CellValue，不经过这里。
     func rawText(at address: CellAddress) -> String {
-        sheet.cells[address].map { Self.rawText($0, styles: workbook.styles, dateSystem: workbook.dateSystem) } ?? ""
+        // 方向键每次移动都会读公式栏；一次取同一本，避免为格子、样式和日期系统反复复制大值、登记观测。
+        let book = workbook
+        guard let cell = book.sheets[sheetIndex].cells[address] else { return "" }
+        return Self.rawText(cell, styles: book.styles, dateSystem: book.dateSystem)
     }
 
     /// 公式显示原文；日期显示成日期；别的数字显示全精度（不按格式四舍五入），和 Excel 的公式栏一样。

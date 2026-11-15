@@ -1,4 +1,5 @@
 import Foundation
+import CoreGraphics
 import SkySheetCore
 
 /// 一个方向上（行或者列）每一格多大、从哪开始。只记和默认大小不一样的那些（隐藏的算 0），
@@ -53,8 +54,8 @@ public struct SheetGeometry: Sendable {
     public let rows: AxisLayout
     public let zoom: Double
     /// 能滚动到的行数、列数：用到的范围再多留一些，至少铺满 `minimum`。
-    public let rowCount: Int
-    public let columnCount: Int
+    public private(set) var rowCount: Int
+    public private(set) var columnCount: Int
     /// 算这份几何时表里用到的范围（`sheet.cells.usedRange`）：下一份几何格子没变就接着用，不用再数一遍。
     public let usedRange: CellRange?
     /// 排两个方向用到的设置：下一份几何这个方向的设置一样，就接着用这里排好的（拖边线时每动一下都要重建几何，
@@ -170,10 +171,28 @@ public struct SheetGeometry: Sendable {
     public var totalWidth: Double { columns.offset(columnCount) }
     public var totalHeight: Double { rows.offset(rowCount) }
 
+    /// 空白区域也可以导航；只扩展范围，不重新数格子或排行列，方向键在现有范围里时没有重建成本。
+    @discardableResult
+    public mutating func include(_ address: CellAddress) -> Bool {
+        let oldRows = rowCount
+        let oldColumns = columnCount
+        if address.row >= rowCount { rowCount = min(address.row + 31, CellAddress.maxRows) }
+        if address.column >= columnCount { columnCount = min(address.column + 9, CellAddress.maxColumns) }
+        return rowCount != oldRows || columnCount != oldColumns
+    }
+
     public func columnWidth(_ column: Int) -> Double { columns.size(column) }
     public func rowHeight(_ row: Int) -> Double { rows.size(row) }
     public func x(ofColumn column: Int) -> Double { columns.offset(column) }
     public func y(ofRow row: Int) -> Double { rows.offset(row) }
+
+    /// 直接在这一帧持有的几何上算，避免每个格子为了四个坐标重复读取画布上的可变大结构。
+    public func rect(of range: CellRange) -> CGRect {
+        let left = x(ofColumn: range.start.column)
+        let top = y(ofRow: range.start.row)
+        return CGRect(x: left, y: top, width: x(ofColumn: range.end.column + 1) - left,
+                      height: y(ofRow: range.end.row + 1) - top)
+    }
     public func column(atX x: Double) -> Int { columns.index(at: x, count: columnCount) }
     public func row(atY y: Double) -> Int { rows.index(at: y, count: rowCount) }
 

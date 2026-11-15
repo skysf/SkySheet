@@ -92,7 +92,7 @@ final class SizeLabel: NSTextField {
         isSelectable = false
         isBordered = false
         drawsBackground = true
-        backgroundColor = NSColor(white: 1, alpha: 0.95)
+        backgroundColor = GridChrome.sizeBackground
         textColor = .labelColor
         font = .systemFont(ofSize: 11)
         wantsLayer = true

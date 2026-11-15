@@ -35,6 +35,7 @@ let package = Package(
         .executableTarget(
             name: "SkySheetChecks",
             dependencies: ["SkyZip", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit"],
+            // UI 检查由 check-ui.sh 直接链接 debug App 对象：不为测试搬动生产模块，也不启动 App 的 main。
             exclude: ["UI"]
         ),
     ]

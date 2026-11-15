@@ -85,7 +85,7 @@ class PaneView: NSView {
 
         context.saveGState()
         context.translateBy(x: -origin.x, y: -origin.y)
-        RegionRenderer(canvas: canvas, rows: dirty.rows, columns: dirty.columns, visibleRows: visible.rows,
+        RegionRenderer(canvas: canvas, geometry: geometry, rows: dirty.rows, columns: dirty.columns, visibleRows: visible.rows,
                        visibleColumns: visible.columns, paneColumns: bounds.columns, reach: reach, clip: sheetRect)
             .draw(selection: spreadsheet.session.selection)
         context.restoreGState()

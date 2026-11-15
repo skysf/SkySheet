@@ -76,6 +76,19 @@ func opaque(_ color: NSColor, over background: NSColor) -> NSColor {
 }
 
 @MainActor
+func headerContrast(_ bitmap: NSBitmapImageRep, x: Int) -> Double {
+    var darkest = 1.0
+    var brightest = 0.0
+    for row in 3..<18 { for column in (x - 6)...(x + 6) {
+        let value = luminance(bitmap.colorAt(x: column, y: row)!)
+        darkest = min(darkest, value)
+        brightest = max(brightest, value)
+    } }
+    let background = luminance(bitmap.colorAt(x: x + 20, y: 5)!)
+    return max((background + 0.05) / (darkest + 0.05), (brightest + 0.05) / (background + 0.05))
+}
+
+@MainActor
 func chromeContrastChecks() {
     group("ui-9: chrome contrast in Aqua and Dark Aqua") {
         let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))
@@ -95,19 +108,16 @@ func chromeContrastChecks() {
                 let header = grid.columnHeader
                 let bitmap = renderPixels(width: 600, height: 22) { header.draw(header.bounds) }
                 let x = Int(grid.canvas!.geometry.x(ofColumn: 1) + grid.canvas!.geometry.columnWidth(1) / 2)
-                var darkest = 1.0
-                for row in 3..<18 { for column in (x - 6)...(x + 6) {
-                    darkest = min(darkest, luminance(bitmap.colorAt(x: column, y: row)!))
-                } }
-                let background = luminance(bitmap.colorAt(x: x + 20, y: 5)!)
-                // 深色背景上的浅字取最亮像素，浅色背景上的深字取最暗像素。
-                var brightest = 0.0
-                for row in 3..<18 { for column in (x - 6)...(x + 6) {
-                    brightest = max(brightest, luminance(bitmap.colorAt(x: column, y: row)!))
-                } }
-                let contrast = max((background + 0.05) / (darkest + 0.05), (brightest + 0.05) / (background + 0.05))
+                let contrast = headerContrast(bitmap, x: x)
                 check(contrast >= (name == .darkAqua ? 4.5 : 3), "header label contrast \(name): \(contrast)")
                 print(String(format: "chrome contrast %@: header %.2f, size hint %.2f", name.rawValue, contrast, sizeContrast))
+                if name == .darkAqua {
+                    session.selectLines(.columns, through: 1, extend: false, crossIndex: 0)
+                    let selected = renderPixels(width: 600, height: 22) { header.draw(header.bounds) }
+                    let selectedContrast = headerContrast(selected, x: x)
+                    check(selectedContrast >= 4.5, "selected dark header contrast: \(selectedContrast)")
+                    print(String(format: "chrome contrast selected dark header: %.2f", selectedContrast))
+                }
             }
         }
     }

@@ -16,7 +16,12 @@ Task { @MainActor in
     case "copy-limit": copyLimitChecks()
     case "theme": invalidThemeChecks()
     case "format": invalidFormatColorChecks()
+    case "appearance": chromeContrastChecks()
     case "locale": sizeLocaleChecks()
+    case "drawing":
+        mergedPaneBorderChecks()
+        centeredOverflowChecks()
+        await cursorExtentChecks()
     default: fatalError("Unknown UI check suite")
     }
     finishChecks()
