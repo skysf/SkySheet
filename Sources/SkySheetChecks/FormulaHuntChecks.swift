@@ -10,7 +10,8 @@ func formulaHuntChecks() {
                  "constantSumData", "rankOrder", "utf16Text", "subsecond15", "subsecond19", "subsecond100",
                  "lookupShape", "criteriaShape", "whitespaceInput", "largeDateExport", "cumulativeBound",
                  "dateOverflow", "dateMonthOverflow", "dateDayOverflow", "edateOverflow", "eomonthOverflow",
-                 "serialOverflow", "inputTimeOverflow", "csvTimeOverflow", "dosCalendar", "fractionFormat", "horizontalSumData"] {
+                 "serialOverflow", "inputTimeOverflow", "csvTimeOverflow", "dosCalendar", "fractionFormat", "horizontalSumData",
+                 "bareCurrencyInput", "largeTextOffset", "boundaryCriteria", "boundaryLookup", "boundaryTotals", "boundaryDates", "boundaryCumulative"] {
         group("formula hunt: \(name)") {
             let directory = try makeTemporaryDirectory()
             let log = directory.appendingPathComponent("output")
@@ -61,11 +62,17 @@ func formulaHuntCase(_ name: String) {
             checkEqual(evaluate("COUNTIFS(A1:A1,B1)", ["A1": "0"], at: "C1"), num("1"), "empty criterion reference is zero")
             checkValue("SUMIF(A1:A2,B1,C1:C2)", ["A1": "0", "A2": "2", "C1": "7", "C2": "8"], num("7"))
         case "gregorianToday":
+            let instant = Date(timeIntervalSince1970: 1_794_739_200)
             var buddhist = Calendar(identifier: .buddhist)
             buddhist.timeZone = TimeZone(secondsFromGMT: 28_800)!
             var gregorian = Calendar(identifier: .gregorian)
             gregorian.timeZone = buddhist.timeZone
-            checkEqual(CivilDate.today(calendar: buddhist), CivilDate.today(calendar: gregorian), "calendar setting cannot change TODAY")
+            let day = CivilDate.today(at: instant, calendar: gregorian)
+            checkEqual(CivilDate.today(at: instant, calendar: buddhist), day, "calendar setting cannot change TODAY")
+            var workbook = Workbook(sheets: [makeSheet("S", id: 1, ["A1": "=TODAY()", "A2": "=YEAR(TODAY())"])])
+            Recalculator.recalculate(&workbook, options: RecalcOptions(today: CivilDate.today(at: instant, calendar: buddhist)))
+            checkEqual(workbook.sheets[0].cells[0, 0]?.value, .number(Decimal(DateSerial.serial(from: day, system: .from1900))), "TODAY is Gregorian")
+            checkEqual(workbook.sheets[0].cells[1, 0]?.value, .number(Decimal(day.year)), "YEAR(TODAY) is Gregorian")
         case "constantSumData", "horizontalSumData":
             var workbook: Workbook
             if name == "constantSumData" {
@@ -112,6 +119,10 @@ func formulaHuntCase(_ name: String) {
             for text in [" ", "   ", "\t", "\n"] {
                 checkEqual(CellInput.parse(text), .value(.text(text)), "whitespace stays text")
             }
+        case "bareCurrencyInput":
+            checkEqual(CellInput.parse("¥"), .value(.text("¥")), "currency without digits stays text")
+        case "largeTextOffset":
+            checkValue("MID(\"abc\",9223372036854775807,9223372036854775807)", .text(""))
         case "largeDateExport":
             let number = Decimal(string: "1e20")!
             checkEqual(DateSerial.isoText(number, system: .from1900), nil, "large date has no ISO representation")
@@ -160,6 +171,10 @@ func formulaHuntCase(_ name: String) {
             }
             checkEqual(BuiltinFormats.code(for: 12), "# ?/?", "builtin 12")
             checkEqual(BuiltinFormats.code(for: 13), "# ??/??", "builtin 13")
+            let styles = StyleTable(cellFormats: [CellFormat(numberFormatID: 12), CellFormat(numberFormatID: 13)])
+            checkEqual(ValueFormatter.format(num("1.5"), code: styles.formatCode(forStyle: 0)).text, "1 1/2", "builtin 12 render")
+            checkEqual(ValueFormatter.format(num("1.125"), code: styles.formatCode(forStyle: 1)).text, "1  1/8 ", "builtin 13 render")
+        case let boundary where boundary.hasPrefix("boundary"): formulaHuntBoundaryChecks(boundary)
         default: fail("unknown case \(name)")
         }
     }
