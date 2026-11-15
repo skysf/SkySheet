@@ -48,6 +48,8 @@ Secrets/
 
 # 本机的代理 / 编辑器设置
 .claude/settings.local.json
+# Claude Code 的子会话在这里建临时 worktree，不能把这些检出和构建产物带进仓库。
+/.claude/worktrees/
 .idea/
 .vscode/
 .cursor/

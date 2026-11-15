@@ -8,7 +8,8 @@ public struct ZipArchive: Sendable {
     /// 条目，顺序和中央目录里一致（保存时照这个顺序写回）。
     public let entries: [ZipEntry]
     private let bytes: [UInt8]
-    private let indexByName: [String: Int]
+    // ZIP 名称按字节区分；直接用标准库字节键，底层 ZIP 模块不依赖表格模型。
+    private let indexByName: [[UInt8]: Int]
 
     public init(data: Data) throws(ZipError) {
         let reader = LittleEndianBytes([UInt8](data))
@@ -24,15 +25,15 @@ public struct ZipArchive: Sendable {
         self.entries = entries
         self.bytes = reader.bytes
         // 同名条目（不合规的包）以第一个为准，和大多数解压工具一致。
-        var index: [String: Int] = [:]
-        for (position, entry) in entries.enumerated() where index[entry.name] == nil {
-            index[entry.name] = position
+        var index: [[UInt8]: Int] = [:]
+        for (position, entry) in entries.enumerated() where index[Array(entry.name.utf8)] == nil {
+            index[Array(entry.name.utf8)] = position
         }
         self.indexByName = index
     }
 
     public func entry(named name: String) -> ZipEntry? {
-        indexByName[name].map { entries[$0] }
+        indexByName[Array(name.utf8)].map { entries[$0] }
     }
 
     /// 取一个条目解压后的内容，并核对 CRC。

@@ -46,23 +46,25 @@ enum XLSXNumber {
 /// 已有的编号一个不动（设计 7.2 节）。
 struct SharedStringTable {
     private(set) var appended: [String] = []
-    private var indices: [String: Int] = [:]
+    private var indices: [ExactText: Int] = [:]
     private let existing: [String]
 
     init(existing: [String] = [], rich: Set<Int> = []) {
         self.existing = existing
-        for (index, text) in existing.enumerated() where !rich.contains(index) && indices[text] == nil {
-            indices[text] = index
+        for (index, text) in existing.enumerated() where !rich.contains(index) && indices[ExactText(text)] == nil {
+            indices[ExactText(text)] = index
         }
     }
 
     /// `original` 是这一格在原文件里用的那条（富文本）：文字没变就接着用它，格式留着。
     mutating func index(of text: String, original: Int? = nil) -> Int {
-        if let original, existing.indices.contains(original), existing[original] == text { return original }
-        if let known = indices[text] { return known }
+        // 写回文件要保留每格的标量；原富文本也只有原文逐字节没变时才能接着用。
+        let key = ExactText(text)
+        if let original, existing.indices.contains(original), ExactText(existing[original]) == key { return original }
+        if let known = indices[key] { return known }
         let index = existing.count + appended.count
         appended.append(text)
-        indices[text] = index
+        indices[key] = index
         return index
     }
 

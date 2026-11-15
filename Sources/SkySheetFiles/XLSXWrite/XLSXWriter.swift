@@ -39,9 +39,10 @@ private struct PackagePatch {
             ? String(source.workbookPart[...source.workbookPart.lastIndex(of: "/")!]) : ""
         func relative(_ path: String) -> String { String(path.dropFirst(directory.count)) }
 
-        var replaced: [String: Data] = [:]
+        // 部件名只折叠大小写；按规范等价合并会把另一张表也替换或删除。
+        var replaced: [ExactText: Data] = [:]
         var added: [(name: String, data: Data)] = []
-        var removed: Set<String> = []
+        var removed: Set<ExactText> = []
         var takenNames = Set(package.zip.entries.map { $0.name.lowercased() })
         var takenIDs = source.relationshipIDs
         var newRelationships: [PackageIndex.NewRelationship] = []
@@ -76,18 +77,18 @@ private struct PackagePatch {
             let old = baselineSheets[sheet.id]
             if let old, old.hasSameContent(as: sheet) { continue }
             guard let original = XMLFragments(try read(part.path)) else { throw XLSXWriteError.unreadablePart(part.path) }
-            replaced[part.path.lowercased()] = WorksheetWriter.write(sheet, original: original, baseline: old,
+            replaced[ExactText(part.path.lowercased())] = WorksheetWriter.write(sheet, original: original, baseline: old,
                                                                      defaultRowHeight: workbook.styles.defaultRowHeight,
                                                                      strings: &strings)
             regenerated.insert(sheet.id)
         }
         // 删掉的 sheet：部件和它的关系文件不要了。它引用的图片、批注留在包里没人指着，Excel 不在意。
         let live = Set(workbook.sheets.map(\.id))
-        var removedIDs: Set<String> = []
+        var removedIDs: Set<ExactText> = []
         for (id, part) in source.sheets where !live.contains(id) {
-            removed.insert(part.path.lowercased())
-            removed.insert(OPCPackage.relationshipsPart(for: part.path).lowercased())
-            removedIDs.insert(part.relationshipID)
+            removed.insert(ExactText(part.path.lowercased()))
+            removed.insert(ExactText(OPCPackage.relationshipsPart(for: part.path).lowercased()))
+            removedIDs.insert(ExactText(part.relationshipID))
             structureChanged = true
         }
 
@@ -95,13 +96,13 @@ private struct PackagePatch {
         let recalculate = !regenerated.isEmpty || structureChanged
         var removedTypes: [String] = []
         if recalculate, let chain = source.calcChainPart {
-            removed.insert(chain.lowercased())
+            removed.insert(ExactText(chain.lowercased()))
             removedTypes.append("calcChain")
         }
 
         if !strings.appended.isEmpty {
             if let path = source.sharedStringsPart {
-                replaced[path.lowercased()] = try Self.appendStrings(strings.appended, to: try read(path), part: path)
+                replaced[ExactText(path.lowercased())] = try Self.appendStrings(strings.appended, to: try read(path), part: path)
             } else {
                 addPart("sharedStrings", type: OOXML.sharedStringsType, content: OOXML.sharedStringsContent,
                         data: FreshPackage.sharedStrings(strings.appended))
@@ -109,7 +110,7 @@ private struct PackagePatch {
         }
         if let path = source.stylesPart {
             if let data = try StylesWriter.patch(try read(path), file: source.fileStyles, current: workbook.styles) {
-                replaced[path.lowercased()] = data
+                replaced[ExactText(path.lowercased())] = data
             }
         } else if recalculate || workbook.styles != baseline?.styles {
             addPart("styles", type: OOXML.stylesType, content: OOXML.stylesContent, data: StylesWriter.fresh(workbook.styles))
@@ -122,7 +123,7 @@ private struct PackagePatch {
                 guard let data = AIProperties.patchedPart(try read(part), properties: properties) else {
                     throw XLSXWriteError.unreadablePart(part)
                 }
-                replaced[part.lowercased()] = data
+                replaced[ExactText(part.lowercased())] = data
             } else if !properties.isEmpty {
                 var name = AIProperties.partName
                 if takenNames.contains(name.lowercased()) {
@@ -138,7 +139,7 @@ private struct PackagePatch {
                 if let data = try PackageIndex.patchRelationships(
                     try read(packageRelationships), part: packageRelationships, removingIDs: [], removingTypes: [],
                     adding: [.init(id: Self.unusedID(&ids), type: AIProperties.relationshipType, target: name)]) {
-                    replaced[packageRelationships] = data
+                    replaced[ExactText(packageRelationships)] = data
                 }
             }
         }
@@ -146,23 +147,23 @@ private struct PackagePatch {
         if let data = try WorkbookWriter.patch(workbookFragments, part: source.workbookPart, entries: entries,
                                                workbook: workbook, baseline: baseline,
                                                existing: Set(source.sheets.keys), recalculate: recalculate) {
-            replaced[source.workbookPart.lowercased()] = data
+            replaced[ExactText(source.workbookPart.lowercased())] = data
         }
         let relationshipsPart = OPCPackage.relationshipsPart(for: source.workbookPart)
         if let data = try PackageIndex.patchRelationships(try read(relationshipsPart), part: relationshipsPart,
                                                           removingIDs: removedIDs, removingTypes: removedTypes,
                                                           adding: newRelationships) {
-            replaced[relationshipsPart.lowercased()] = data
+            replaced[ExactText(relationshipsPart.lowercased())] = data
         }
         if let data = try PackageIndex.patchContentTypes(try read(PackageIndex.contentTypesName), removing: removed,
                                                          adding: newOverrides) {
-            replaced[PackageIndex.contentTypesName.lowercased()] = data
+            replaced[ExactText(PackageIndex.contentTypesName.lowercased())] = data
         }
         return try assemble(replaced: replaced, added: added, removed: removed, regenerated: regenerated)
     }
 
     /// 拼 zip：`[Content_Types].xml` 放第一个，其余按原包的顺序，新部件放最后。没动过的条目连压缩后的字节都照抄。
-    private func assemble(replaced: [String: Data], added: [(name: String, data: Data)], removed: Set<String>,
+    private func assemble(replaced: [ExactText: Data], added: [(name: String, data: Data)], removed: Set<ExactText>,
                           regenerated: Set<Int>) throws(XLSXWriteError) -> XLSXWriteResult {
         let typesKey = PackageIndex.contentTypesName.lowercased()
         let entries = package.zip.entries.filter { $0.name.lowercased() == typesKey }
@@ -170,8 +171,8 @@ private struct PackagePatch {
         var writer = ZipWriter()
         var copied: [String] = []
         do throws(ZipError) {
-            for entry in entries where !removed.contains(entry.name.lowercased()) {
-                if let data = replaced[entry.name.lowercased()] {
+            for entry in entries where !removed.contains(ExactText(entry.name.lowercased())) {
+                if let data = replaced[ExactText(entry.name.lowercased())] {
                     try writer.addFile(entry.name, contents: data, modified: entry.modified)
                 } else {
                     try writer.addCopy(of: entry, compressed: try package.zip.compressedData(of: entry))
