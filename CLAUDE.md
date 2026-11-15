@@ -2,6 +2,8 @@
 
 给 AI 用的轻量 macOS 表格（xlsx / csv）。Claude Code 通过 MCP（`skysheet`）读表、计算，把结果写进新 sheet；
 原始数据永远不动。每条决定和理由都在设计文档：`docs/plans/2026-10-08-skysheet-design.md`（下称「设计」）。
+2026-11-15、11-16 定的计划（同一个 App 还开 Word 和 Markdown、改名 SkyFolio、以后给别人用）在
+`docs/plans/2026-11-15-skyfolio-word-markdown.md`（下称「新方案」），按设计第十三节的里程碑一步步做；还没做的别当成已经有了。
 
 ## 现在在哪
 
@@ -31,7 +33,8 @@
 1. `SampleData/` 是作者的真实财务数据：永远不进仓库，也不进 issue、PR、提交说明；测试只用 `Fixtures/`。
 2. 原始 sheet 对 AI 只读（设计第 12 条）；保存的六道保险（设计第十节）任何改动都不许绕开。
 3. 不认识的东西原样保留：xlsx 里读不懂的部件和元素、公式原文、文件里的缓存值，一律不改、不丢。
-4. 零第三方依赖（设计第 7 条）。
+4. 不通过包管理器引第三方库（`Package.swift` 没有 `dependencies`）。别人的开源代码只能按设计第 7 条复制进 `ThirdParty/<项目名>/`：
+   许可证和 AGPL-3.0 兼容，带原许可证和 `SOURCE.md`（出处、提交、改了什么），从此当自己的代码维护。
 5. 签名只经 `scripts/signing/sign-app.sh`。永远不重建「Skylu Signing」证书；私钥在 `~/.config/skylu/signing/`，
    这台机器上没有就停下来问作者。
 6. MCP：小程序的 stdout 只写 MCP 消息；工具清单只有一份（`SkySheetMCPKit`）；给模型看的文字只用英文，总说明不超过
