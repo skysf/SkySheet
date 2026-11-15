@@ -15,7 +15,7 @@ func performanceChecks() {
         let seconds = Date().timeIntervalSince(started)
         print(String(format: "performance: %d formulas recalculated in %.2f s (debug build)", report.calculated, seconds))
 
-        checkEqual(report.calculated, 50_000, "formulas calculated")
+        checkEqual(report.calculated, 50_300, "formulas calculated including conditional statistics")
         guard case .number(let balance)? = workbook.sheets[0].cells[CellAddress(a1: "F10000")!]?.value else {
             fail("no final balance")
             return

@@ -59,3 +59,60 @@ func financialChecks() {
         checkValue("EFFECT(-1%,4)", .error(.num))
     }
 }
+
+@MainActor
+func financialRegressionChecks() {
+    irrErrorsChecks()
+    npvBooleansChecks()
+    boundedCheck("cumulativeBound")
+    boundedCheck("boundaryCumulative")
+}
+
+@MainActor
+func irrErrorsChecks() {
+    group("financial: irrErrors") {
+        for (source, error) in [("=#N/A", CellError.na), ("=1/0", .div0)] {
+            checkValue("IRR(A1:A3)", ["A1": "-100", "A2": source, "A3": "110"], .error(error))
+        }
+    }
+}
+
+@MainActor
+func npvBooleansChecks() {
+    group("financial: npvBooleans") {
+        checkValue("NPV(100%,TRUE,4)", num("2"))
+        checkValue("NPV(100%,FALSE,4)", num("2"))
+    }
+}
+
+@MainActor
+func cumulativeBoundChecks() {
+    group("financial: cumulativeBound") {
+        for function in ["CUMIPMT", "CUMPRINC"] {
+            checkValue("\(function)(0.01,1000000000000,1000,1,1000000000000,0)", .error(.num))
+        }
+    }
+}
+
+@MainActor
+func boundaryCumulativeChecks() {
+    group("financial: boundaryCumulative") {
+        for type in 0...1 {
+            for (first, last) in [(1, 1), (1, 12), (5, 12)] {
+                var interest = 0.0
+                var principal = 0.0
+                for period in first...last {
+                    let values = "5%/12,\(period),12,1000,0,\(type)"
+                    interest += DecimalMath.double(evaluate("IPMT(\(values))").number!)
+                    principal += DecimalMath.double(evaluate("PPMT(\(values))").number!)
+                }
+                let arguments = "5%/12,12,1000,\(first),\(last),\(type)"
+                checkNumber(evaluate("CUMIPMT(\(arguments))"), interest, tolerance: 1e-11, "cumulative interest matches periods")
+                checkNumber(evaluate("CUMPRINC(\(arguments))"), principal, tolerance: 1e-11, "cumulative principal matches periods")
+            }
+        }
+        checkValue("CUMPRINC(0.01,1000000000000,1000,1,1000000000000,0)", .error(.num))
+        let bounded = evaluate("CUMIPMT(0.0000000000001,1000000000000,1000,1,1000000000000,0)")
+        check(bounded.number.map { $0 < 0 && $0 > -1000 } == true, "finite payment with huge period count is bounded")
+    }
+}

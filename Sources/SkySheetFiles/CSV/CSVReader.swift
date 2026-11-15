@@ -157,7 +157,7 @@ enum CSVValue {
         case "FALSE": return Cell(value: .bool(false))
         default: break
         }
-        if let serial = date(text) {
+        if let (serial, _) = DateInput.parse(text) {
             return Cell(value: .number(serial), styleIndex: DecimalMath.isInteger(serial) ? dateStyle : dateTimeStyle)
         }
         guard keepsMeaningAsNumber(text), let number = DecimalMath.parse(text) else { return Cell(value: .text(field)) }
@@ -175,25 +175,7 @@ enum CSVValue {
         return true
     }
 
-    /// 2025-12-01、2025/12/1，可以带 10:30 或 10:30:15。年份四位，月日要合法。
-    static func date(_ text: String) -> Decimal? {
-        let parts = text.split(separator: " ", maxSplits: 1)
-        guard let datePart = parts.first else { return nil }
-        let pieces = datePart.split(whereSeparator: { $0 == "-" || $0 == "/" }).map(String.init)
-        guard pieces.count == 3, pieces[0].count == 4, let year = Int(pieces[0]), let month = Int(pieces[1]),
-              let day = Int(pieces[2]), (1900...9999).contains(year), (1...12).contains(month),
-              (1...DateSerial.daysInMonth(year: year, month: month)).contains(day)
-        else { return nil }
-        var serial = Decimal(DateSerial.serial(from: CivilDate(year: year, month: month, day: day), system: .from1900))
-        if parts.count == 2 {
-            let clock = parts[1].split(separator: ":").map { Int($0) }
-            guard (2...3).contains(clock.count), let hour = clock[0], let minute = clock[1],
-                  (0...23).contains(hour), (0...59).contains(minute) else { return nil }
-            guard let second = clock.count == 3 ? clock[2] : 0, (0...59).contains(second) else { return nil }
-            serial += Decimal(hour * 3600 + minute * 60 + second) / 86_400
-        }
-        return serial
-    }
+
 }
 
 /// 认文字编码：带 BOM 的按 BOM；整份是合法 UTF-8 就是 UTF-8；否则当 GB18030

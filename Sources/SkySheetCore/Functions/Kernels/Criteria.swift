@@ -6,6 +6,7 @@ struct Criterion {
         case equal, notEqual, less, lessOrEqual, greater, greaterOrEqual
     }
 
+    private var matcher: Wildcard.Pattern?
     let comparison: Comparison
     /// `.empty` 表示和空格子比（条件写成 "" 或 "=" 或 "<>"）。
     let operand: CellValue
@@ -30,6 +31,7 @@ struct Criterion {
             operand = .bool(rest.uppercased() == "TRUE")
         } else {
             operand = .text(rest)
+            matcher = Wildcard.Pattern(rest)
         }
     }
 
@@ -39,7 +41,8 @@ struct Criterion {
             let blank = value == .empty || value == .text("")
             switch comparison {
             case .equal: return blank
-            case .notEqual: return !blank
+            // <> 只排除真正的空格子；公式返回的空文字仍是有值。
+            case .notEqual: return value != .empty
             default: return false
             }
         case .number(let target):
@@ -53,8 +56,8 @@ struct Criterion {
         case .text(let pattern):
             guard case .text(let text) = value else { return comparison == .notEqual }
             switch comparison {
-            case .equal: return Wildcard.matches(text, pattern: pattern)
-            case .notEqual: return !Wildcard.matches(text, pattern: pattern)
+            case .equal: return matcher!.matches(text)
+            case .notEqual: return !matcher!.matches(text)
             default: return holds(text.compare(pattern, options: .caseInsensitive))
             }
         case .bool, .error:
@@ -87,44 +90,63 @@ enum Wildcard {
     }
 
     static func matches(_ text: String, pattern: String) -> Bool {
-        let characters = Array(text.lowercased())
-        var pieces: [Piece] = []
-        var escaped = false
-        for character in pattern.lowercased() {
-            if escaped {
-                pieces.append(.character(character))
-                escaped = false
-            } else if character == "~" {
-                escaped = true
-            } else {
-                pieces.append(character == "*" ? .any : (character == "?" ? .one : .character(character)))
-            }
-        }
-        if escaped { pieces.append(.character("~")) }
+        Pattern(pattern).matches(text)
+    }
 
-        // 经典的贪心加回溯：记住最近一个 * 的位置，对不上就让它多吃一个字符。
-        var textIndex = 0
-        var pieceIndex = 0
-        var starPiece = -1
-        var starText = 0
-        while textIndex < characters.count {
-            if pieceIndex < pieces.count,
-               pieces[pieceIndex] == .one || pieces[pieceIndex] == .character(characters[textIndex]) {
-                textIndex += 1
-                pieceIndex += 1
-            } else if pieceIndex < pieces.count, pieces[pieceIndex] == .any {
-                starPiece = pieceIndex
-                starText = textIndex
-                pieceIndex += 1
-            } else if starPiece >= 0 {
-                pieceIndex = starPiece + 1
-                starText += 1
-                textIndex = starText
-            } else {
-                return false
+    /// 同一个条件会比较几千格，模板只解析一次；纯文字走同样的小写比较语义，不重复造字符数组。
+    struct Pattern {
+        private let pieces: [Piece]
+        private let literal: String?
+
+        init(_ pattern: String) {
+            var pieces: [Piece] = []
+            var escaped = false
+            for character in pattern.lowercased() {
+                if escaped {
+                    pieces.append(.character(character))
+                    escaped = false
+                } else if character == "~" {
+                    escaped = true
+                } else {
+                    pieces.append(character == "*" ? .any : (character == "?" ? .one : .character(character)))
+                }
             }
+            if escaped { pieces.append(.character("~")) }
+            self.pieces = pieces
+            let characters = pieces.compactMap { piece -> Character? in
+                if case .character(let character) = piece { return character }
+                return nil
+            }
+            literal = characters.count == pieces.count ? String(characters) : nil
         }
-        while pieceIndex < pieces.count, pieces[pieceIndex] == .any { pieceIndex += 1 }
-        return pieceIndex == pieces.count
+
+        func matches(_ text: String) -> Bool {
+            if let literal { return text.lowercased() == literal }
+            let characters = Array(text.lowercased())
+            // 经典的贪心加回溯：记住最近一个 * 的位置，对不上就让它多吃一个字符。
+            var textIndex = 0
+            var pieceIndex = 0
+            var starPiece = -1
+            var starText = 0
+            while textIndex < characters.count {
+                if pieceIndex < pieces.count,
+                   pieces[pieceIndex] == .one || pieces[pieceIndex] == .character(characters[textIndex]) {
+                    textIndex += 1
+                    pieceIndex += 1
+                } else if pieceIndex < pieces.count, pieces[pieceIndex] == .any {
+                    starPiece = pieceIndex
+                    starText = textIndex
+                    pieceIndex += 1
+                } else if starPiece >= 0 {
+                    pieceIndex = starPiece + 1
+                    starText += 1
+                    textIndex = starText
+                } else {
+                    return false
+                }
+            }
+            while pieceIndex < pieces.count, pieces[pieceIndex] == .any { pieceIndex += 1 }
+            return pieceIndex == pieces.count
+        }
     }
 }

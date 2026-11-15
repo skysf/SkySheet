@@ -1,12 +1,12 @@
 import Foundation
 
-// 坏文件触发的崩溃和超时也要能报告；只在自检的子进程里运行这些输入。
-if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--formula-hunt-case" {
-    formulaHuntCase(CommandLine.arguments[2])
+// 崩溃和超时输入隔离运行，普通断言留在当前进程。
+if CommandLine.arguments.count == 3, CommandLine.arguments[1] == "--bounded-check" {
+    boundedCheckCase(CommandLine.arguments[2])
     finishChecks()
 }
-if CommandLine.arguments.contains("--formula-hunt") {
-    formulaHuntChecks()
+if CommandLine.arguments.contains("--table-blocks") {
+    tableBlockRegressionChecks()
     finishChecks()
 }
 
@@ -18,7 +18,16 @@ formatChecks()
 formulaChecks()
 circularChecks()
 functionChecks()
-formulaHuntChecks()
+conditionalRegressionChecks()
+textRegressionChecks()
+tableBlockRegressionChecks()
+dateRegressionChecks()
+formatRegressionChecks()
+lookupRegressionChecks()
+inputRegressionChecks()
+csvRegressionChecks()
+financialRegressionChecks()
+functionRegressionChecks()
 financialChecks()
 xlsxReadChecks()
 editingChecks()

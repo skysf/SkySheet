@@ -71,38 +71,74 @@ enum ConditionalFunctions {
         return result
     }
 
-    private static func matches(_ position: Int, _ pairs: [(ConditionalRange, Criterion)]) -> Bool {
-        pairs.allSatisfy { range, criterion in criterion.matches(range.values[position] ?? .empty) }
+    /// 各区域已按位置排序；游标只向前走一次，空白并集也不用额外的字典或集合。
+    private static func matches(_ position: Int, _ pairs: [(ConditionalRange, Criterion)], cursors: inout [Int]) -> Bool {
+        for index in pairs.indices {
+            let (range, criterion) = pairs[index]
+            while cursors[index] < range.entries.count, range.entries[cursors[index]].position < position { cursors[index] += 1 }
+            let cursor = cursors[index]
+            let value = cursor < range.entries.count && range.entries[cursor].position == position ? range.entries[cursor].value : .empty
+            if !criterion.matches(value) { return false }
+        }
+        return true
     }
 
-    /// 并集外的格子在所有区域里都空：一次加上格数差，成本只随有值的位置增加。
     private static func countMatching(_ pairs: [(ConditionalRange, Criterion)]) -> Int {
         guard let first = pairs.first else { return 0 }
-        var occupied: Set<Int> = []
-        for (range, _) in pairs { occupied.formUnion(range.values.keys) }
-        let emptyMatches = pairs.allSatisfy { $0.1.matches(.empty) }
-        return (emptyMatches ? first.0.count - occupied.count : 0)
-            + occupied.reduce(0) { $0 + (matches($1, pairs) ? 1 : 0) }
+        // 最常见的单条件不需要合并区域，直接加上未存储的空白格数。
+        if pairs.count == 1 {
+            return (first.1.matches(.empty) ? first.0.count - first.0.entries.count : 0)
+                + first.0.entries.reduce(0) { $0 + (first.1.matches($1.value) ? 1 : 0) }
+        }
+        var cursors = Array(repeating: 0, count: pairs.count)
+        var occupied = 0
+        var count = 0
+        while true {
+            var next: Int?
+            for index in pairs.indices {
+                let entries = pairs[index].0.entries
+                if cursors[index] < entries.count {
+                    let position = entries[cursors[index]].position
+                    next = min(next ?? position, position)
+                }
+            }
+            guard let position = next else { break }
+            occupied += 1
+            if matches(position, pairs, cursors: &cursors) { count += 1 }
+            for index in pairs.indices {
+                let entries = pairs[index].0.entries
+                if cursors[index] < entries.count, entries[cursors[index]].position == position { cursors[index] += 1 }
+            }
+        }
+        return count + (pairs.allSatisfy { $0.1.matches(.empty) } ? first.0.count - occupied : 0)
     }
 
-    /// 这些位置上数字的和与个数。不是数字的跳过，错误往上传。
+    /// Decimal 有效位有限，按行序求和，避免存储布局改变末位；错误只从匹配的位置上传。
     private static func total(of grid: ConditionalRange, matching pairs: [(ConditionalRange, Criterion)])
         throws(CellError) -> (sum: Decimal, count: Int) {
         var sum: Decimal = 0
         var count = 0
-        // Decimal 有效位有限，仍按行序相加，避免稀疏字典的遍历顺序改变末位。
-        for position in grid.values.keys.sorted() where matches(position, pairs) {
-            let value = grid.values[position]!
-            switch value {
-            case .number(let number):
-                sum += number
-                count += 1
-            case .error(let error):
-                throw error
-            default:
-                continue
-            }
+        // 先用首个条件筛选，只有通过的位置才碰其余条件；常见单条件只需一个整数游标。
+        let (range, criterion) = pairs[0]
+        let remaining = Array(pairs.dropFirst())
+        var cursors = Array(repeating: 0, count: remaining.count)
+        var cursor = 0
+        for (position, value) in grid.entries {
+            while cursor < range.entries.count, range.entries[cursor].position < position { cursor += 1 }
+            let candidate = cursor < range.entries.count && range.entries[cursor].position == position ? range.entries[cursor].value : .empty
+            guard criterion.matches(candidate), remaining.isEmpty || matches(position, remaining, cursors: &cursors) else { continue }
+            try add(value, to: &sum, count: &count)
         }
         return (try Operators.checked(sum), count)
+    }
+
+    private static func add(_ value: CellValue, to sum: inout Decimal, count: inout Int) throws(CellError) {
+        switch value {
+        case .number(let number):
+            sum += number
+            count += 1
+        case .error(let error): throw error
+        default: break
+        }
     }
 }

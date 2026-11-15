@@ -118,8 +118,8 @@ enum AIReadTools {
         if let rows = block.dataRows { item["data_rows"] = .string("\(rows.lowerBound + 1)-\(rows.upperBound + 1)") }
         if let totals = block.totalsRow {
             item["totals_row"] = .number(Double(totals + 1))
-            item["note"] = "The totals row is left out of the column stats and of the SQL table; read it with read_range."
         }
+        if let note = block.note { item["note"] = .string(note) }
         return .object(item)
     }
 

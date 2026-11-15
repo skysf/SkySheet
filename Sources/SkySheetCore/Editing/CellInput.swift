@@ -30,7 +30,7 @@ public enum CellInput: Equatable, Sendable {
         case "FALSE": return .value(.bool(false))
         default: break
         }
-        if let (serial, hasTime) = dateValue(trimmed, dateSystem) {
+        if let (serial, hasTime) = DateInput.parse(trimmed, system: dateSystem) {
             return .number(serial, format: .builtin(hasTime ? 22 : 14))
         }
         if keepsAsText(trimmed) { return .value(.text(text)) }
@@ -73,21 +73,4 @@ public enum CellInput: Equatable, Sendable {
         return (negative ? -number : number, parts.count > 1, currency)
     }
 
-    /// 2025/12/1、2025-12-01，可以带 10:30 或 10:30:15。
-    private static func dateValue(_ text: String, _ dateSystem: DateSystem) -> (Decimal, Bool)? {
-        let parts = text.split(separator: " ", maxSplits: 1)
-        guard let datePart = parts.first else { return nil }
-        let pieces = datePart.split(whereSeparator: { $0 == "-" || $0 == "/" })
-        guard pieces.count == 3, pieces[0].count == 4, let year = Int(pieces[0]), let month = Int(pieces[1]),
-              let day = Int(pieces[2]), (1900...9999).contains(year), (1...12).contains(month),
-              (1...DateSerial.daysInMonth(year: year, month: month)).contains(day) else { return nil }
-        var serial = Decimal(DateSerial.serial(from: CivilDate(year: year, month: month, day: day), system: dateSystem))
-        guard parts.count == 2 else { return (serial, false) }
-        let clock = parts[1].split(separator: ":").map { Int($0) }
-        guard (2...3).contains(clock.count), let hour = clock[0], let minute = clock[1],
-              (0...23).contains(hour), (0...59).contains(minute) else { return nil }
-        guard let second = clock.count == 3 ? clock[2] : 0, (0...59).contains(second) else { return nil }
-        serial += Decimal(hour * 3600 + minute * 60 + second) / 86_400
-        return (serial, true)
-    }
 }

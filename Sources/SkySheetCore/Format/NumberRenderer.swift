@@ -68,6 +68,7 @@ enum NumberRenderer {
                 result += (integerSlots.isEmpty ? integerDigits : "") + "."
             case .decimalPoint: result += "."
             case .fractionSlash: result += "/"
+            case .fixedDenominator(let text): result += text
             case .percent: result += "%"
             case .general: result += GeneralFormat.render(magnitude)
             case .comma, .text, .date, .exponent: break

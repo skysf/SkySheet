@@ -22,6 +22,12 @@ public struct TableBlock: Sendable, Equatable {
     public var dataRows: ClosedRange<Int>?
     /// 块的最后一行明确标了合计，或竖向加总上方数据：不算数据，免得查询重复累计。
     public var totalsRow: Int?
+    /// 疑似合计仍参与计算，但必须向 AI 披露，不能静默把推断当事实。
+    public var suspectedTotalsRow: Int? = nil
+    public var note: String? {
+        if totalsRow != nil { return "The totals row is left out of the column stats and of the SQL table; read it with read_range." }
+        return suspectedTotalsRow.map { "Row \($0 + 1) looks like a totals row and was not excluded from the column stats or SQL table; inspect it before aggregating." }
+    }
     public var columns: [Column]
 }
 
@@ -61,19 +67,32 @@ public enum TableBlocks {
             if remaining.count > 1, let top = remaining.first, looksLikeHeader(row: top, columns: columnsByRow[top] ?? [], sheet) {
                 headerRow = top
                 remaining = remaining.dropFirst()
+                // 只有分组行少列或横向合并的证据才吃第二行表头，不能把全是文字的普通记录吞掉。
+                let merged = sheet.merges.contains { $0.start.row == top && $0.end.column > $0.start.column }
+                let grouped = (columnsByRow[top]?.count ?? 0) < last - first + 1 || merged
+                if grouped, remaining.count > 1, let next = remaining.first,
+                   merged || (columnsByRow[next]?.count ?? 0) > (columnsByRow[top]?.count ?? 0),
+                   looksLikeHeader(row: next, columns: columnsByRow[next] ?? [], sheet) {
+                    headerRow = next
+                    remaining = remaining.dropFirst()
+                }
             }
             var totalsRow: Int?
             if remaining.count > 1, let bottom = remaining.last,
-               isTotals(row: bottom, firstDataRow: remaining.first!, firstColumn: first,
+               isTotals(row: bottom, firstDataRow: remaining.first!,
                         columns: columnsByRow[bottom] ?? [], sheet) {
                 totalsRow = bottom
                 remaining = remaining.dropLast()
             }
+            let suspected = totalsRow == nil ? remaining.last.flatMap { row in
+                looksLikeTotals(row: row, columns: columnsByRow[row] ?? [], sheet) ? row : nil
+            } : nil
             let name = blocks.isEmpty ? sheet.name : "\(sheet.name)_\(blocks.count + 1)"
             blocks.append(TableBlock(
                 name: name, range: CellRange(CellAddress(row: rows[0], column: first), CellAddress(row: rows[rows.count - 1], column: last)),
                 title: title, headerRow: headerRow,
                 dataRows: remaining.first.map { $0...remaining[remaining.endIndex - 1] }, totalsRow: totalsRow,
+                suspectedTotalsRow: suspected,
                 columns: namedColumns(first...last, headerRow: headerRow, sheet)))
         }
         return blocks
@@ -86,28 +105,49 @@ public enum TableBlocks {
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
     }
 
-    /// 误删数据比漏认合计更危险：常量 SUM、横向 SUM、跨表或只有零碎引用都不能证明这是合计。
-    private static func isTotals(row: Int, firstDataRow: Int, firstColumn: Int, columns: [Int], _ sheet: Sheet) -> Bool {
-        if let cell = sheet.cells[row, firstColumn], cell.formula == nil, case .text(let text) = cell.value {
-            let label = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if ["合计", "总计", "小计", "total", "totals", "grand total", "subtotal"].contains(label) { return true }
-        }
-        return columns.contains { column in
-            guard let source = sheet.cells[row, column]?.formula?.source,
-                  case .call(let name, let arguments) = try? FormulaParser.parse(source) else { return false }
-            let ranges: [FormulaNode]
-            if name == "SUM" { ranges = arguments }
-            else if name == "SUBTOTAL", case .number(let code)? = arguments.first, code == 9 || code == 109 {
-                ranges = Array(arguments.dropFirst())
-            } else { return false }
-            guard !ranges.isEmpty else { return false }
-            return ranges.allSatisfy { node in
+    /// 标签可以出现在序号后面；去掉排版空白和冒号后识别前缀，兼容 Excel / WPS 的汇总行。
+    private static func isTotals(row: Int, firstDataRow: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        for column in columns {
+            guard let cell = sheet.cells[row, column] else { continue }
+            if cell.formula == nil, case .text(let text) = cell.value {
+                let label = text.filter { !$0.isWhitespace }.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ":："))
+                if ["汇总", "共计", "合计", "总计", "小计", "total", "sum", "subtotal", "grandtotal"].contains(where: label.hasPrefix) {
+                    return true
+                }
+            }
+            guard let source = cell.formula?.source else { continue }
+            // 结构化引用不在公式解析器的支持范围里；SUBTOTAL 的求和编号本身已能证明汇总意图。
+            if source.range(of: #"^\s*=?\s*SUBTOTAL\s*\(\s*(9|109)\s*[,;]"#, options: [.regularExpression, .caseInsensitive]) != nil {
+                return true
+            }
+            guard case .call("SUM", let arguments) = try? FormulaParser.parse(source), !arguments.isEmpty else { continue }
+            if arguments.allSatisfy({ node in
                 guard case .reference(let reference) = node,
                       reference.sheet == nil || reference.sheet?.caseInsensitiveCompare(sheet.name) == .orderedSame else { return false }
                 let range = reference.range
                 return range.start.column == column && range.end.column == column
-                    && range.start.row == firstDataRow && range.end.row == row - 1
+                    && range.start.row <= firstDataRow && range.end.row == row - 1
+            }) { return true }
+        }
+        return false
+    }
+
+    /// 有竖向汇总的迹象但范围不完整、跨表或公式不支持时，保留数据并给模型一个可核实的提示。
+    private static func looksLikeTotals(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        columns.contains { column in
+            guard let source = sheet.cells[row, column]?.formula?.source,
+                  source.range(of: #"\b(SUM|SUBTOTAL)\s*\("#, options: [.regularExpression, .caseInsensitive]) != nil else { return false }
+            guard let node = try? FormulaParser.parse(source) else { return true }
+            func above(_ node: FormulaNode) -> Bool {
+                switch node {
+                case .reference(let reference): return reference.range.end.row < row
+                case .call(_, let arguments): return arguments.contains(where: above)
+                case .negate(let node), .unaryPlus(let node), .percent(let node): return above(node)
+                case .binary(_, let left, let right), .dynamicRange(let left, let right): return above(left) || above(right)
+                default: return false
+                }
             }
+            return above(node)
         }
     }
 
