@@ -187,6 +187,41 @@ extension Benchmark {
             steps.append(("switch away again", { session.showSheet(other) }))
             steps.append(("switch back again", { session.showSheet(here) }))
         }
+        // 极窄的列、极矮的行（2026-11-15，Codex 审 PR #10 时指出）：行号列标的字比那一条宽（高），往两边伸出去。选区移进
+        // 移出时，伸出去的那部分要跟着重画；从旁边伸进重画范围的字也要补上。一列宽 0.1 个字符，一行、连着六行高 1 磅。
+        let sheetIndex = session.sheetIndex
+        let narrow = start.column + 3
+        let low = start.row + 4
+        let lows = (start.row + 8)...(start.row + 13)
+        steps.append(("narrow column", {
+            session.apply("Column Width") { $0.setColumnWidth(0.1, columns: narrow...narrow, sheet: sheetIndex) }
+        }))
+        steps.append(("short rows", {
+            session.apply("Row Height") { workbook in
+                workbook.setRowHeight(1, rows: low...low, sheet: sheetIndex)
+                workbook.setRowHeight(1, rows: lows, sheet: sheetIndex)
+            }
+        }))
+        let thin = [(start.row, narrow), (start.row, narrow - 3), (start.row + 2, narrow), (start.row + 2, narrow + 1),
+                    (low, start.column + 1), (start.row + 1, start.column + 1)]
+            + lows.map { ($0, start.column + 1) } + [(start.row + 20, start.column + 1), (lows.upperBound, narrow)]
+        for (row, column) in thin {
+            let address = CellAddress(row: row, column: column)
+            steps.append(("click \(address.a1) near thin lines", { session.select(address) }))
+        }
+        steps.append(("whole narrow column", { session.selectLines(.columns, through: narrow, extend: false, crossIndex: start.row) }))
+        steps.append(("whole short rows", {
+            session.selectLines(.rows, through: lows.lowerBound, extend: false, crossIndex: start.column)
+            session.selectLines(.rows, through: lows.upperBound, extend: true, crossIndex: start.column)
+        }))
+        steps.append(("click after thin lines", { session.select(CellAddress(row: start.row + 1, column: start.column + 1)) }))
+        steps.append(("restore thin lines", {
+            session.apply("Restore") { workbook in
+                workbook.setColumnWidth(nil, columns: narrow...narrow, sheet: sheetIndex)
+                workbook.setRowHeight(nil, rows: low...low, sheet: sheetIndex)
+                workbook.setRowHeight(nil, rows: lows, sheet: sheetIndex)
+            }
+        }))
         // 合并单元格（有的话）：点进去、点出来。
         for merge in session.sheet.merges.prefix(40) where merge.end.row < start.row + 25 && merge.end.column < start.column + 10 {
             steps.append(("click in merge \(merge.a1)", { session.select(merge.end) }))
