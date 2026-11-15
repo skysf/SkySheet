@@ -35,8 +35,11 @@ public struct DOSDateTime: Equatable, Hashable, Sendable {
     public static let earliest = DOSDateTime(time: 0, date: 1 << 5 | 1)
 
     /// 用本地时间换算（zip 里存的就是本地时间，没有时区）。
-    public init(_ value: Date, calendar: Calendar = .current) {
-        let c = calendar.dateComponents([.year, .month, .day, .hour, .minute, .second], from: value)
+    public init(_ value: Date, calendar: Calendar = Calendar(identifier: .gregorian)) {
+        // DOS 文件时间规定的是公历；系统的佛历年份会把正常文件写成 2107 年。
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let c = gregorian.dateComponents([.year, .month, .day, .hour, .minute, .second], from: value)
         let year = min(max((c.year ?? 1980) - 1980, 0), 127)
         date = UInt16(year << 9 | (c.month ?? 1) << 5 | (c.day ?? 1))
         time = UInt16((c.hour ?? 0) << 11 | (c.minute ?? 0) << 5 | (c.second ?? 0) / 2)

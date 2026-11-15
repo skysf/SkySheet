@@ -178,7 +178,8 @@ enum CSVValue {
     /// 2025-12-01、2025/12/1，可以带 10:30 或 10:30:15。年份四位，月日要合法。
     static func date(_ text: String) -> Decimal? {
         let parts = text.split(separator: " ", maxSplits: 1)
-        let pieces = parts[0].split(whereSeparator: { $0 == "-" || $0 == "/" }).map(String.init)
+        guard let datePart = parts.first else { return nil }
+        let pieces = datePart.split(whereSeparator: { $0 == "-" || $0 == "/" }).map(String.init)
         guard pieces.count == 3, pieces[0].count == 4, let year = Int(pieces[0]), let month = Int(pieces[1]),
               let day = Int(pieces[2]), (1900...9999).contains(year), (1...12).contains(month),
               (1...DateSerial.daysInMonth(year: year, month: month)).contains(day)
@@ -188,7 +189,7 @@ enum CSVValue {
             let clock = parts[1].split(separator: ":").map { Int($0) }
             guard (2...3).contains(clock.count), let hour = clock[0], let minute = clock[1],
                   (0...23).contains(hour), (0...59).contains(minute) else { return nil }
-            let second = clock.count == 3 ? (clock[2] ?? 0) : 0
+            guard let second = clock.count == 3 ? clock[2] : 0, (0...59).contains(second) else { return nil }
             serial += Decimal(hour * 3600 + minute * 60 + second) / 86_400
         }
         return serial
