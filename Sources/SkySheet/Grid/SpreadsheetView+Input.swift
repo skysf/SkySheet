@@ -104,25 +104,39 @@ extension SpreadsheetView {
     /// 复制两份：按显示出来的样子、制表符分隔的文字（贴到 Excel、腾讯文档里能还原成表格），
     /// 和 SkySheet 自己的格式（原始写法，粘回来不丢精度、公式平移引用）。
     @objc func copy(_ sender: Any?) {
-        // 整列整行只复制到用到的地方为止（整列有一百多万格）。
-        guard let canvas, let range = session.selectedCells else { return }
-        let lines = (range.start.row...range.end.row).map { row in
-            (range.start.column...range.end.column).map { column -> String in
-                guard let cell = canvas.sheet.cells[CellAddress(row: row, column: column)] else { return "" }
-                return Self.tabSafe(canvas.content(of: cell).0.text)
-            }.joined(separator: "\t")
-        }
-        let pasteboard = NSPasteboard.general
-        pasteboard.clearContents()
-        pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
-        if let clip = try? JSONEncoder().encode(session.clipOfSelection()) {
-            pasteboard.setData(clip, forType: NSPasteboard.PasteboardType(CellClip.pasteboardType))
+        _ = copySelection()
+    }
+
+    /// 先提交和预检再生成两份数据；失败时剪切也不能清源格，系统剪贴板直到数据备齐才改。
+    private func copySelection() -> Bool {
+        session.commitEditing()
+        // 空表的整行整列没有可复制范围，沿用原来的不操作行为；不能把已有剪贴板换成一个空格。
+        guard session.selectedCells != nil else { return false }
+        do {
+            let clip = try session.clipOfSelection()
+            let lines = clip.rows.enumerated().map { row, entries in
+                entries.enumerated().map { column, _ -> String in
+                    let address = CellAddress(row: clip.originRow + row, column: clip.originColumn + column)
+                    guard let cell = session.sheet.cells[address] else { return "" }
+                    let style = session.styles.style(cell.styleIndex)
+                    return Self.tabSafe(CellDisplay.content(of: cell, style: style, dateSystem: session.workbook.dateSystem).text)
+                }.joined(separator: "\t")
+            }
+            let data = try JSONEncoder().encode(clip)
+            let pasteboard = NSPasteboard.general
+            pasteboard.clearContents()
+            pasteboard.setString(lines.joined(separator: "\n"), forType: .string)
+            pasteboard.setData(data, forType: NSPasteboard.PasteboardType(CellClip.pasteboardType))
+            return true
+        } catch {
+            LayoutCommands.explainCopyLimit(in: window)
+            return false
         }
     }
 
-    /// 剪切 = 复制，然后清掉（第一版不做「粘贴时才移走」）。
+    /// 剪切 = 复制，然后清掉；超出复制上限时什么也不清。
     @objc func cut(_ sender: Any?) {
-        copy(sender)
+        guard copySelection() else { return }
         session.clearSelection()
     }
 
@@ -130,7 +144,7 @@ extension SpreadsheetView {
         let pasteboard = NSPasteboard.general
         if let data = pasteboard.data(forType: NSPasteboard.PasteboardType(CellClip.pasteboardType)),
            let clip = try? JSONDecoder().decode(CellClip.self, from: data) {
-            session.paste(clip.rows, from: CellAddress(row: clip.originRow, column: clip.originColumn))
+            session.paste(clip)
         } else if let text = pasteboard.string(forType: .string) {
             session.paste(CSVReader.rows(in: text, delimiter: "\t"), from: nil)
         }

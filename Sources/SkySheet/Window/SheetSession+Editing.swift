@@ -17,16 +17,6 @@ struct CellEditing: Equatable {
     var origin: Origin
 }
 
-/// 剪贴板上的一块格子（SkySheet 自己的格式，和制表符分隔的文字一起放）：每格的原始写法（公式带 "="，
-/// 数字是全精度），以及它原来的位置。粘回 SkySheet 时值不按显示四舍五入，公式按位置差平移引用（和 Excel 一样）。
-struct CellClip: Codable, Equatable {
-    static let pasteboardType = "ai.skylu.skysheet.cells"
-
-    var originRow: Int
-    var originColumn: Int
-    var rows: [[String]]
-}
-
 /// 编辑（设计第 16 条）。改工作簿只有 `apply` 一个入口：改一份副本，整本重算，换上去，再登记撤销。
 /// 撤销就是换回改之前的那一份（值类型，设计第四节），连同当时看的是哪张 sheet、选中了哪里。
 extension SheetSession {
@@ -147,13 +137,13 @@ extension SheetSession {
         return line
     }
 
-    /// 格子里存的东西的原始写法：公式栏显示的、双击编辑时的、复制到 SkySheet 自己剪贴板上的都是它。
+    /// 公式栏和双击编辑时用的写法；内部复制直接取 CellValue，不经过这里。
     func rawText(at address: CellAddress) -> String {
-        sheet.cells[address].map { Self.rawText($0, styles: workbook.styles) } ?? ""
+        sheet.cells[address].map { Self.rawText($0, styles: workbook.styles, dateSystem: workbook.dateSystem) } ?? ""
     }
 
     /// 公式显示原文；日期显示成日期；别的数字显示全精度（不按格式四舍五入），和 Excel 的公式栏一样。
-    static func rawText(_ cell: Cell, styles: SkySheetCore.StyleTable) -> String {
+    static func rawText(_ cell: Cell, styles: SkySheetCore.StyleTable, dateSystem: DateSystem) -> String {
         if let formula = cell.formula { return "=" + formula.source }
         switch cell.value {
         case .empty: return ""
@@ -166,7 +156,7 @@ extension SheetSession {
             let code = styles.formatCode(forStyle: cell.styleIndex)
             guard ValueFormatter.isDateFormat(code) else { return ValueFormatter.general(number) }
             let dateCode = DecimalMath.isInteger(number) ? "yyyy/m/d" : "yyyy/m/d h:mm:ss"
-            return ValueFormatter.format(cell.value, code: dateCode).text
+            return ValueFormatter.format(cell.value, code: dateCode, dateSystem: dateSystem).text
         }
     }
 
@@ -179,23 +169,50 @@ extension SheetSession {
         apply(String(localized: "Clear")) { $0.clearContents(range, sheet: index) }
     }
 
-    /// 选区的原始写法，一格一格。整列整行只到用到的地方为止。
-    func clipOfSelection() -> CellClip {
+    /// 两份复制数据共用的范围预检；必须先检查面积再展开格子。
+    func checkedCopyRange() throws -> CellRange {
         let range = selectedCells ?? CellRange(selection.cursor)
+        try CopyLimit.check(range)
+        return range
+    }
+
+    func clipOfSelection() throws -> CellClip {
+        commitEditing()
+        let range = try checkedCopyRange()
         let rows = (range.start.row...range.end.row).map { row in
-            (range.start.column...range.end.column).map { rawText(at: CellAddress(row: row, column: $0)) }
+            (range.start.column...range.end.column).map {
+                CellClip.Entry(sheet.cells[CellAddress(row: row, column: $0)] ?? Cell())
+            }
         }
-        return CellClip(originRow: range.start.row, originColumn: range.start.column, rows: rows)
+        return CellClip(origin: range.start, rows: rows, dateSystem: workbook.dateSystem)
     }
 
     /// 粘贴一块：从选区左上角开始。只有一格、选区却是一块时，把整块填满（和 Excel 一样）。
     /// 从 SkySheet 复制来的公式按位置差平移引用；别处来的文字按输入的规矩解析。
     func paste(_ rows: [[String]], from origin: CellAddress?, actionName: String = String(localized: "Paste")) {
+        paste(rows.map { $0.map { PasteCell(input: CellInput.parse($0, dateSystem: workbook.dateSystem)) } },
+              from: origin, actionName: actionName)
+    }
+
+    func paste(_ clip: CellClip, actionName: String = String(localized: "Paste")) {
+        paste(clip.rows.map { row in row.map { entry in
+            PasteCell(input: entry.formula.map(CellInput.formula) ?? .value(entry.value),
+                      cachedValue: entry.formula == nil ? nil : entry.value)
+        } }, from: CellAddress(row: clip.originRow, column: clip.originColumn), actionName: actionName)
+    }
+
+    private struct PasteCell {
+        var input: CellInput
+        var cachedValue: CellValue? = nil
+    }
+
+    private func paste(_ rows: [[PasteCell]], from origin: CellAddress?, actionName: String) {
+        commitEditing()
         guard !rows.isEmpty else { return }
         // 整列整行：贴到它的左上角；一格填满整列时只填到用到的地方为止。
         let target = selection.kind == .cells ? selection.range : (selectedCells ?? CellRange(selection.range.start))
         let fills = rows.count == 1 && rows[0].count == 1 && (target.rowCount > 1 || target.columnCount > 1)
-        var placements: [(address: CellAddress, text: String, source: CellAddress?)] = []
+        var placements: [(address: CellAddress, cell: PasteCell, source: CellAddress?)] = []
         if fills {
             for row in target.start.row...target.end.row {
                 for column in target.start.column...target.end.column {
@@ -204,23 +221,27 @@ extension SheetSession {
             }
         } else {
             for (rowOffset, fields) in rows.enumerated() {
-                for (columnOffset, text) in fields.enumerated() {
+                for (columnOffset, cell) in fields.enumerated() {
                     let address = CellAddress(row: target.start.row + rowOffset, column: target.start.column + columnOffset)
                     guard address.row < CellAddress.maxRows, address.column < CellAddress.maxColumns else { continue }
                     let source = origin.map { CellAddress(row: $0.row + rowOffset, column: $0.column + columnOffset) }
-                    placements.append((address, text, source))
+                    placements.append((address, cell, source))
                 }
             }
         }
         let index = sheetIndex
         apply(actionName) { workbook in
             for placement in placements {
-                var text = placement.text
-                if text.hasPrefix("="), text.count > 1, let source = placement.source {
-                    text = "=" + ReferenceShift.shift(String(text.dropFirst()), rows: placement.address.row - source.row,
-                                                      columns: placement.address.column - source.column)
+                var input = placement.cell.input
+                if case .formula(let formula) = input, let source = placement.source {
+                    input = .formula(ReferenceShift.shift(formula, rows: placement.address.row - source.row,
+                                                         columns: placement.address.column - source.column))
                 }
-                workbook.enter(CellInput.parse(text, dateSystem: workbook.dateSystem), at: placement.address, sheet: index)
+                workbook.enter(input, at: placement.address, sheet: index)
+                if let cached = placement.cell.cachedValue {
+                    let address = workbook.sheets[index].merges.first { $0.contains(placement.address) }?.start ?? placement.address
+                    workbook.sheets[index].cells[address]?.formula?.cachedValue = cached
+                }
             }
         }
         if !fills, let last = placements.last {
@@ -237,6 +258,7 @@ extension SheetSession {
 
     /// 复制一张，并切过去看复制出来的那张。
     func duplicateSheet(_ index: Int) {
+        commitEditing()
         var copy = index + 1
         apply(String(localized: "Duplicate Sheet")) { copy = $0.duplicateSheet(index) }
         sheetIndex = copy
@@ -245,6 +267,7 @@ extension SheetSession {
 
     /// 删掉一张。删的是正在看的，就看它后面那张（没有就前面那张）。
     func deleteSheet(_ index: Int) throws {
+        commitEditing()
         let wasShowing = index == sheetIndex
         try apply(String(localized: "Delete Sheet")) { try $0.deleteSheet(index) }
         if wasShowing {

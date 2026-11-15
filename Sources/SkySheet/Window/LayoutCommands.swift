@@ -21,7 +21,8 @@ enum LayoutCommands {
             alert.messageText = String(localized: "Row Height")
             alert.informativeText = String(localized: "Height of row \(name), in points (0–409).")
         }
-        let field = NSTextField(string: proposed ?? current.formatted(.number.precision(.fractionLength(0...2)).grouping(.never)))
+        let input = SizeInput()
+        let field = NSTextField(string: proposed ?? input.string(current))
         field.frame = NSRect(x: 0, y: 0, width: 120, height: 24)
         alert.accessoryView = field
         alert.addButton(withTitle: String(localized: "OK"))
@@ -30,7 +31,7 @@ enum LayoutCommands {
         alert.beginSheetModal(for: window) { response in
             guard response == .alertFirstButtonReturn else { return }
             let text = field.stringValue.trimmingCharacters(in: .whitespaces)
-            guard let value = Double(text), (0...limit).contains(value) else {
+            guard let value = input.value(text), (0...limit).contains(value) else {
                 let message = axis == .columns ? String(localized: "Enter a column width between 0 and 255.")
                                                : String(localized: "Enter a row height between 0 and 409.")
                 explain(message, in: window) {
@@ -40,6 +41,11 @@ enum LayoutCommands {
             }
             apply(value)
         }
+    }
+
+    static func explainCopyLimit(in window: NSWindow?) {
+        guard let window else { return }
+        explain(String(localized: "The selection is too large to copy. Select no more than 1,000,000 cells and try again."), in: window)
     }
 
     /// 合并会丢掉左上角以外的内容：先问一下。
@@ -107,5 +113,37 @@ enum LayoutCommands {
         alert.messageText = text
         alert.addButton(withTitle: String(localized: "OK"))
         alert.beginSheetModal(for: window) { _ in next?() }
+    }
+}
+
+/// 数值框的显示和读取放在一起，地区回归无需弹出对话框。
+struct SizeInput {
+    private let formatter: NumberFormatter
+
+    init(locale: Locale = .current) {
+        let formatter = NumberFormatter()
+        formatter.locale = locale
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = false
+        formatter.minimumFractionDigits = 0
+        formatter.maximumFractionDigits = 2
+        formatter.isLenient = false
+        self.formatter = formatter
+    }
+
+    func string(_ value: Double) -> String {
+        formatter.string(from: NSNumber(value: value)) ?? ""
+    }
+
+    func value(_ text: String) -> Double? {
+        let text = text.trimmingCharacters(in: .whitespaces)
+        var range = NSRange(location: 0, length: (text as NSString).length)
+        var result: AnyObject?
+        do { try formatter.getObjectValue(&result, for: text, range: &range) }
+        catch { return nil }
+        // NumberFormatter 可能只吃掉前半段；原来的输入规则不接受尾随垃圾，地区修复也不能放宽它。
+        guard range.location == 0, range.length == (text as NSString).length,
+              let value = (result as? NSNumber)?.doubleValue, value.isFinite else { return nil }
+        return value
     }
 }

@@ -34,7 +34,8 @@ let package = Package(
         // 所以是一个可执行程序：全过退出码 0。scripts/check-all.sh 调它，CI 也跑同一个。
         .executableTarget(
             name: "SkySheetChecks",
-            dependencies: ["SkyZip", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit"]
+            dependencies: ["SkyZip", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit"],
+            exclude: ["UI"]
         ),
     ]
 )

@@ -30,6 +30,7 @@ step() {
 # 自检程序也不接管道（| tail 之类）：管道的退出码是最后一个命令的，失败会被吞掉。
 if step "编译" swift build "${ARCH[@]}"; then
   step "SkySheetChecks" swift run "${ARCH[@]}" --skip-build SkySheetChecks
+  step "SkySheet UI checks (offscreen)" scripts/check-ui.sh
 else
   FAILED="${FAILED}  - SkySheetChecks（没跑：编译失败）\n"
 fi
