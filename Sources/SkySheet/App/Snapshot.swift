@@ -1,5 +1,6 @@
 import AppKit
 import SkySheetCore
+import SkySheetFiles
 
 /// 截图模式：`SkySheet --snapshot-input 文件.xlsx --snapshot-output 输出.png [--sheet 名字] [--size 1280x800] [--select K60]
 /// [--zoom 1.5]`。
@@ -53,7 +54,8 @@ enum SnapshotRenderer {
             OffscreenWindow.settle(window, for: 0.6)
             guard let bitmap = OffscreenWindow.render(window) else { throw CocoaError(.fileWriteUnknown) }
             guard let png = bitmap.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
-            try png.write(to: request.output)
+            // 只写新文件（NewFile）：输出路径已经有东西就拒绝、以 1 退出，要重截先删掉旧图。
+            try NewFile.write(png, to: request.output)
             print("snapshot written to \(request.output.path)")
             exit(0)
         } catch {

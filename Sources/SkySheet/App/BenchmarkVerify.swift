@@ -1,6 +1,7 @@
 import AppKit
 import SkySheetCore
 import SkySheetDisplay
+import SkySheetFiles
 
 /// 核对局部重画（`SkySheet --benchmark 文件 --benchmark-only verify`，2026-11-14）。
 ///
@@ -45,11 +46,12 @@ extension Benchmark {
         }
 
         func dump(name path: String) {
+            let data = NSMutableData()
             guard let image = context.makeImage(),
-                  let destination = CGImageDestinationCreateWithURL(URL(fileURLWithPath: path + ".png") as CFURL,
-                                                                    "public.png" as CFString, 1, nil) else { return }
+                  let destination = CGImageDestinationCreateWithData(data, "public.png" as CFString, 1, nil) else { return }
             CGImageDestinationAddImage(destination, image, nil)
-            CGImageDestinationFinalize(destination)
+            guard CGImageDestinationFinalize(destination) else { return }
+            Benchmark.writeDump(data as Data, to: URL(fileURLWithPath: path + ".png"))
         }
     }
 
@@ -105,8 +107,10 @@ extension Benchmark {
                         if let directory = ProcessInfo.processInfo.environment["SKYSHEET_VERIFY_DUMP"],
                            let rep = view.bitmapImageRepForCachingDisplay(in: view.visibleRect) {
                             view.cacheDisplay(in: view.visibleRect, to: rep)
-                            try? rep.representation(using: .png, properties: [:])?
-                                .write(to: URL(fileURLWithPath: directory).appendingPathComponent("mismatch-\(mismatches)-appkit.png"))
+                            if let png = rep.representation(using: .png, properties: [:]) {
+                                Self.writeDump(png, to: URL(fileURLWithPath: directory)
+                                    .appendingPathComponent("mismatch-\(mismatches)-appkit.png"))
+                            }
                         }
                         if let before, let previous = Screen(visible: screen.visible, scale: scale) {
                             previous.context.draw(before, in: CGRect(x: 0, y: 0, width: before.width, height: before.height))
@@ -191,6 +195,16 @@ extension Benchmark {
             }))
         }
         return steps
+    }
+
+    /// 调试用的图（SKYSHEET_VERIFY_DUMP、SKYSHEET_VERIFY_ALL）只写新文件（NewFile）：目录里已经有同名的就不写、
+    /// 打印一句，不覆盖。要重存换一个空目录。
+    nonisolated static func writeDump(_ data: Data, to url: URL) {
+        do {
+            try NewFile.write(data, to: url)
+        } catch {
+            print("verify dump not written: \(error)")
+        }
     }
 
     /// 主区滚动后的「屏幕」：原来的内容挪到新位置。大小变了、挪的不是整像素，就是 nil（整块重画）。

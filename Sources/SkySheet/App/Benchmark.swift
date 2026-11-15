@@ -39,7 +39,8 @@ final class Benchmark {
 
     // MARK: - 准备和打开
 
-    /// 合成的表写成 xlsx（不算进「打开」）。
+    /// 合成的表写成 xlsx（不算进「打开」）。只写新文件（NewFile）：`--benchmark-file` 指到已有的文件上就拒绝，
+    /// 绝不把别的工作簿换成合成表。
     private func prepareFile() throws -> URL {
         switch request.source {
         case .file(let url):
@@ -50,7 +51,7 @@ final class Benchmark {
             let data = try XLSXWriter.write(workbook, source: nil, baseline: nil).data
             let url = request.keepFile ?? FileManager.default.temporaryDirectory
                 .appendingPathComponent("SkySheetBenchmark-\(UUID().uuidString).xlsx")
-            try data.write(to: url)
+            try NewFile.write(data, to: url)
             print(String(format: "generated synthetic:%@ (%.1f MB) in %.1f s", kind.rawValue,
                          Double(data.count) / 1_048_576, seconds(since: started)))
             return url

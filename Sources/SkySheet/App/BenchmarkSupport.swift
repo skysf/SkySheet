@@ -1,5 +1,6 @@
 import AppKit
 import SkySheetCore
+import SkySheetFiles
 
 /// 测速模式（2026-11-14，设计 8.2 节「性能」）：
 /// `SkySheet --benchmark synthetic:data|synthetic:formulas|synthetic:styles|文件.xlsx [--sheet 名字 | --sheet-index 2]
@@ -7,7 +8,7 @@ import SkySheetCore
 ///  [--benchmark-file 存合成表的路径.xlsx] [--benchmark-json 结果.json]`
 /// `--benchmark-scale` 把合成的表按比例缩小（0.2 就是 2 万行），调试时跑得快；`--sheet-index` 按第几张（从 1 数）选表，
 /// 不用在命令行里写 sheet 名。`--benchmark-only verify` 不计时，核对局部重画和整块重画画出来的一不一样（BenchmarkVerify），
-/// 对不上的打印 MISMATCH、以 1 退出。
+/// 对不上的打印 MISMATCH、以 1 退出。`--benchmark-file`、`--benchmark-json` 只写新文件：已经有东西就拒绝、以 1 退出（NewFile）。
 ///
 /// 把作者说卡的六类动作（打开、滚动、移动选区、改格子、拖列宽行高、换 sheet 和缩放）各做若干帧，打印每类的中位数、
 /// p95、最大值。合成的表先写成 xlsx 再打开：「打开」走的和双击文件是同一条路。
@@ -32,7 +33,7 @@ struct BenchmarkRequest {
     let scale: Double
     let size: NSSize
     let frames: Int
-    /// 合成的表存在哪（留着给截图模式比对用）；不给就写进临时目录，跑完删掉。
+    /// 合成的表存在哪（留着给截图模式比对用；必须是还没有的文件）；不给就写进临时目录，跑完删掉。
     let keepFile: URL?
     let json: URL?
     /// 只量某一类（scroll、select、edit、resize、switch），配合很多帧给 `sample` 采样用。
@@ -100,7 +101,7 @@ enum BenchmarkRunner {
                     let rows = results.map { ["name": $0.name, "median": $0.median, "p95": $0.p95, "max": $0.max,
                                               "frames": $0.frames.count] as [String: Any] }
                     let data = try JSONSerialization.data(withJSONObject: rows, options: [.prettyPrinted, .sortedKeys])
-                    try data.write(to: url)
+                    try NewFile.write(data, to: url)   // 不覆盖已有的文件（启动时也查过，App/main.swift）
                 }
                 // verify 对不上就以 1 退出，脚本里可以直接判断。
                 exit(benchmark.verifyMismatches > 0 ? 1 : 0)
