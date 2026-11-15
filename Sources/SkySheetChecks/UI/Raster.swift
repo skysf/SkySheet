@@ -15,4 +15,3 @@ func renderPixels(width: Int, height: Int, _ draw: () -> Void) -> NSBitmapImageR
     NSGraphicsContext.restoreGraphicsState()
     return bitmap
 }
-
