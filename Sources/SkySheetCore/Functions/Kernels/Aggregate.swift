@@ -1,10 +1,11 @@
 import Foundation
 
-/// 聚合函数怎么取数（Excel 的规则，SUM、AVERAGE、MIN、MAX、PRODUCT、NPV 共用）：
+/// 聚合函数怎么取数（Excel 的规则，SUM、AVERAGE、MIN、MAX、PRODUCT 共用；NPV 跳过直接给的逻辑值）：
 /// - 引用里的格子：只认数字；文字、逻辑值、空格子跳过；错误往上传。
 /// - 直接写的参数：数字照算；TRUE / FALSE 算 1 / 0；能转成数字的文字算数字，转不了报 #VALUE!；空着的参数算 0。
 enum Aggregate {
-    static func numbers(_ arguments: FunctionArguments, from first: Int = 0) throws(CellError) -> [Decimal] {
+    static func numbers(_ arguments: FunctionArguments, from first: Int = 0,
+                        includeDirectBooleans: Bool = true) throws(CellError) -> [Decimal] {
         var result: [Decimal] = []
         for index in first..<arguments.count {
             switch arguments.values[index] {
@@ -13,7 +14,7 @@ enum Aggregate {
             case .value(let value):
                 switch value {
                 case .number(let number): result.append(number)
-                case .bool(let flag): result.append(flag ? 1 : 0)
+                case .bool(let flag): if includeDirectBooleans { result.append(flag ? 1 : 0) }
                 case .empty: result.append(0)
                 case .error(let error): throw error
                 case .text(let text):

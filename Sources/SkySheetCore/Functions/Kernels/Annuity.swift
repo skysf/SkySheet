@@ -7,6 +7,20 @@ import Foundation
 ///     present·(1+r)^n + payment·(1+r·type)·((1+r)^n − 1)/r + future = 0
 /// 迭代和指数运算用 Double，和 Excel 一样（设计 5.4 节）。
 enum Annuity {
+    /// 每期本金按 (1+r) 递增；期初付的第一期单独处理。log1p / expm1 避免小利率时相减丢精度。
+    static func cumulativePrincipal(rate: Double, payment: Double, present: Double,
+                                    first: Int, last: Int, type: Double) -> Double {
+        let start = type == 1 ? max(2, first) : first
+        var result = type == 1 && first == 1 ? payment : 0
+        if start <= last {
+            let initial = type == 1 ? payment * (1 + rate) + present * rate : payment + present * rate
+            let exponent = Double(start) - (type == 1 ? 2 : 1)
+            let count = Double(last - start + 1)
+            result += initial * exp(exponent * log1p(rate)) * expm1(count * log1p(rate)) / rate
+        }
+        return result
+    }
+
     /// 上面那个等式左边的值。RATE 求的就是让它等于 0 的 r。r 趋于 0 时取极限：present + payment·n + future。
     static func balance(rate: Double, periods: Double, payment: Double, present: Double, future: Double,
                         type: Double) -> Double {

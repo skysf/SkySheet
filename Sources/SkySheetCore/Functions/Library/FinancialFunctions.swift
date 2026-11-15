@@ -76,7 +76,7 @@ enum FinancialFunctions {
     private static func netPresentValue(_ a: FunctionArguments) throws(CellError) -> CellValue {
         let rate = try a.double(0)
         guard rate != -1 else { throw CellError.div0 }
-        let values = try Aggregate.numbers(a, from: 1).map(DecimalMath.double)
+        let values = try Aggregate.numbers(a, from: 1, includeDirectBooleans: false).map(DecimalMath.double)
         return try result(CashFlow.presentValue(rate: rate, values: values, firstPeriod: 1))
     }
 
@@ -88,7 +88,14 @@ enum FinancialFunctions {
 
     /// IRR(一串现金流, [猜测])：至少一正一负，否则 #NUM!。区域里不是数字的格子跳过。
     private static func internalRate(_ a: FunctionArguments) throws(CellError) -> CellValue {
-        let values = try a.grid(0).values.compactMap { value -> Double? in value.number.map(DecimalMath.double) }
+        var values: [Double] = []
+        for value in try a.grid(0).values {
+            switch value {
+            case .number(let number): values.append(DecimalMath.double(number))
+            case .error(let error): throw error
+            default: continue
+            }
+        }
         try requireBothSigns(values)
         let root = try RootSolver.solve(guess: try a.double(1, default: 0.1), lower: -1 + 1e-10, upper: 1e6) { rate in
             CashFlow.presentValue(rate: rate, values: values, firstPeriod: 0)
@@ -151,7 +158,7 @@ enum FinancialFunctions {
         return (try a.double(0), period, periods, try a.double(3), try a.double(4, default: 0), try type(a, 5))
     }
 
-    /// 一段期间里每期利息和本金的合计：就是逐期的 IPMT、PPMT 加起来（同一个 Annuity.interest）。
+    /// 不逐期展开：文件能给出万亿期，必须用等比数列在有界时间内求和。
     private static func cumulative(_ a: FunctionArguments) throws(CellError) -> (interest: Double, principal: Double) {
         let (rate, periods, present) = (try a.double(0), try a.double(1), try a.double(2))
         let (first, last) = (try a.integer(3), try a.integer(4))
@@ -160,14 +167,11 @@ enum FinancialFunctions {
               typeValue == 0 || typeValue == 1 else { throw CellError.num }
         let type = DecimalMath.double(typeValue)
         let payment = Annuity.payment(rate: rate, periods: periods, present: present, future: 0, type: type)
-        var interest = 0.0
-        var principal = 0.0
-        for period in first...last {
-            let part = Annuity.interest(rate: rate, period: Double(period), periods: periods, present: present,
-                                        future: 0, type: type)
-            interest += part
-            principal += payment - part
-        }
+        guard payment.isFinite else { throw CellError.num }
+        let principal = Annuity.cumulativePrincipal(rate: rate, payment: payment, present: present,
+                                                   first: first, last: last, type: type)
+        let interest = payment * Double(last - first + 1) - principal
+        guard principal.isFinite, interest.isFinite else { throw CellError.num }
         return (interest, principal)
     }
 
