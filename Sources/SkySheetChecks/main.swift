@@ -6,6 +6,7 @@ import Foundation
 zipChecks()
 formatChecks()
 formulaChecks()
+circularChecks()
 functionChecks()
 financialChecks()
 xlsxReadChecks()

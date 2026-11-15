@@ -124,8 +124,8 @@ struct RecalcPlan {
                 }
             }
         }
-        // 每张 sheet 有公式的列，从左到右：找依赖时按这个顺序，排出来的计算顺序（和循环引用里标哪几格）每次都一样。
-        // 以前按字典的顺序走，每次启动可能不同。
+        // 每张 sheet 有公式的列，从左到右：找依赖时按这个顺序，排出来的计算顺序每次都一样（以前按字典的顺序走，每次启动
+        // 可能不同；算出来的值和顺序无关，标哪些格子「循环引用」也和顺序无关，见 topologicalOrder）。
         var formulaColumns: [Int: [(column: Int, rows: [Int])]] = [:]
         for (sheet, columns) in formulaCells {
             formulaColumns[sheet] = columns.keys.sorted().map { (column: $0, rows: columns[$0]!.sorted()) }
@@ -190,38 +190,82 @@ struct RecalcPlan {
         }
     }
 
-    /// 深度优先的后序就是计算顺序。碰到还在栈上的格子就是循环引用：栈上从它到栈顶的都算在环里。
+    /// 计算顺序和循环引用：按强连通分量来（Tarjan，显式的栈，一万层深的链也不爆栈）。
+    ///
+    /// 一个分量里的公式两两能互相走到：有两个以上、或者只有一个但引用了自己，就是一个环，里面**每一个**都标
+    /// 「循环引用」（设计 5.5 节）。分量只由依赖关系定，和从哪开始走、先走哪个引用无关，所以标哪些格子每次都一样。
+    /// 原来深度优先碰到「还在栈上的格子」才把栈上那一段标上，同一个环里从别的路走到、当时已经走完的公式会漏标：
+    /// A1 = SUM(B1:C1)、B1 = A1、C1 = IFERROR(B1,7)，先走 B1 就漏了 C1，C1 显示 7（2026-11-15，Codex 审 PR #10 时指出，
+    /// 自检 circularChecks 复现）。
+    ///
+    /// Tarjan 给出分量的先后是「被引用的先出来」，一个接一个排起来就是计算顺序：不在环上的公式，它引用的公式都排在它
+    /// 前面；在环上的事先都填成错误值，先后无所谓。
     private static func topologicalOrder(_ roots: [FormulaLocation],
                                          _ dependencies: [FormulaLocation: [FormulaLocation]])
         -> ([FormulaLocation], Set<FormulaLocation>) {
-        enum Mark { case visiting, done }
-        var marks: [FormulaLocation: Mark] = [:]
+        // 位置换成连续的编号（roots 在最前面，按原来的顺序），后面全用数组。
+        var ids: [FormulaLocation: Int] = [:]
+        var nodes: [FormulaLocation] = []
+        ids.reserveCapacity(roots.count)
+        nodes.reserveCapacity(roots.count)
+        func id(of location: FormulaLocation) -> Int {
+            if let known = ids[location] { return known }
+            ids[location] = nodes.count
+            nodes.append(location)
+            return nodes.count - 1
+        }
+        for root in roots { _ = id(of: root) }
+        var edges: [[Int]] = []
+        edges.reserveCapacity(nodes.count)
+        var next = 0
+        while next < nodes.count {   // 引用到的公式（算不了的那些）也编上号，接着往后排
+            edges.append((dependencies[nodes[next]] ?? []).map { id(of: $0) })
+            next += 1
+        }
+
+        var index = [Int](repeating: -1, count: nodes.count)
+        var lowlink = [Int](repeating: 0, count: nodes.count)
+        var onStack = [Bool](repeating: false, count: nodes.count)
+        var component: [Int] = []
+        var counter = 0
         var order: [FormulaLocation] = []
+        order.reserveCapacity(nodes.count)
         var circular: Set<FormulaLocation> = []
-        for root in roots where marks[root] == nil {
-            var stack: [(location: FormulaLocation, next: Int)] = [(root, 0)]
-            marks[root] = .visiting
-            while let top = stack.last {
-                let children = dependencies[top.location] ?? []
-                guard top.next < children.count else {
-                    marks[top.location] = .done
-                    order.append(top.location)
-                    stack.removeLast()
+        var calls: [(node: Int, edge: Int)] = []
+        func enter(_ node: Int) {
+            index[node] = counter
+            lowlink[node] = counter
+            counter += 1
+            component.append(node)
+            onStack[node] = true
+            calls.append((node, 0))
+        }
+        for root in roots.indices where index[root] < 0 {
+            enter(root)
+            while let (node, edge) = calls.last {
+                if edge < edges[node].count {
+                    calls[calls.count - 1].edge += 1
+                    let child = edges[node][edge]
+                    if index[child] < 0 {
+                        enter(child)
+                    } else if onStack[child] {
+                        lowlink[node] = min(lowlink[node], index[child])
+                    }
                     continue
                 }
-                stack[stack.count - 1].next += 1
-                let child = children[top.next]
-                switch marks[child] {
-                case nil:
-                    marks[child] = .visiting
-                    stack.append((child, 0))
-                case .visiting?:
-                    if let start = stack.lastIndex(where: { $0.location == child }) {
-                        stack[start...].forEach { circular.insert($0.location) }
-                    }
-                case .done?:
-                    break
+                calls.removeLast()
+                if let parent = calls.last?.node { lowlink[parent] = min(lowlink[parent], lowlink[node]) }
+                guard lowlink[node] == index[node] else { continue }
+                // node 是一个分量的根：栈上它以上的都是这个分量。
+                let start = component.lastIndex(of: node)!
+                let members = component[start...]
+                let isCycle = members.count > 1 || edges[node].contains(node)
+                for member in members {
+                    onStack[member] = false
+                    order.append(nodes[member])
+                    if isCycle { circular.insert(nodes[member]) }
                 }
+                component.removeSubrange(start...)
             }
         }
         return (order, circular)
