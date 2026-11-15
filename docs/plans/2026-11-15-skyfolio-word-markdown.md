@@ -22,7 +22,7 @@
 | 9 | Word 表格导进 sheet | 不加专门的工具：AI 用 `read_document` 按格子取，再 `add_sheet` + `write_cells` | `add_sheet` 加 `from_document_table` | 现有工具已经走得通，常用了再加 | 11-16 |
 | 10 | 设计第 14 条（不许用别的程序改用户文件） | 管「用户的 .xlsx/.csv，以及在 SkyFolio 里开着的文件」；开着的文件在磁盘上被改了，没有没存的改动就先备份上一版再重新载入，有就按第六道保险先问 | 照搬到所有 .docx、.md；文档不管 | 总说明对整个会话生效，写「不许改 .md」会拦住 Claude Code 平时改 README；文档不管的话，用户没存的改动会被别的程序冲掉 | 11-16 |
 | 11 | 名字 | 整体改名 SkyFolio：App 名、bundle id `ai.skylu.skyfolio`、MCP 服务名 `skyfolio`、仓库 `skysf/SkyFolio`；对外全名「SkyFolio by Skylu」。上 App Store 或正式推广之前，去 USPTO、EUIPO、中国商标网正式查一次。改名在 M6 做 | 保留 SkySheet；只改显示名；SkyLeaf、SkyBinder 等候选 | 它已经不只是表格。已知撞名（7.1 节）：作者知道后仍选它，全名带上品牌来区分 | 11-16 |
-| 12 | 模块名 | 管整个 App 的四个跟着改（`SkySheet`、`SkySheetMCP`、`SkySheetMCPKit`、`SkySheetChecks` → `SkyFolio…`）；表格引擎三个（`SkySheetCore`、`SkySheetFiles`、`SkySheetDisplay`）不改，「SkySheet」从此是表格引擎的名字 | 全改；全不改 | 表格引擎一万多行、被 import 114 处，改名只搅历史，而且它就是表格引擎 | 11-16 |
+| 12 | 模块名 | 管整个 App 的四个跟着改（`SkySheet`、`SkySheetMCP`、`SkySheetMCPKit`、`SkySheetChecks` → `SkyFolio…`）；表格引擎三个（`SkySheetCore`、`SkySheetFiles`、`SkySheetDisplay`）不改，「SkySheet」从此是表格引擎的名字 | 全改；全不改 | 表格引擎一万多行、被 import 114 处（11-15 数的），改名只搅历史，而且它就是表格引擎 | 11-16 |
 | 13 | 签名 | 先不公证，继续用「Skylu Signing」自签名；README 和 DMG 里写清第一次打开怎么点（8.1 节） | 加入 Apple Developer Program 做公证 | 作者定。以后要公证需要什么，见 8.1 节末尾 | 11-15 |
 | 14 | 更新 | 用户自己去 GitHub Releases 下载；不做自动更新，也不做应用内检查更新（8.2 节的发版清单） | 自动更新；应用内检查 | 作者定；SkyFolio 不联网 | 11-15 |
 | 15 | 隐私 | 不加崩溃报告和统计。SkyFolio 自己完全不联网；README 和第一次打开时说清楚 AI 读到的内容去了哪里 | 自己做崩溃上报 | 表格里是财务数据，崩溃报告可能带出格子内容；要服务器、要管别人的数据 | 11-16 |
@@ -371,7 +371,8 @@ Tools by need:
 ## 七、改名为 SkyFolio
 
 作者 2026-11-16 定：App 名 SkyFolio，对外全名「SkyFolio by Skylu」；bundle id `ai.skylu.skyfolio`；MCP 服务名 `skyfolio`；仓库 `skysf/SkyFolio`。
-现在仓库里 122 个文件、583 行提到 SkySheet / skysheet（`Sources` 里 90 行是字符串，129 行是 `import SkySheet…`）。
+仓库里 122 个文件、583 行提到 SkySheet / skysheet（`Sources` 里 90 行是字符串，129 行是 `import SkySheet…`；2026-11-15 在 2fba225 上数的，
+M6 动手时再数一次）。
 
 ### 7.1 撞名（另一个会话 2026-11-15～16 查的）
 
