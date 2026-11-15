@@ -10,7 +10,25 @@ import SkySheetFiles
 @MainActor
 @Observable
 final class SheetSession {
-    var workbook: Workbook
+    /// 工作簿。换一整本走 `replaceWorkbook`（SheetSession+Editing）。
+    ///
+    /// 不让 @Observable 直接管它：Observation 每次赋值前都把新旧两本整个比一遍「一不一样」再决定通知不通知，重算以后公式格子
+    /// 全是新的，这一比就是把整本走一遍（2026-11-14 实测，一万行的还款表每次编辑多 10 毫秒上下，表越大越多）。改成记一个
+    /// 版本号：换一本加一，读工作簿的就是在看版本号。换上去的都是真变了的（apply 先比过），通知不会多也不会少。
+    @ObservationIgnored private var storedWorkbook: Workbook
+    private var workbookVersion = 0
+
+    var workbook: Workbook {
+        get {
+            _ = workbookVersion
+            return storedWorkbook
+        }
+        set {
+            storedWorkbook = newValue
+            workbookVersion += 1
+        }
+    }
+
     var styles: StyleResolver
     var sheetIndex: Int
     var selection = Selection(at: CellAddress(row: 0, column: 0))
@@ -30,9 +48,12 @@ final class SheetSession {
     @ObservationIgnored var structureLock: (@MainActor (_ sheetID: Int) -> StructureLock?)?
     /// 公式栏编辑完把键盘还给表格（窗口建好时接上）。
     @ObservationIgnored var focusGrid: (@MainActor () -> Void)?
+    /// 上一次重算排好的计划：公式没变的编辑接着用（RecalcCache，2026-11-14）。读文件时那一次重算排的也交过来。
+    @ObservationIgnored let recalcCache: RecalcCache
 
-    init(workbook: Workbook) {
-        self.workbook = workbook
+    init(workbook: Workbook, recalcCache: RecalcCache = RecalcCache()) {
+        storedWorkbook = workbook
+        self.recalcCache = recalcCache
         styles = StyleResolver(workbook: workbook)
         sheetIndex = workbook.sheets.firstIndex { $0.visibility == .visible } ?? 0
         resetSelection()

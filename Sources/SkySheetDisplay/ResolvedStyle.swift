@@ -48,7 +48,7 @@ public struct ResolvedEdge: Hashable, Sendable {
 }
 
 /// 工作簿的每个样式编号对应的 `ResolvedStyle`，打开时一次算好，画的时候直接取。
-public struct StyleResolver: Sendable {
+public struct StyleResolver: Equatable, Sendable {
     private let styles: [ResolvedStyle]
 
     public init(workbook: Workbook) {

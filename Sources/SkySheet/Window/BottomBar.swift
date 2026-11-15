@@ -11,7 +11,7 @@ struct BottomBar: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 1) {
                     ForEach(session.tabIndices, id: \.self) { index in
-                        SheetTab(sheet: session.workbook.sheets[index], isSelected: index == session.sheetIndex) {
+                        SheetTab(tab: SheetTab.Info(session.workbook.sheets[index]), isSelected: index == session.sheetIndex) {
                             session.showSheet(index)
                         }
                         // 双击改名，和 Excel 一样。
@@ -72,16 +72,30 @@ struct BottomBar: View {
 /// 一个页签。文件里给 sheet 设了页签颜色的，在下边画一道。AI 的 sheet 底色带紫，名字后面一个小标写着是哪个 AI
 /// （设计 8.2 节、9.3 节第 5 条），鼠标停上去看完整署名。
 private struct SheetTab: View {
-    let sheet: Sheet
+    /// 页签只要这几样。不把整张 Sheet 传进来：SwiftUI 每次更新都拿新旧两份比，整张表的格子都要比一遍
+    /// （2026-11-14 实测，改一格要多十几毫秒）。
+    struct Info: Equatable {
+        let name: String
+        let authorship: AIAuthorship?
+        let tabColor: String?
+
+        init(_ sheet: Sheet) {
+            name = sheet.name
+            authorship = sheet.role.authorship
+            tabColor = sheet.tabColor
+        }
+    }
+
+    let tab: Info
     let isSelected: Bool
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             HStack(spacing: 5) {
-                Text(sheet.name)
+                Text(tab.name)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                if let authorship = sheet.role.authorship {
+                if let authorship = tab.authorship {
                     Text(authorship.badge)
                         .font(.system(size: 9, weight: .semibold))
                         .padding(.horizontal, 4)
@@ -101,17 +115,17 @@ private struct SheetTab: View {
             .clipShape(RoundedRectangle(cornerRadius: 4))
         }
         .buttonStyle(.plain)
-        .help(sheet.role.authorship.map(AIByline.text) ?? "")
+        .help(tab.authorship.map(AIByline.text) ?? "")
     }
 
     private var background: Color {
-        if sheet.role.isAI { return Color.purple.opacity(isSelected ? 0.16 : 0.07) }
+        if tab.authorship != nil { return Color.purple.opacity(isSelected ? 0.16 : 0.07) }
         return isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear
     }
 
     /// 白色的页签颜色（腾讯文档常写 FFFFFFFF）等于没有。
     private var tabColor: Color? {
-        guard let hex = sheet.tabColor, let rgb = RGBAColor(hex: hex), rgb != .white else { return nil }
+        guard let hex = tab.tabColor, let rgb = RGBAColor(hex: hex), rgb != .white else { return nil }
         return Color(nsColor: NSColor(rgb))
     }
 }

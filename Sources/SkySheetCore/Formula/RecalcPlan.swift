@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 /// 一个公式格子的位置：第几张 sheet、哪一格。
 public struct FormulaLocation: Hashable, Comparable, Sendable {
@@ -15,6 +16,86 @@ public struct FormulaLocation: Hashable, Comparable, Sendable {
     }
 }
 
+/// 工作簿里的公式：每个公式格子的位置、原文、数组公式的范围，加上 sheet 名的顺序（公式按名字找 sheet）。
+/// 重算的计划（RecalcPlan）只由它定：两次重算之间它没变（只改了值，这是最常见的编辑），上一次排好的计划整个接着用
+/// （RecalcCache，2026-11-14）。收集时不按格子排序（顺序和计划无关）。
+struct FormulaLayout: Equatable {
+    struct Entry: Equatable {
+        let source: String
+        let arrayRange: CellRange?
+
+        /// 原文按标量比（ExactText）：规范等价、写法不同的两个公式切出来的词可能不一样，不能当成「没变」接着用旧计划。
+        static func == (lhs: Entry, rhs: Entry) -> Bool {
+            ExactText(lhs.source) == ExactText(rhs.source) && lhs.arrayRange == rhs.arrayRange
+        }
+    }
+
+    /// 一张表里的公式，按行：行 → 列 → 公式。
+    typealias SheetFormulas = [Int: [Int: Entry]]
+
+    let sheetNames: [String]
+    let formulas: [FormulaLocation: Entry]
+
+    init(_ workbook: Workbook) {
+        self.init(workbook, sheets: workbook.sheets.map { Self.formulas(in: $0.cells) })
+    }
+
+    /// `sheets` 是每张表（按位置）里的公式（`formulas(in:)` 的结果，或者 RecalcCache 只改了几行的那一份）。
+    init(_ workbook: Workbook, sheets: [SheetFormulas]) {
+        sheetNames = workbook.sheets.map(\.name)
+        var formulas: [FormulaLocation: Entry] = [:]
+        for (sheetIndex, rows) in sheets.enumerated() {
+            for (row, columns) in rows {
+                for (column, entry) in columns {
+                    formulas[FormulaLocation(sheet: sheetIndex, address: CellAddress(row: row, column: column))] = entry
+                }
+            }
+        }
+        self.formulas = formulas
+    }
+
+    /// 一张表里的公式（整张走一遍，不排序）。
+    static func formulas(in cells: SparseGrid<Cell>) -> SheetFormulas {
+        var rows: SheetFormulas = [:]
+        cells.forEachUnordered { address, cell in
+            guard let formula = cell.formula else { return }
+            rows[address.row, default: [:]][address.column] = Entry(source: formula.source, arrayRange: formula.arrayRange)
+        }
+        return rows
+    }
+
+    /// 一行里的公式；没有就是 nil。
+    static func formulas(inRow row: Int, of cells: SparseGrid<Cell>) -> [Int: Entry]? {
+        var columns: [Int: Entry] = [:]
+        cells.forEach(inRowUnordered: row) { column, cell in
+            guard let formula = cell.formula else { return }
+            columns[column] = Entry(source: formula.source, arrayRange: formula.arrayRange)
+        }
+        return columns.isEmpty ? nil : columns
+    }
+}
+
+/// 解析过的公式（原文 → 语法树），跨重算留着：一万行的还款表每次重算都把 5 万个公式从头切词、解析一遍，
+/// 占了重算的三成多（2026-11-14 实测）。解析只看原文，同一个原文结果一样。条目太多就整个清掉重来，内存有个上限。
+/// 原文按标量做键（ExactText）：按 String 做键时，é 和 e + U+0301 两种写法共用一条，先读到读不出来的那个，后一个
+/// 有效的公式也跟着「读不出来」、显示文件里的旧缓存值（反过来也一样；所有窗口共用这一份，会跨工作簿串）。
+final class FormulaParseCache: Sendable {
+    static let shared = FormulaParseCache()
+    private static let limit = 500_000
+    private let storage = Mutex<[ExactText: Result<FormulaNode, FormulaSyntaxError>]>([:])
+
+    func parse(_ source: String) -> Result<FormulaNode, FormulaSyntaxError> {
+        let key = ExactText(source)
+        if let hit = storage.withLock({ $0[key] }) { return hit }
+        let result = Result { () throws(FormulaSyntaxError) -> FormulaNode in try FormulaParser.parse(source) }
+        storage.withLock { cache in
+            if cache.count >= Self.limit { cache.removeAll(keepingCapacity: true) }
+            cache[key] = result
+        }
+        return result
+    }
+}
+
 /// 一次重算的准备（设计 5.5 节）：解析每个公式、挑出算不了的、找出公式之间的依赖、排好先后。
 ///
 /// 排序不用递归：几百行的还款计划表每一行都引用上一行，递归深度就是行数，会把后台线程的栈撑爆。
@@ -27,33 +108,35 @@ struct RecalcPlan {
     private(set) var circular: Set<FormulaLocation> = []
 
     init(workbook: Workbook) {
+        self.init(layout: FormulaLayout(workbook), workbook: workbook)
+    }
+
+    /// `layout` 是 `workbook` 里的公式（FormulaLayout）。计划只由公式的位置、原文和 sheet 名定，和别的格子的值无关。
+    init(layout: FormulaLayout, workbook: Workbook) {
         // 每张 sheet 上哪些格子有公式：sheet → 列 → 行（从小到大）。找依赖时按列二分查找。
         var formulaCells: [Int: [Int: [Int]]] = [:]
-        var cache: [String: Result<FormulaNode, FormulaSyntaxError>] = [:]
-        for (sheetIndex, sheet) in workbook.sheets.enumerated() {
-            sheet.cells.forEach { address, cell in
-                guard let formula = cell.formula else { return }
-                let location = FormulaLocation(sheet: sheetIndex, address: address)
-                formulaCells[sheetIndex, default: [:]][address.column, default: []].append(address.row)
-                if formula.arrayRange != nil {
-                    unsupported[location] = "array formulas are not supported yet"
-                    return
-                }
-                let result = cache[formula.source] ?? Result { () throws(FormulaSyntaxError) -> FormulaNode in
-                    try FormulaParser.parse(formula.source)
-                }
-                cache[formula.source] = result
-                switch result {
-                case .failure(let error):
-                    unsupported[location] = "could not read the formula (\(error))"
-                case .success(let node):
-                    if let reason = Self.unsupportedReason(node, workbook: workbook) {
-                        unsupported[location] = reason
-                    } else {
-                        parsed[location] = node
-                    }
+        for (location, formula) in layout.formulas {
+            formulaCells[location.sheet, default: [:]][location.address.column, default: []].append(location.address.row)
+            if formula.arrayRange != nil {
+                unsupported[location] = "array formulas are not supported yet"
+                continue
+            }
+            switch FormulaParseCache.shared.parse(formula.source) {
+            case .failure(let error):
+                unsupported[location] = "could not read the formula (\(error))"
+            case .success(let node):
+                if let reason = Self.unsupportedReason(node, workbook: workbook) {
+                    unsupported[location] = reason
+                } else {
+                    parsed[location] = node
                 }
             }
+        }
+        // 每张 sheet 有公式的列，从左到右：找依赖时按这个顺序，排出来的计算顺序每次都一样（以前按字典的顺序走，每次启动
+        // 可能不同；算出来的值和顺序无关，标哪些格子「循环引用」也和顺序无关，见 topologicalOrder）。
+        var formulaColumns: [Int: [(column: Int, rows: [Int])]] = [:]
+        for (sheet, columns) in formulaCells {
+            formulaColumns[sheet] = columns.keys.sorted().map { (column: $0, rows: columns[$0]!.sorted()) }
         }
 
         var dependencies: [FormulaLocation: [FormulaLocation]] = [:]
@@ -61,7 +144,7 @@ struct RecalcPlan {
             var found: [FormulaLocation] = []
             Self.forEachReference(in: node) { reference in
                 guard let sheet = reference.sheet.map({ workbook.sheetIndex(named: $0) }) ?? location.sheet,
-                      let columns = formulaCells[sheet] else { return }
+                      let columns = formulaColumns[sheet] else { return }
                 let range = reference.range
                 for (column, rows) in columns where (range.start.column...range.end.column).contains(column) {
                     var index = rows.lowerBound(of: range.start.row)
@@ -115,38 +198,82 @@ struct RecalcPlan {
         }
     }
 
-    /// 深度优先的后序就是计算顺序。碰到还在栈上的格子就是循环引用：栈上从它到栈顶的都算在环里。
+    /// 计算顺序和循环引用：按强连通分量来（Tarjan，显式的栈，一万层深的链也不爆栈）。
+    ///
+    /// 一个分量里的公式两两能互相走到：有两个以上、或者只有一个但引用了自己，就是一个环，里面**每一个**都标
+    /// 「循环引用」（设计 5.5 节）。分量只由依赖关系定，和从哪开始走、先走哪个引用无关，所以标哪些格子每次都一样。
+    /// 原来深度优先碰到「还在栈上的格子」才把栈上那一段标上，同一个环里从别的路走到、当时已经走完的公式会漏标：
+    /// A1 = SUM(B1:C1)、B1 = A1、C1 = IFERROR(B1,7)，先走 B1 就漏了 C1，C1 显示 7（2026-11-15，Codex 审 PR #10 时指出，
+    /// 自检 circularChecks 复现）。
+    ///
+    /// Tarjan 给出分量的先后是「被引用的先出来」，一个接一个排起来就是计算顺序：不在环上的公式，它引用的公式都排在它
+    /// 前面；在环上的事先都填成错误值，先后无所谓。
     private static func topologicalOrder(_ roots: [FormulaLocation],
                                          _ dependencies: [FormulaLocation: [FormulaLocation]])
         -> ([FormulaLocation], Set<FormulaLocation>) {
-        enum Mark { case visiting, done }
-        var marks: [FormulaLocation: Mark] = [:]
+        // 位置换成连续的编号（roots 在最前面，按原来的顺序），后面全用数组。
+        var ids: [FormulaLocation: Int] = [:]
+        var nodes: [FormulaLocation] = []
+        ids.reserveCapacity(roots.count)
+        nodes.reserveCapacity(roots.count)
+        func id(of location: FormulaLocation) -> Int {
+            if let known = ids[location] { return known }
+            ids[location] = nodes.count
+            nodes.append(location)
+            return nodes.count - 1
+        }
+        for root in roots { _ = id(of: root) }
+        var edges: [[Int]] = []
+        edges.reserveCapacity(nodes.count)
+        var next = 0
+        while next < nodes.count {   // 引用到的公式（算不了的那些）也编上号，接着往后排
+            edges.append((dependencies[nodes[next]] ?? []).map { id(of: $0) })
+            next += 1
+        }
+
+        var index = [Int](repeating: -1, count: nodes.count)
+        var lowlink = [Int](repeating: 0, count: nodes.count)
+        var onStack = [Bool](repeating: false, count: nodes.count)
+        var component: [Int] = []
+        var counter = 0
         var order: [FormulaLocation] = []
+        order.reserveCapacity(nodes.count)
         var circular: Set<FormulaLocation> = []
-        for root in roots where marks[root] == nil {
-            var stack: [(location: FormulaLocation, next: Int)] = [(root, 0)]
-            marks[root] = .visiting
-            while let top = stack.last {
-                let children = dependencies[top.location] ?? []
-                guard top.next < children.count else {
-                    marks[top.location] = .done
-                    order.append(top.location)
-                    stack.removeLast()
+        var calls: [(node: Int, edge: Int)] = []
+        func enter(_ node: Int) {
+            index[node] = counter
+            lowlink[node] = counter
+            counter += 1
+            component.append(node)
+            onStack[node] = true
+            calls.append((node, 0))
+        }
+        for root in roots.indices where index[root] < 0 {
+            enter(root)
+            while let (node, edge) = calls.last {
+                if edge < edges[node].count {
+                    calls[calls.count - 1].edge += 1
+                    let child = edges[node][edge]
+                    if index[child] < 0 {
+                        enter(child)
+                    } else if onStack[child] {
+                        lowlink[node] = min(lowlink[node], index[child])
+                    }
                     continue
                 }
-                stack[stack.count - 1].next += 1
-                let child = children[top.next]
-                switch marks[child] {
-                case nil:
-                    marks[child] = .visiting
-                    stack.append((child, 0))
-                case .visiting?:
-                    if let start = stack.lastIndex(where: { $0.location == child }) {
-                        stack[start...].forEach { circular.insert($0.location) }
-                    }
-                case .done?:
-                    break
+                calls.removeLast()
+                if let parent = calls.last?.node { lowlink[parent] = min(lowlink[parent], lowlink[node]) }
+                guard lowlink[node] == index[node] else { continue }
+                // node 是一个分量的根：栈上它以上的都是这个分量。
+                let start = component.lastIndex(of: node)!
+                let members = component[start...]
+                let isCycle = members.count > 1 || edges[node].contains(node)
+                for member in members {
+                    onStack[member] = false
+                    order.append(nodes[member])
+                    if isCycle { circular.insert(nodes[member]) }
                 }
+                component.removeSubrange(start...)
             }
         }
         return (order, circular)

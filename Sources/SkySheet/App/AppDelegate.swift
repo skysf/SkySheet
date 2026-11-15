@@ -7,6 +7,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private let launchedByAI = CommandLine.arguments.contains(MCPBridge.launchedByAIArgument)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
+        // 截图、测速只在后台画进位图：不进 Dock、不抢前台（OffscreenWindow 的说明）。
+        if runsDeveloperTool { NSApp.setActivationPolicy(.prohibited) }
         // 文档控制器要在启动完成前就有：从 Finder 双击打开的文件，系统在这之后马上交给它。
         _ = NSDocumentController.shared
         NSApp.mainMenu = MainMenu.build()
@@ -15,6 +17,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         if let request = SnapshotRequest(arguments: CommandLine.arguments) {
             SnapshotRenderer.run(request)
+            return
+        }
+        if let request = BenchmarkRequest(arguments: CommandLine.arguments) {
+            BenchmarkRunner.start(request)
             return
         }
         // AI 的通道：Claude Code 启动的 skysheet-mcp 连这个 socket（设计第三节）。
@@ -28,9 +34,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         RecoveryCoordinator.shared.drain()
     }
 
-    /// 从访达打开、拖到 Dock 图标上的文件都走这里，交给文档控制器。截图模式下一律不开（见 SnapshotRequest）。
+    /// 截图模式、测速模式：只做那一件事，不开文档、不连 AI、不写恢复副本。
+    private var runsDeveloperTool: Bool {
+        SnapshotRequest(arguments: CommandLine.arguments) != nil || BenchmarkRequest(arguments: CommandLine.arguments) != nil
+    }
+
+    /// 从访达打开、拖到 Dock 图标上的文件都走这里，交给文档控制器。截图模式、测速模式下一律不开（见 SnapshotRequest）。
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard SnapshotRequest(arguments: CommandLine.arguments) == nil else { return }
+        guard !runsDeveloperTool else { return }
         for url in urls {
             NSDocumentController.shared.openDocument(withContentsOf: url, display: true) { _, _, error in
                 if let error { NSApp.presentError(error) }
@@ -45,7 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// 只看不建：不开空文档，改成弹「打开」面板。不能在启动完成后自己判断「有没有文档」再弹：用 open 命令或从访达
     /// 打开文件时，文件来得比那更晚，结果面板和文档窗口一起出来（2026-10-08 启动测试抓到的）。
     func applicationShouldOpenUntitledFile(_ sender: NSApplication) -> Bool {
-        SnapshotRequest(arguments: CommandLine.arguments) == nil && !launchedByAI
+        !runsDeveloperTool && !launchedByAI
     }
 
     @objc func showSettings(_ sender: Any?) {

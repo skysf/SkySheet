@@ -13,8 +13,12 @@
 - 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，6 秒左右）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
 - 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
-- 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60]`，
-  把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。
+- 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5]`，
+  把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。截图、测速只写新文件，输出路径已经有东西就拒绝。
+- 测速（设计 8.2 节「性能」）：`swift build -c release --arch arm64 --product SkySheet` 以后
+  `.build/arm64-apple-macosx/release/SkySheet --benchmark synthetic:data|synthetic:formulas|synthetic:styles|文件.xlsx
+  [--benchmark-only …]`，逐帧报主线程 CPU 时间；`--benchmark-only verify` 逐像素核对局部重画，改了画法就跑。
+  截图、测速都不弹窗口。
 - 看存出来的文件：`SKYSHEET_CHECK_OUTPUT=文件夹 swift run --arch arm64 --skip-build SkySheetChecks` 把保存自检写出的
   xlsx 留在那个文件夹，可以拿 `qlmanage -t` 或别的软件打开看。
 - 试 MCP：打包后用 JSON-RPC 直接跟 `dist/SkySheet.app/Contents/Helpers/skysheet-mcp` 说话；要和真的 Claude Code 试，用

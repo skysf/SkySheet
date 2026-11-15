@@ -22,6 +22,36 @@ public struct DisplayContent: Sendable {
     public var isGeneralNumber: Bool
 }
 
+/// 画过的格子显示成什么，按位置记下来（2026-11-14，设计 8.2 节「性能」）。
+///
+/// 每画一帧都把每个格子重新按数字格式排一遍字（ValueFormatter），整块重画时占了画字的两成；同一个格子没变，结果就一样。
+/// 取的时候拿格子本身比一下（值、公式、样式编号），一样才用记下的，所以改过的格子不会显示旧的。文字按标量比
+/// （2026-11-15）：== 对字符串按规范等价算，é 和 e + U+0301 算一样，同一格只换了写法（比如重新载入了文件）就会接着显示
+/// 旧的那种写法，有的字体里两种写法画出来不一样（ExactText 的说明）。显示只由格子、样式表和日期系统定：这两样一变就换
+/// 一份新的（SheetCanvas 管）。记的条数有上限，满了清空重来。
+public final class DisplayContentCache {
+    private var entries: [CellAddress: (cell: Cell, content: DisplayContent)] = [:]
+    private static let limit = 50_000
+
+    public init() {}
+
+    public func content(of cell: Cell, at address: CellAddress, style: ResolvedStyle, dateSystem: DateSystem) -> DisplayContent {
+        if let entry = entries[address], entry.cell == cell, Self.sameScalars(entry.cell.value, cell.value) {
+            return entry.content
+        }
+        let content = CellDisplay.content(of: cell, style: style, dateSystem: dateSystem)
+        if entries.count >= Self.limit { entries.removeAll(keepingCapacity: true) }
+        entries[address] = (cell, content)
+        return content
+    }
+
+    /// 两个值（已经 == 了）的文字是不是连标量都一样。
+    private static func sameScalars(_ a: CellValue, _ b: CellValue) -> Bool {
+        guard case .text(let first) = a, case .text(let second) = b else { return true }
+        return ExactText(first) == ExactText(second)
+    }
+}
+
 /// 格子显示成什么（设计 8.2 节）：文字、放在哪边、什么颜色；数字放不下怎么办；文字往旁边空格子溢出到哪。
 public enum CellDisplay {
     public static func content(of cell: Cell, style: ResolvedStyle, dateSystem: DateSystem) -> DisplayContent {
@@ -135,13 +165,32 @@ public struct SelectionSummary: Equatable, Sendable {
         numericCount > 0 ? sum / Decimal(numericCount) : nil
     }
 
+    /// 全选十万行的表也要很快算完（2026-11-14）：格子挨个看、不先攒成数组；加法用 DecimalSum。它只在「按什么顺序加
+    /// 结果都一样」时作答（每个数最多 18 位小数、绝对值加起来不到 10²⁰），这时和 SUM 按行一个一个加是同一个数，所以第一遍
+    /// 可以不排序地走；否则按 SUM 的顺序（行优先）用 Decimal 从头再加一遍，和 SUM 每一位都一样。2026-11-15 改：原来出不出界
+    /// 看的是不排序那一路每一步的和，合计会随走的先后变（每次启动都可能不同），也可能和 SUM 不一样（DecimalSum 的说明）。
     public init(cells: SparseGrid<Cell>, range: CellRange) {
-        for (_, cell) in cells.entries(in: range) where cell.value != .empty {
+        var count = 0
+        var numericCount = 0
+        var fast = DecimalSum()
+        cells.forEachUnordered(in: range) { _, cell in
+            guard cell.value != .empty else { return }
             count += 1
             if let number = cell.value.number {
                 numericCount += 1
-                sum += number
+                fast.add(number)
             }
+        }
+        self.count = count
+        self.numericCount = numericCount
+        if fast.needsFallback {
+            var total: Decimal = 0
+            cells.forEach(in: range) { _, cell in
+                if let number = cell.value.number { total += number }
+            }
+            sum = total
+        } else {
+            sum = fast.value
         }
     }
 }

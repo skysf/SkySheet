@@ -7,18 +7,9 @@ import SkySheetCore
 @MainActor
 func performanceChecks() {
     group("performance: 10,000-row repayment schedule") {
-        // 每期利率取 0.01%。别用 0.25%：一万期的话 1.0025^10000 ≈ 7e10，PMT 在第 16 位上的舍入误差会被放大三十万亿倍，
-        // 期末余额差出几块钱（2026-10-08 实测 -7.70）。那是这种长链本身的病态，Excel 一样；30 年房贷只放大 584 倍。
-        var cells = ["H1": "0.0001", "H2": "=PMT(H1,10000,-1000000)"]
-        for row in 1...10_000 {
-            cells["A\(row)"] = "\(row)"
-            cells["B\(row)"] = row == 1 ? "1000000" : "=F\(row - 1)"   // 期初余额 = 上一期的期末余额
-            cells["C\(row)"] = "=B\(row)*$H$1"                         // 利息
-            cells["D\(row)"] = "=$H$2"                                 // 每期还款
-            cells["E\(row)"] = "=D\(row)-C\(row)"                      // 本金
-            cells["F\(row)"] = "=B\(row)-E\(row)"                      // 期末余额
-        }
-        var workbook = Workbook(sheets: [makeSheet("Schedule", id: 1, cells)])
+        // 和测速模式用同一张合成表（SyntheticWorkbook.formulas，每期利率为什么取 0.01% 也写在那里）。
+        var workbook = SyntheticWorkbook.formulas(periods: 10_000)
+        workbook.sheets.removeLast()   // 换 sheet 用的小表，这里用不着
         let started = Date()
         let report = Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday))
         let seconds = Date().timeIntervalSince(started)

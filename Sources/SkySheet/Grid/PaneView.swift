@@ -36,6 +36,22 @@ class PaneView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
+    /// 测速模式要知道哪里标了脏（DrawStats）。
+    override func setNeedsDisplay(_ invalidRect: NSRect) {
+        super.setNeedsDisplay(invalidRect)
+        DrawStats.invalidated(self, invalidRect)
+    }
+
+    /// sheet 坐标里 y 在 `top`…`bottom` 之间的一条，在这块窗格看得见的宽度上整条标脏；nil 是一直到窗格的边。
+    func setNeedsDisplay(sheetTop top: Double?, bottom: Double?) {
+        let visible = visibleRect
+        guard !visible.isEmpty else { return }
+        let minY = top.map { max($0 - origin.y, visible.minY) } ?? visible.minY
+        let maxY = bottom.map { min($0 - origin.y, visible.maxY) } ?? visible.maxY
+        guard maxY > minY else { return }
+        setNeedsDisplay(CGRect(x: visible.minX, y: minY, width: visible.width, height: maxY - minY))
+    }
+
     /// 右键菜单由表格视图统一给（点在哪一格它来算）。
     override func menu(for event: NSEvent) -> NSMenu? {
         spreadsheet?.menu(for: event)
@@ -47,18 +63,30 @@ class PaneView: NSView {
         }
         let dirtyRect = dirtyRect.intersection(self.bounds)
         guard !dirtyRect.isEmpty else { return }
+        DrawStats.paneDraws += 1
+        DrawStats.paneArea += dirtyRect.width * dirtyRect.height
         let bounds = spreadsheet.cellRanges(for: role)
         let sheetRect = dirtyRect.offsetBy(dx: origin.x, dy: origin.y)
         let geometry = canvas.geometry
-        let rows = max(bounds.rows.lowerBound, geometry.row(atY: sheetRect.minY))
-            ..< min(bounds.rows.upperBound, geometry.row(atY: sheetRect.maxY) + 1)
-        let columns = max(bounds.columns.lowerBound, geometry.column(atX: sheetRect.minX))
-            ..< min(bounds.columns.upperBound, geometry.column(atX: sheetRect.maxX) + 1)
+        func cells(in rect: CGRect) -> (rows: Range<Int>, columns: Range<Int>) {
+            let rows = max(bounds.rows.lowerBound, geometry.row(atY: rect.minY))
+                ..< min(bounds.rows.upperBound, geometry.row(atY: rect.maxY) + 1)
+            let columns = max(bounds.columns.lowerBound, geometry.column(atX: rect.minX))
+                ..< min(bounds.columns.upperBound, geometry.column(atX: rect.maxX) + 1)
+            return (rows.isEmpty ? 0..<0 : rows, columns.isEmpty ? 0..<0 : columns)
+        }
+        // 整块重画时要画的行列：局部重画也按它决定画哪些合并单元格的边框、哪些溢出的长文字（RegionRenderer 的说明）。
+        let visibleRect = self.visibleRect.intersection(self.bounds).offsetBy(dx: origin.x, dy: origin.y)
+        let visible = cells(in: visibleRect)
+        // 这次要画的格子：重画的范围往外再看 spill 那么远（不超出看得见的范围）。旁边的格子画出界的那一点（填充、边框）
+        // 会落进来，也要画上（裁在重画的范围里），局部重画才和整块重画一样；整块重画时这一步什么都不多。
+        let reach = sheetRect.insetBy(dx: -geometry.spill, dy: -geometry.spill).intersection(visibleRect).union(sheetRect)
+        let dirty = cells(in: reach)
 
         context.saveGState()
         context.translateBy(x: -origin.x, y: -origin.y)
-        RegionRenderer(canvas: canvas, rows: rows.isEmpty ? 0..<0 : rows, columns: columns.isEmpty ? 0..<0 : columns,
-                       paneColumns: bounds.columns, clip: sheetRect)
+        RegionRenderer(canvas: canvas, rows: dirty.rows, columns: dirty.columns, visibleRows: visible.rows,
+                       visibleColumns: visible.columns, paneColumns: bounds.columns, reach: reach, clip: sheetRect)
             .draw(selection: spreadsheet.session.selection)
         context.restoreGState()
 

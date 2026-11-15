@@ -55,37 +55,88 @@ public struct SheetGeometry: Sendable {
     /// 能滚动到的行数、列数：用到的范围再多留一些，至少铺满 `minimum`。
     public let rowCount: Int
     public let columnCount: Int
+    /// 算这份几何时表里用到的范围（`sheet.cells.usedRange`）：下一份几何格子没变就接着用，不用再数一遍。
+    public let usedRange: CellRange?
+    /// 排两个方向用到的设置：下一份几何这个方向的设置一样，就接着用这里排好的（拖边线时每动一下都要重建几何，
+    /// 十万行的表数一遍格子、排一遍行高要几十毫秒，2026-11-14）。
+    private let columnInputs: ColumnInputs
+    private let rowInputs: RowInputs
+    /// 这份几何的两个方向是不是直接用的上一份（自检数它）。
+    let reusedColumns: Bool
+    let reusedRows: Bool
+
+    private struct ColumnInputs: Equatable, Sendable {
+        let formats: [ColumnFormat]
+        let defaultWidth: Double?
+        let digit: Double
+        let zoom: Double
+    }
+
+    private struct RowInputs: Sendable {
+        let formats: [Int: RowFormat]
+        let defaultHeight: Double?
+        let baseFontSize: Double
+        let zoom: Double
+        /// 设了格式的最后一行（能滚到哪要用），跟着 `formats` 定。
+        let lastFormatted: Int
+    }
 
     public static let pixelsPerPoint = 4.0 / 3.0
 
     public init(sheet: Sheet, baseFontSize: Double, digitWidth: Double = 7, zoom: Double = 1, minimumRows: Int = 100,
                 minimumColumns: Int = 26) {
+        self.init(sheet: sheet, baseFontSize: baseFontSize, digitWidth: digitWidth, zoom: zoom,
+                  usedRange: sheet.cells.usedRange, reusing: nil, minimumRows: minimumRows, minimumColumns: minimumColumns)
+    }
+
+    /// `usedRange` 就是 `sheet.cells.usedRange`（调用方已经知道就直接给）；`previous` 是上一份几何：
+    /// 某个方向的设置和它一样，就直接用它排好的那个方向。结果和从头算一模一样。
+    public init(sheet: Sheet, baseFontSize: Double, digitWidth: Double, zoom: Double, usedRange: CellRange?,
+                reusing previous: SheetGeometry?, minimumRows: Int = 100, minimumColumns: Int = 26) {
         self.zoom = zoom
+        self.usedRange = usedRange
         let digit = max(digitWidth, 1)
-        let defaultColumn = (sheet.defaultColumnWidth.map { Self.columnPixels($0, digitWidth: digit) }
-            ?? Self.defaultColumnPixels(digitWidth: digit)) * zoom
-        var columnOverrides: [Int: Double] = [:]
-        for format in sheet.columns {
-            let size = format.hidden ? 0
-                : (format.width.map { Self.columnPixels($0, digitWidth: digit) * zoom } ?? defaultColumn)
-            for column in format.first...min(format.last, CellAddress.maxColumns - 1) {
-                columnOverrides[column] = size
+        columnInputs = ColumnInputs(formats: sheet.columns, defaultWidth: sheet.defaultColumnWidth, digit: digit, zoom: zoom)
+        reusedColumns = previous?.columnInputs == columnInputs
+        if let previous, reusedColumns {
+            columns = previous.columns
+        } else {
+            let defaultColumn = (sheet.defaultColumnWidth.map { Self.columnPixels($0, digitWidth: digit) }
+                ?? Self.defaultColumnPixels(digitWidth: digit)) * zoom
+            var columnOverrides: [Int: Double] = [:]
+            for format in sheet.columns {
+                let size = format.hidden ? 0
+                    : (format.width.map { Self.columnPixels($0, digitWidth: digit) * zoom } ?? defaultColumn)
+                for column in format.first...min(format.last, CellAddress.maxColumns - 1) {
+                    columnOverrides[column] = size
+                }
             }
+            columns = AxisLayout(defaultSize: defaultColumn, overrides: columnOverrides)
         }
-        columns = AxisLayout(defaultSize: defaultColumn, overrides: columnOverrides)
 
-        let defaultRowPoints = sheet.defaultRowHeight ?? Self.defaultRowHeight(fontSize: baseFontSize)
-        let defaultRow = defaultRowPoints * Self.pixelsPerPoint * zoom
-        var rowOverrides: [Int: Double] = [:]
-        for (row, format) in sheet.rowFormats where format.hidden || format.height != nil {
-            rowOverrides[row] = format.hidden ? 0 : (format.height ?? defaultRowPoints) * Self.pixelsPerPoint * zoom
+        let reusedRows = previous.flatMap { previous in
+            previous.rowInputs.formats == sheet.rowFormats && previous.rowInputs.defaultHeight == sheet.defaultRowHeight
+                && previous.rowInputs.baseFontSize == baseFontSize && previous.rowInputs.zoom == zoom ? previous : nil
         }
-        rows = AxisLayout(defaultSize: defaultRow, overrides: rowOverrides)
+        self.reusedRows = reusedRows != nil
+        if let reusedRows {
+            rows = reusedRows.rows
+            rowInputs = reusedRows.rowInputs
+        } else {
+            let defaultRowPoints = sheet.defaultRowHeight ?? Self.defaultRowHeight(fontSize: baseFontSize)
+            let defaultRow = defaultRowPoints * Self.pixelsPerPoint * zoom
+            var rowOverrides: [Int: Double] = [:]
+            for (row, format) in sheet.rowFormats where format.hidden || format.height != nil {
+                rowOverrides[row] = format.hidden ? 0 : (format.height ?? defaultRowPoints) * Self.pixelsPerPoint * zoom
+            }
+            rows = AxisLayout(defaultSize: defaultRow, overrides: rowOverrides)
+            rowInputs = RowInputs(formats: sheet.rowFormats, defaultHeight: sheet.defaultRowHeight, baseFontSize: baseFontSize,
+                                  zoom: zoom, lastFormatted: sheet.rowFormats.keys.max() ?? 0)
+        }
 
-        let used = sheet.cells.usedRange
-        let lastRow = max(used?.end.row ?? 0, sheet.frozen?.rows ?? 0, sheet.rowFormats.keys.max() ?? 0)
+        let lastRow = max(usedRange?.end.row ?? 0, sheet.frozen?.rows ?? 0, rowInputs.lastFormatted)
         rowCount = min(max(lastRow + 1 + 30, minimumRows), CellAddress.maxRows)
-        let lastColumn = max(used?.end.column ?? 0, sheet.frozen?.columns ?? 0)
+        let lastColumn = max(usedRange?.end.column ?? 0, sheet.frozen?.columns ?? 0)
         columnCount = min(max(lastColumn + 1 + 8, minimumColumns), CellAddress.maxColumns)
     }
 
@@ -128,6 +179,12 @@ public struct SheetGeometry: Sendable {
 
     /// 字号（磅）换成屏幕点。
     public func fontPoints(_ size: Double) -> Double { size * Self.pixelsPerPoint * zoom }
+
+    // MARK: - 局部重画（2026-11-14，设计 8.2 节「性能」）
+
+    /// 一个格子画出来最多超出它的边多远（屏幕点）：填充往外 0.5；边框以「格线往里 0.5」为中心，最粗 3 磅 × 缩放；
+    /// 选区框 2 点宽、以选区的边为中心；再加一个像素的抗锯齿。局部重画时，离重画范围这么近的格子都要一起画上。
+    public var spill: Double { 1.5 + 1.5 * zoom }
 }
 
 extension [Int] {
