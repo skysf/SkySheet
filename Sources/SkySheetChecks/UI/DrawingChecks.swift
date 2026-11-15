@@ -88,6 +88,8 @@ func cursorExtentChecks() async {
     let controller = NSViewController()
     controller.view = view
     let window = OffscreenWindow.make(controller, size: CGSize(width: 800, height: 500))
+    // CI 默认传统滚动条，本机可能默认覆盖式；显式覆盖占空间的布局，不能随机器偏好漏测。
+    view.scrollView.scrollerStyle = .legacy
     window.layoutIfNeeded()
     view.layoutSubtreeIfNeeded()
     for a1 in ["AA1", "A101", "AZ201", "B2"] {

@@ -168,6 +168,8 @@ final class SpreadsheetView: NSView {
         mainPane.frame = CGRect(x: 0, y: 0, width: max(restWidth, canvas.geometry.totalWidth - frozenWidth),
                                 height: max(restHeight, canvas.geometry.totalHeight - frozenHeight))
         mainPane.origin = CGPoint(x: frozenWidth, y: frozenHeight)
+        // 传统滚动条会在文档变大后占去可见区；先同步铺排，再按最终可见宽高定位活动格。
+        scrollView.tile()
         syncToScroll()
         if needsInitialScroll, bounds.width > 0, bounds.height > 0 {
             needsInitialScroll = false

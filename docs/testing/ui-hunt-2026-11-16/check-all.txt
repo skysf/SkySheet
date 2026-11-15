@@ -1,32 +1,18 @@
 ==> 编译
 [0/1] Planning build
 Building for debugging...
-[0/9] Write sources
-[2/9] Write swift-version--1AB21518FC5DEDBE.txt
-[4/10] Compiling SkySheetDisplay Colors.swift
-[5/10] Compiling SkySheetDisplay SheetGeometry.swift
-[6/10] Emitting module SkySheetDisplay
-[7/23] Compiling SkySheet SpreadsheetView+Lines.swift
-[8/23] Compiling SkySheet SpreadsheetView.swift
-[9/23] Compiling SkySheet GridChrome.swift
-[10/23] Compiling SkySheet HeaderView.swift
-[11/23] Compiling SkySheet CellClip.swift
-[12/23] Compiling SkySheet LayoutCommands.swift
-[13/24] Compiling SkySheet PaneView.swift
-[14/24] Compiling SkySheet RegionRenderer.swift
-[15/24] Compiling SkySheet SheetCanvas.swift
-[16/24] Compiling SkySheet SpreadsheetView+Input.swift
-[17/24] Compiling SkySheet Benchmark.swift
-[18/24] Compiling SkySheet BenchmarkSupport.swift
-[19/24] Compiling SkySheet BenchmarkVerify.swift
-[20/24] Compiling SkySheet Snapshot.swift
-[21/24] Emitting module SkySheet
-[22/24] Compiling SkySheet SheetSession+Editing.swift
-Build complete! (3.96s)
+[0/8] Write sources
+[1/8] Write swift-version--1AB21518FC5DEDBE.txt
+[3/6] Compiling SkySheet SpreadsheetView.swift
+[4/6] Emitting module SkySheet
+[4/7] Write Objects.LinkFileList
+[5/7] Linking SkySheet
+[6/7] Applying SkySheet
+Build complete! (4.96s)
     ✓ 编译
 ==> SkySheetChecks
 golden: worst relative error 4.4885714285714084e-15 at I10 (plain), 6.74033276469504e-11 at J10 (RATE)
-performance: 50000 formulas recalculated in 1.30 s (debug build)
+performance: 50000 formulas recalculated in 1.01 s (debug build)
 large sheets: total of 100,020 cells in 0.08 s, formula scan in 0.01 s (debug build)
 All 9480 checks passed
     ✓ SkySheetChecks
