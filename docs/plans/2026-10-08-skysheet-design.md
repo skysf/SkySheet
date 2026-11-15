@@ -342,7 +342,10 @@ Sources/
     5. 改格子：整本重算每次从头排计划（5.5 节）；`@Observable` 赋值前把新旧两本整个比一遍；SwiftUI 页签收的是整张 Sheet、
        每次更新也比一遍。→ 计划接着用；`SheetSession.workbook` 改成记版本号；页签只收名字、署名、颜色。
     6. 状态栏合计：先攒成数组，再用 Decimal 一个一个加（一次一微秒上下）。→ 挨个走、不排序，`DecimalSum`（整数个
-       10⁻¹⁸ 用 Int128 加；这个范围里 Decimal 的加法也是精确的，结果一样；范围外的整串退回 Decimal 按原顺序加）。
+       10⁻¹⁸ 用 Int128 加；每个数最多 18 位小数、绝对值加起来不到 10²⁰ 时，按什么顺序加 Decimal 都是精确的，结果和 SUM
+       一样；否则按 SUM 的顺序退回 Decimal 加）。2026-11-15 修：原来出不出界看的是不排序那一路的部分和，9×10¹⁹ 和 10⁻¹⁸
+       混在一起时合计会随走的先后变（每次启动都可能不同），也和 SUM 不一样（Codex 审 PR #10 时指出，自检
+       `selectionSumChecks` 对照 SUM）。
     7. 读 xlsx：每个格子的地址、数字都先建 Unicode 标量数组再拼字符串，每个数字还新建一个 Locale。→ 按字节检查，
        数照旧交给 `Decimal(string:locale:)`，Locale 只建一次。
   - 线索里排除的：`HeaderView` 一开始不是大头（不到一成，格子那边变快以后才显出来，第 1 条一起改了）；`SheetGeometry`

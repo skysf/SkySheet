@@ -1,16 +1,25 @@
 import Foundation
 
-/// 把一串 Decimal 按顺序加起来（2026-11-14，设计 8.2 节「性能」）。结果和 `sum += x` 一个一个加完全一样，快几十倍。
+/// 把一串 Decimal 加起来（2026-11-14，设计 8.2 节「性能」）。结果和用 Decimal 按任何顺序一个一个加（`sum += x`，
+/// SUM 就是按行这样加的）完全一样，快几十倍；做不到一样时让调用方退回 Decimal（`needsFallback`）。
 ///
 /// 为什么要它：状态栏的合计要把选中的格子全加起来，Decimal 的加法一次一微秒上下，全选十万行 × 20 列的表要一秒半。
 ///
-/// 怎么保证一样：每个数换成「整数个 10⁻¹⁸」，用 Int128 精确地加。只要每个数最多 18 位小数、每一步的和都在 ±10²⁰ 以内，
-/// Decimal 自己的加法也是精确的（对齐小数点后尾数不超过 10³⁸，放得进它 128 位的尾数，不用舍入），两边是同一个数。
-/// 有一个数不在这个范围里（公式算出来 38 位有效数字的、特别大的），整串就退回 Decimal 一个一个加（`fallback`），
-/// 由调用方再从头加一遍：中途接着加的话，舍入的时机可能和从头加不一样。
+/// 怎么保证一样：每个数换成「整数个 10⁻¹⁸」，用 Int128 精确地加。只要每个数最多 18 位小数、**所有数的绝对值加起来**
+/// 不到 10²⁰，不管按什么顺序加，每一步的和的绝对值都不超过这个总数，Decimal 每一步的加法都是精确的（对齐小数点后尾数
+/// 不超过 10³⁸，放得进它 128 位的尾数，不用舍入），和整数加出来的是同一个数。有一个数不在这个范围里（公式算出来 38 位
+/// 有效数字的、特别大的），或者绝对值加起来出了界，就退回 Decimal，由调用方按 SUM 的顺序从头加一遍：Decimal 只有 38 位
+/// 有效数字，这时候按不同的顺序加，舍掉的位不一样。
+///
+/// 2026-11-15 改：原来判断的是「这一路加下来每一步的和」出没出界，可调用方走的是不排序的那条路，和 SUM 按行走的那条路
+/// 不一样：A1:A4 = 9×10¹⁹、A5 = 10⁻¹⁸、A6:A9 = −9×10¹⁹，正负交替地走，每一步都没出界，得到精确的 10⁻¹⁸；SUM 按行加到
+/// 3.6×10²⁰ 时把 10⁻¹⁸ 舍掉了，得 0（本机实跑）。走的先后每次启动都可能不同（Codex 审 PR #10 时指出，自检
+/// selectionSumChecks 复现：同一份例子放在 64 个位置上，三次运行分别有 14、17、24 处和 SUM 不同）。
 public struct DecimalSum: Sendable {
     /// 精确的和，单位 10⁻¹⁸。
     private var units: Int128 = 0
+    /// 绝对值加起来，单位 10⁻¹⁸：判断「按什么顺序加都不会舍入」只看它，和先后无关。
+    private var magnitude: UInt128 = 0
     /// 有数不在快速加法的范围里：结果作废，调用方用 Decimal 从头加。
     public private(set) var needsFallback = false
 
@@ -21,7 +30,7 @@ public struct DecimalSum: Sendable {
         for _ in 0..<38 { values.append(values.last! * 10) }
         return values
     }()
-    /// 尾数的上限：|和| × 10¹⁸ 不能超过它（10³⁸ < 2¹²⁸，Decimal 的尾数放得下）。
+    /// 尾数的上限：绝对值的和 × 10¹⁸ 不能到它（10³⁸ < 2¹²⁸，Decimal 的尾数放得下）。
     static let limit = Int128(powers[38])
 
     public init() {}
@@ -32,12 +41,13 @@ public struct DecimalSum: Sendable {
             needsFallback = true
             return
         }
-        let (sum, overflow) = units.addingReportingOverflow(next)
-        guard !overflow, sum > -Self.limit, sum < Self.limit else {
+        let (total, overflow) = magnitude.addingReportingOverflow(next.magnitude)
+        guard !overflow, total < UInt128(Self.limit) else {
             needsFallback = true
             return
         }
-        units = sum
+        magnitude = total
+        units += next   // |units| ≤ magnitude < 10³⁸，不会溢出
     }
 
     /// 加起来的和（没退回 Decimal 时才有意义）。

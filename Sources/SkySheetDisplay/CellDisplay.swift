@@ -165,9 +165,10 @@ public struct SelectionSummary: Equatable, Sendable {
         numericCount > 0 ? sum / Decimal(numericCount) : nil
     }
 
-    /// 全选十万行的表也要很快算完（2026-11-14）：格子挨个看、不先攒成数组；加法用 DecimalSum，结果和用 Decimal
-    /// 一个一个加完全一样。个数和 DecimalSum 的和都和先后无关，所以第一遍不排序地走；碰到 DecimalSum 管不了的数
-    /// （38 位有效数字的、特别大的）才按原来的顺序（行优先）用 Decimal 从头再加一遍。
+    /// 全选十万行的表也要很快算完（2026-11-14）：格子挨个看、不先攒成数组；加法用 DecimalSum。它只在「按什么顺序加
+    /// 结果都一样」时作答（每个数最多 18 位小数、绝对值加起来不到 10²⁰），这时和 SUM 按行一个一个加是同一个数，所以第一遍
+    /// 可以不排序地走；否则按 SUM 的顺序（行优先）用 Decimal 从头再加一遍，和 SUM 每一位都一样。2026-11-15 改：原来出不出界
+    /// 看的是不排序那一路每一步的和，合计会随走的先后变（每次启动都可能不同），也可能和 SUM 不一样（DecimalSum 的说明）。
     public init(cells: SparseGrid<Cell>, range: CellRange) {
         var count = 0
         var numericCount = 0
