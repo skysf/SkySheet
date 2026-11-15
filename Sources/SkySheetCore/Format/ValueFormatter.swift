@@ -67,12 +67,14 @@ public enum ValueFormatter {
 /// 解析过的格式代码缓存：一张表里几千个格子通常只用十来种格式。
 final class FormatCodeCache: Sendable {
     static let shared = FormatCodeCache()
-    private let storage = Mutex<[String: FormatCode]>([:])
+    private let storage = Mutex<[ExactText: FormatCode]>([:])
 
     func parsed(_ code: String) -> FormatCode {
-        if let hit = storage.withLock({ $0[code] }) { return hit }
+        // literal 要原样显示；规范等价的格式原文也不能串用解析结果。
+        let key = ExactText(code)
+        if let hit = storage.withLock({ $0[key] }) { return hit }
         let parsed = FormatParser.parse(code)
-        storage.withLock { $0[code] = parsed }
+        storage.withLock { $0[key] = parsed }
         return parsed
     }
 }

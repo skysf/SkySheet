@@ -1,4 +1,5 @@
 import Foundation
+import SkySheetCore
 
 /// 为什么这张 sheet 不能插删行列（设计第 11 条：只在安全的表上允许）。
 ///
@@ -88,16 +89,17 @@ extension XLSXSource {
     private func referenceElsewhere(to part: SheetPart) -> StructureLock? {
         let quoted = "'" + part.name.replacingOccurrences(of: "'", with: "''") + "'!"
         let patterns = [part.name + "!", quoted, "sheet=\"" + part.name + "\""]
-        let otherSheets = Set(sheets.values.map { $0.path.lowercased() })
+        // 不能把另一种标量写法的部件当作当前表跳过，也不能误当成已知 sheet 而少扫内容。
+        let otherSheets = Set(sheets.values.map { ExactText($0.path.lowercased()) })
         let skipped = Set([part.path, workbookPart, stylesPart, sharedStringsPart, calcChainPart, customPropertiesPart]
-            .compactMap { $0?.lowercased() })
+            .compactMap { $0.map { ExactText($0.lowercased()) } })
         for entry in package.zip.entries where !entry.isDirectory {
             let name = entry.name.lowercased()
-            guard name.hasSuffix(".xml") || name.hasSuffix(".vml"), !skipped.contains(name),
+            guard name.hasSuffix(".xml") || name.hasSuffix(".vml"), !skipped.contains(ExactText(name)),
                   !name.hasPrefix("docprops/"), !name.contains("/theme/"), name != "[content_types].xml",
                   let data = try? package.data(entry.name) else { continue }
             var text: String
-            if otherSheets.contains(name) {
+            if otherSheets.contains(ExactText(name)) {
                 guard let fragments = XMLFragments(data) else { return .referencedElsewhere(entry.name) }
                 text = fragments.children.filter { $0.name != "sheetData" }.map(\.raw).joined()
             } else {

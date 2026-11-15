@@ -103,7 +103,8 @@ public enum TableBlocks {
     }
 
     private static func namedColumns(_ span: ClosedRange<Int>, headerRow: Int?, _ sheet: Sheet) -> [TableBlock.Column] {
-        var used: Set<String> = ["_row"]
+        // SQLite 区分规范等价的列名；误当重名加后缀后，按原表头查询会找不到列。
+        var used: Set<ExactText> = [ExactText("_row")]
         return span.map { column in
             let header = headerRow.flatMap { row -> String? in
                 guard case .text(let text)? = sheet.cells[row, column]?.value else { return nil }
@@ -112,12 +113,12 @@ public enum TableBlocks {
                 return cleaned.isEmpty ? nil : cleaned
             }
             var name = header ?? CellAddress.columnName(column)
-            if used.contains(name.lowercased()) {
+            if used.contains(ExactText(name.lowercased())) {
                 var number = 2
-                while used.contains("\(name)_\(number)".lowercased()) { number += 1 }
+                while used.contains(ExactText("\(name)_\(number)".lowercased())) { number += 1 }
                 name = "\(name)_\(number)"
             }
-            used.insert(name.lowercased())
+            used.insert(ExactText(name.lowercased()))
             return TableBlock.Column(index: column, name: name, header: header)
         }
     }

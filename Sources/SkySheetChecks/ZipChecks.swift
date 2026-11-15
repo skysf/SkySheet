@@ -4,6 +4,22 @@ import SkyZip
 /// 设计第十二节第 4 条：我们写的包能通过系统 unzip -t；系统 zip、ditto 打的包我们能读；样例能完整解开。
 @MainActor
 func zipChecks() {
+    group("zip: entry lookup preserves name scalars") {
+        let zip = try ZipArchive(data: exactNameArchive())
+        checkEqual(try zip.contents(ofEntryNamed: "A\u{30A}.xml"), Data([2]), "decomposed name finds its own entry")
+    }
+
+    group("zip: distinct name scalars can be written and copied") {
+        var writer = ZipWriter()
+        try writer.addFile("\u{E9}.xml", contents: Data([1]))
+        try writer.addFile("e\u{301}.xml", contents: Data([2]))
+        let zip = try ZipArchive(data: writer.finished())
+        checkEqual(zip.entries.count, 2, "both names are written")
+        var copy = ZipWriter()
+        for entry in zip.entries { try copy.addCopy(of: entry, compressed: zip.compressedData(of: entry)) }
+        checkEqual(try ZipArchive(data: copy.finished()).contents(ofEntryNamed: "e\u{301}.xml"), Data([2]), "copy keeps both entries")
+    }
+
     group("zip: write then read back") {
         // 伪随机字节压不小，应该自动退回 stored；重复的文字压得很小，应该是 deflated。
         var seed: UInt32 = 12345
