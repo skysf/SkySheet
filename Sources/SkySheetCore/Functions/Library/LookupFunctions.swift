@@ -98,6 +98,7 @@ enum LookupFunctions {
     /// 匹配方式：0 精确，-1 精确或下一个较小的，1 精确或下一个较大的，2 通配符。搜索方式：1 从头，-1 从尾（2、-2 当 1、-1）。
     private static func xlookup(_ arguments: FunctionArguments) throws(CellError) -> CellValue {
         let target = try lookupValue(arguments, 0)
+        try arguments.requireSameShape(1, 2)
         let keys = try arguments.grid(1)
         guard keys.isVector else { throw CellError.value }
         let results = try arguments.grid(2, shapedLike: keys)

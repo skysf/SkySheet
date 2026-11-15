@@ -76,13 +76,24 @@ struct FunctionArguments {
                         context: context)
     }
 
-    /// 和 `shape` 一样大小、从参数区域的左上角开始取。SUMIF 的求和区域、XLOOKUP 的结果区域按这个对齐位置。
+    /// XLOOKUP 的结果区域必须和查找区域等形；不能把一个值冒充多格的表，或者越过原引用取值。
     func grid(_ index: Int, shapedLike shape: Grid) throws(CellError) -> Grid {
-        guard let area = area(index) else { return Grid(single: try errorChecked(scalar(index))) }
+        guard let area = area(index) else {
+            guard shape.rows == 1, shape.columns == 1 else { throw CellError.value }
+            return Grid(single: try errorChecked(scalar(index)))
+        }
         let end = CellAddress(row: area.range.start.row + shape.rows - 1, column: area.range.start.column + shape.columns - 1)
         guard end.row < CellAddress.maxRows, end.column < CellAddress.maxColumns else { throw CellError.ref }
         return try Grid(area: Area(sheet: area.sheet, range: CellRange(area.range.start, end)),
                         rows: shape.rows, columns: shape.columns, context: context)
+    }
+
+    /// 比较原引用形状，不能让 usedRange 的裁剪掩盖参数错误。
+    func requireSameShape(_ first: Int, _ second: Int) throws(CellError) {
+        let a = area(first)?.range
+        let b = area(second)?.range
+        guard (a?.rowCount ?? 1) == (b?.rowCount ?? 1),
+              (a?.columnCount ?? 1) == (b?.columnCount ?? 1) else { throw CellError.value }
     }
 
     private func errorChecked(_ value: CellValue) throws(CellError) -> CellValue {

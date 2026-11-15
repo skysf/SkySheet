@@ -13,7 +13,8 @@ struct Criterion {
     init(_ criterion: CellValue) {
         guard case .text(let text) = criterion else {
             comparison = .equal
-            operand = criterion == .empty ? .empty : criterion
+            // 空白「条件引用」按 0；只有显式的空文字条件才是在数空白。
+            operand = criterion == .empty ? .number(0) : criterion
             return
         }
         let symbols: [(String, Comparison)] = [("<=", .lessOrEqual), (">=", .greaterOrEqual), ("<>", .notEqual),
