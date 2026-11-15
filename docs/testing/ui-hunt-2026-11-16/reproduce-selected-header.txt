@@ -1,0 +1,5 @@
+chrome contrast NSAppearanceNameAqua: header 3.92, size hint 14.94
+chrome contrast NSAppearanceNameDarkAqua: header 5.43, size hint 9.49
+chrome contrast selected dark header: 4.20
+FAIL [ui-9: chrome contrast in Aqua and Dark Aqua] SkySheetUIChecks/ColorChecks.swift:118 selected dark header contrast: 4.196721455619742
+1 failed, 4 passed

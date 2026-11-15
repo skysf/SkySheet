@@ -1,0 +1,114 @@
+diff --git a/Sources/SkySheet/App/Benchmark.swift b/Sources/SkySheet/App/Benchmark.swift
+index 91b409a..2a8dd11 100644
+--- a/Sources/SkySheet/App/Benchmark.swift
++++ b/Sources/SkySheet/App/Benchmark.swift
+@@ -28,7 +28,7 @@ final class Benchmark {
+         try await open(url)
+         printScale()
+         if request.only == nil || request.only == "scroll" { await scrolling() }
+-        if request.only == nil || request.only == "select" { await selecting() }
++        if request.only == nil || request.only == "select" || request.only == "arrows" { await selecting() }
+         if request.only == nil || request.only == "edit" { await editing() }
+         if request.only == nil || request.only == "resize" { await resizing() }
+         if request.only == nil || request.only == "switch" { await switching() }
+@@ -139,10 +139,21 @@ final class Benchmark {
+             clip.scroll(to: CGPoint(x: Swift.min(Swift.max(point.x, 0), limit.x), y: Swift.min(Swift.max(point.y, 0), limit.y)))
+             spreadsheet.scrollView.reflectScrolledClipView(clip)
+         }
++        let cycling = request.only == "scroll" && request.frames > 20
++        let downReset: ((Int) -> Void)? = cycling ? { index in
++            if index % 20 == 0 { scroll(to: .zero) }
++        } : nil
+         await idle { scroll(to: .zero) }
+-        await measure("scroll down (3 rows / frame)") { index in scroll(to: CGPoint(x: 0, y: CGFloat(index + 1) * rowStep)) }
++        await measure("scroll down (3 rows / frame)", prepare: downReset) { index in
++            scroll(to: CGPoint(x: 0, y: CGFloat((cycling ? index % 20 : index) + 1) * rowStep))
++        }
+         let bottom = clip.bounds.origin.y
+-        await measure("scroll up") { index in scroll(to: CGPoint(x: 0, y: bottom - CGFloat(index + 1) * rowStep)) }
++        let upReset: ((Int) -> Void)? = cycling ? { index in
++            if index % 20 == 0 { scroll(to: CGPoint(x: 0, y: bottom)) }
++        } : nil
++        await measure("scroll up", prepare: upReset) { index in
++            scroll(to: CGPoint(x: 0, y: bottom - CGFloat((cycling ? index % 20 : index) + 1) * rowStep))
++        }
+         await idle { scroll(to: CGPoint(x: 0, y: 30 * rowStep)) }
+         let y = clip.bounds.origin.y
+         // 横着来回滚：表可能没那么宽，到头了就往回。
+@@ -158,10 +169,19 @@ final class Benchmark {
+ 
+     private func selecting() async {
+         let start = firstBodyCell
++        let cycling = request.only == "arrows" && request.frames > 20
++        let reset: ((Int) -> Void)? = cycling ? { index in
++            if index % 40 == 0 { self.session.select(start) }
++        } : nil
+         await idle { session.select(start) }
+-        await measure("arrow down (move selection)") { _ in session.moveCursor(rows: 1, columns: 0) }
++        await measure(cycling ? "arrow up / down" : "arrow down (move selection)", prepare: reset) { index in
++            session.moveCursor(rows: cycling && index % 40 >= 20 ? -1 : 1, columns: 0)
++        }
+         await idle { session.select(start) }
+-        await measure("arrow right") { _ in session.moveCursor(rows: 0, columns: 1) }
++        await measure(cycling ? "arrow left / right" : "arrow right", prepare: reset) { index in
++            session.moveCursor(rows: 0, columns: cycling && index % 40 >= 20 ? -1 : 1)
++        }
++        if request.only == "arrows" { return }
+         await idle { session.select(start) }
+         await measure("shift + arrow down (extend)") { _ in session.moveCursor(rows: 1, columns: 0, extend: true) }
+         await idle { session.select(start) }
+@@ -251,6 +271,13 @@ final class Benchmark {
+     /// `prepare` 在每一帧之前做、不计时（比如先进入编辑，只量提交那一下）。
+     private func measure(_ name: String, frames: Int? = nil, prepare: ((Int) -> Void)? = nil,
+                          _ action: (Int) -> Void) async {
++        // 长导航测量先预热，再反复走同一段；否则短样本被冷缓存和机器频率波动左右，长样本又会到边后空转。
++        if request.frames > 20, request.only == "arrows" || request.only == "scroll" {
++            for index in 0..<20 {
++                if let prepare { await idle { prepare(index) } }
++                await idle { action(index) }
++            }
++        }
+         var samples: [FrameSample] = []
+         for index in 0..<(frames ?? request.frames) {
+             if let prepare { await idle { prepare(index) } }
+diff --git a/Sources/SkySheet/App/Snapshot.swift b/Sources/SkySheet/App/Snapshot.swift
+index 3603e22..92a572c 100644
+--- a/Sources/SkySheet/App/Snapshot.swift
++++ b/Sources/SkySheet/App/Snapshot.swift
+@@ -3,7 +3,7 @@ import SkySheetCore
+ import SkySheetFiles
+ 
+ /// 截图模式：`SkySheet --snapshot-input 文件.xlsx --snapshot-output 输出.png [--sheet 名字] [--size 1280x800] [--select K60]
+-/// [--zoom 1.5]`。
++/// [--zoom 1.5] [--appearance aqua|dark]`。
+ /// `--select` 选中一格或一块（A1 写法），表格会滚过去：用来看滚动以后冻结窗格、行号列标对不对；也可以是整列（C:E）、
+ /// 整行（3:5），看列标行号选中的样子。
+ /// 建一个不放上屏幕的窗口（OffscreenWindow），把整个窗口画成 PNG 就退出。开发时用来核对显示（不用录屏权限），
+@@ -19,6 +19,7 @@ struct SnapshotRequest {
+     let selection: String?
+     /// 缩放比例（2026-11-14 加：改画法时要核对缩放以后画得一不一样）。
+     let zoom: Double?
++    let appearance: NSAppearance.Name?
+ 
+     init?(arguments: [String]) {
+         func option(_ name: String) -> String? {
+@@ -30,6 +31,11 @@ struct SnapshotRequest {
+         sheetName = option("--sheet")
+         selection = option("--select")
+         zoom = option("--zoom").flatMap(Double.init)
++        appearance = switch option("--appearance") {
++        case "aqua": .aqua
++        case "dark": .darkAqua
++        default: nil
++        }
+         let parts = option("--size")?.split(separator: "x").compactMap { Double($0) } ?? []
+         size = parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : NSSize(width: 1280, height: 800)
+     }
+@@ -39,6 +45,7 @@ struct SnapshotRequest {
+ enum SnapshotRenderer {
+     static func run(_ request: SnapshotRequest) {
+         do {
++            if let name = request.appearance { NSApp.appearance = NSAppearance(named: name) }
+             let loaded = try DocumentLoader.load(contentsOf: request.input)
+             let session = SheetSession(workbook: loaded.workbook)
+             if let name = request.sheetName, let index = loaded.workbook.sheetIndex(named: name) {

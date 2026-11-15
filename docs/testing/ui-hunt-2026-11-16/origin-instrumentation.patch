@@ -1,0 +1,53 @@
+diff --git a/Sources/SkySheet/App/Benchmark.swift b/Sources/SkySheet/App/Benchmark.swift
+index 91b409a..11ba97f 100644
+--- a/Sources/SkySheet/App/Benchmark.swift
++++ b/Sources/SkySheet/App/Benchmark.swift
+@@ -28,7 +28,7 @@ final class Benchmark {
+         try await open(url)
+         printScale()
+         if request.only == nil || request.only == "scroll" { await scrolling() }
+-        if request.only == nil || request.only == "select" { await selecting() }
++        if request.only == nil || request.only == "select" || request.only == "arrows" { await selecting() }
+         if request.only == nil || request.only == "edit" { await editing() }
+         if request.only == nil || request.only == "resize" { await resizing() }
+         if request.only == nil || request.only == "switch" { await switching() }
+@@ -162,6 +162,7 @@ final class Benchmark {
+         await measure("arrow down (move selection)") { _ in session.moveCursor(rows: 1, columns: 0) }
+         await idle { session.select(start) }
+         await measure("arrow right") { _ in session.moveCursor(rows: 0, columns: 1) }
++        if request.only == "arrows" { return }
+         await idle { session.select(start) }
+         await measure("shift + arrow down (extend)") { _ in session.moveCursor(rows: 1, columns: 0, extend: true) }
+         await idle { session.select(start) }
+diff --git a/Sources/SkySheet/App/Snapshot.swift b/Sources/SkySheet/App/Snapshot.swift
+index 3603e22..8e140bf 100644
+--- a/Sources/SkySheet/App/Snapshot.swift
++++ b/Sources/SkySheet/App/Snapshot.swift
+@@ -19,6 +19,7 @@ struct SnapshotRequest {
+     let selection: String?
+     /// 缩放比例（2026-11-14 加：改画法时要核对缩放以后画得一不一样）。
+     let zoom: Double?
++    let appearance: NSAppearance.Name?
+ 
+     init?(arguments: [String]) {
+         func option(_ name: String) -> String? {
+@@ -30,6 +31,11 @@ struct SnapshotRequest {
+         sheetName = option("--sheet")
+         selection = option("--select")
+         zoom = option("--zoom").flatMap(Double.init)
++        appearance = switch option("--appearance") {
++        case "aqua": .aqua
++        case "dark": .darkAqua
++        default: nil
++        }
+         let parts = option("--size")?.split(separator: "x").compactMap { Double($0) } ?? []
+         size = parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : NSSize(width: 1280, height: 800)
+     }
+@@ -39,6 +45,7 @@ struct SnapshotRequest {
+ enum SnapshotRenderer {
+     static func run(_ request: SnapshotRequest) {
+         do {
++            if let name = request.appearance { NSApp.appearance = NSAppearance(named: name) }
+             let loaded = try DocumentLoader.load(contentsOf: request.input)
+             let session = SheetSession(workbook: loaded.workbook)
+             if let name = request.sheetName, let index = loaded.workbook.sheetIndex(named: name) {

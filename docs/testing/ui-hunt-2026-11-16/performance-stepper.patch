@@ -1,0 +1,39 @@
+--- a/Sources/SkySheet/App/Benchmark.swift
++++ b/Sources/SkySheet/App/Benchmark.swift
+@@ -278,14 +278,35 @@
+                 await idle { action(index) }
+             }
+         }
++        let stepping = CommandLine.arguments.contains("--benchmark-stepper")
+         var samples: [FrameSample] = []
+         for index in 0..<(frames ?? request.frames) {
+             if let prepare { await idle { prepare(index) } }
+-            samples.append(await frame { action(index) })
++            if stepping { stepperEvent("ready", name: name, index: index) }
++            let sample = await frame { action(index) }
++            samples.append(sample)
++            if stepping { stepperEvent("sample", name: name, index: index, sample: sample) }
+         }
+         record(name, samples)
+     }
+ 
++    /// 仅验证插桩使用：握手发生在计时之外，等待时主线程不做绘图工作。
++    private func stepperEvent(_ state: String, name: String, index: Int, sample: FrameSample? = nil) {
++        var fields: [String: Any] = ["state": state, "name": name, "index": index]
++        if let sample { fields["ms"] = sample.ms }
++        guard let data = try? JSONSerialization.data(withJSONObject: fields) else { exit(1) }
++        var line = Data("SKYSHEET_STEP ".utf8)
++        line.append(data)
++        line.append(10)
++        FileHandle.standardOutput.write(line)
++        if state == "ready" {
++            guard let command = try? FileHandle.standardInput.read(upToCount: 3), command == Data("go\n".utf8) else {
++                FileHandle.standardError.write(Data("benchmark stepper stopped\n".utf8))
++                exit(1)
++            }
++        }
++    }
++
+     private func record(_ name: String, _ samples: [FrameSample]) {
+         results.append(BenchmarkResult(name: name, frames: samples))
+     }

@@ -1,0 +1,47 @@
+==> 编译
+[0/1] Planning build
+Building for debugging...
+[0/9] Write sources
+[2/9] Write swift-version--1AB21518FC5DEDBE.txt
+[4/10] Compiling SkySheetDisplay SheetGeometry.swift
+[5/10] Compiling SkySheetDisplay Colors.swift
+[6/10] Emitting module SkySheetDisplay
+[7/22] Compiling SkySheet BenchmarkVerify.swift
+[8/22] Compiling SkySheet GridChrome.swift
+[9/23] Compiling SkySheet LayoutCommands.swift
+[10/23] Compiling SkySheet SpreadsheetView.swift
+[11/23] Compiling SkySheet CellClip.swift
+[12/23] Compiling SkySheet RegionRenderer.swift
+[13/23] Compiling SkySheet SheetCanvas.swift
+[14/23] Compiling SkySheet Benchmark.swift
+[15/23] Compiling SkySheet BenchmarkSupport.swift
+[16/23] Compiling SkySheet SpreadsheetView+Input.swift
+[17/23] Compiling SkySheet SpreadsheetView+Lines.swift
+[18/23] Compiling SkySheet HeaderView.swift
+[19/23] Compiling SkySheet PaneView.swift
+[20/23] Emitting module SkySheet
+[21/23] Compiling SkySheet SheetSession+Editing.swift
+Build complete! (2.23s)
+    ✓ 编译
+==> SkySheetChecks
+golden: worst relative error 4.4885714285714084e-15 at I10 (plain), 6.74033276469504e-11 at J10 (RATE)
+performance: 50000 formulas recalculated in 0.98 s (debug build)
+large sheets: total of 100,020 cells in 0.08 s, formula scan in 0.01 s (debug build)
+All 9480 checks passed
+    ✓ SkySheetChecks
+==> SkySheet UI checks (offscreen)
+All 29 checks passed
+All 3 checks passed
+All 11 checks passed
+All 9 checks passed
+chrome contrast NSAppearanceNameAqua: header 3.92, size hint 14.94
+chrome contrast NSAppearanceNameDarkAqua: header 5.43, size hint 9.49
+chrome contrast selected dark header: 6.61
+All 5 checks passed
+All 24 checks passed
+All 24 checks passed
+    ✓ SkySheet UI checks (offscreen)
+==> SampleData 没有进仓库
+    ✓ SampleData 没有进仓库
+
+✓ 全部通过
