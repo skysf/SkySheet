@@ -88,17 +88,32 @@ func cursorExtentChecks() async {
     let controller = NSViewController()
     controller.view = view
     let window = OffscreenWindow.make(controller, size: CGSize(width: 800, height: 500))
+    window.layoutIfNeeded()
+    view.layoutSubtreeIfNeeded()
     for a1 in ["AA1", "A101", "AZ201", "B2"] {
         session.select(CellAddress(a1: a1)!)
-        await Task.yield()
-        try? await Task.sleep(for: .milliseconds(10))
-        window.layoutIfNeeded()
+        // 观察回调和后台窗口的首次布局都异步排队；CI 不保证 10 ms 内完成，等实际结果而非固定延时。
+        // 不在自检里调用 scrollToCursor，旧版没有扩画布仍会超时失败，不能靠测试补上生产行为。
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(2))
+        repeat {
+            await Task.yield()
+            try? await Task.sleep(for: .milliseconds(10))
+            window.layoutIfNeeded()
+            view.layoutSubtreeIfNeeded()
+            if let canvas = view.canvas {
+                let cursor = session.selection.cursor
+                let rect = canvas.rect(of: CellRange(cursor)).offsetBy(dx: -canvas.frozenWidth, dy: -canvas.frozenHeight)
+                if canvas.geometry.columnCount > cursor.column, canvas.geometry.rowCount > cursor.row,
+                   view.mainPane.visibleRect.contains(rect) { break }
+            }
+        } while clock.now < deadline
         let cursor = session.selection.cursor
         let canvas = view.canvas!
         check(canvas.geometry.columnCount > cursor.column, "\(a1) canvas contains cursor column")
         check(canvas.geometry.rowCount > cursor.row, "\(a1) canvas contains cursor row")
         let rect = canvas.rect(of: CellRange(cursor)).offsetBy(dx: -canvas.frozenWidth, dy: -canvas.frozenHeight)
-        check(view.mainPane.visibleRect.contains(rect), "\(a1) is visible after observation and layout")
+        check(view.mainPane.visibleRect.contains(rect), "\(a1) is visible after observation and layout; cell=\(rect), visible=\(view.mainPane.visibleRect), view=\(view.bounds), scroll=\(view.scrollView.contentView.bounds)")
     }
     check(!window.isVisible, "UI checks never order a window on screen")
 }

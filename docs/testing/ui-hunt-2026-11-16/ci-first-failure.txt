@@ -1,0 +1,21 @@
+首次 CI：a27a051，https://github.com/skysf/SkySheet/actions/runs/43752384571
+
+2026-11-15T19:27:57.7505920Z ==> SkySheet UI checks (offscreen)
+2026-11-15T19:28:14.6511310Z All 29 checks passed
+2026-11-15T19:28:14.7240090Z All 3 checks passed
+2026-11-15T19:28:14.8061660Z All 11 checks passed
+2026-11-15T19:28:14.9015600Z All 9 checks passed
+2026-11-15T19:28:15.1481040Z chrome contrast NSAppearanceNameAqua: header 3.92, size hint 14.94
+2026-11-15T19:28:15.1484500Z chrome contrast NSAppearanceNameDarkAqua: header 5.43, size hint 9.49
+2026-11-15T19:28:15.1485120Z chrome contrast selected dark header: 10.11
+2026-11-15T19:28:15.1486170Z All 5 checks passed
+2026-11-15T19:28:15.2206370Z All 24 checks passed
+2026-11-15T19:28:22.2982110Z FAIL [ui-13: active cursor outside used extent] SkySheetUIChecks/DrawingChecks.swift:101 AA1 is visible after observation and layout
+2026-11-15T19:28:22.3173910Z 1 failed, 23 passed
+2026-11-15T19:28:22.3274960Z     ✗ SkySheet UI checks (offscreen)
+2026-11-15T19:28:22.4033940Z ==> SampleData 没有进仓库
+2026-11-15T19:28:22.4035770Z 
+2026-11-15T19:28:22.4036440Z ✗ 没过的检查：
+2026-11-15T19:28:22.4037040Z   - SkySheet UI checks (offscreen)
+2026-11-15T19:28:22.4038780Z     ✓ SampleData 没有进仓库
+2026-11-15T19:28:22.4154290Z ##[error]Process completed with exit code 1.
