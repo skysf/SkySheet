@@ -17,7 +17,7 @@ if [[ $# -gt 0 ]]; then
 fi
 FAILED=0
 # 崩溃入口分进程，负主题编号和格式编号溢出必须分别验证。
-for suite in editing copy-limit locale; do
+for suite in editing copy-limit theme format locale; do
   "${BUILD}/SkySheetUIChecks" "${suite}" || FAILED=1
 done
 exit "${FAILED}"

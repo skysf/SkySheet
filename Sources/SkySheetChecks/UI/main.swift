@@ -14,6 +14,8 @@ Task { @MainActor in
     switch suite {
     case "editing": sessionEditingChecks()
     case "copy-limit": copyLimitChecks()
+    case "theme": invalidThemeChecks()
+    case "format": invalidFormatColorChecks()
     case "locale": sizeLocaleChecks()
     default: fatalError("Unknown UI check suite")
     }

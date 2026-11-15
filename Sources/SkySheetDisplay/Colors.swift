@@ -58,6 +58,7 @@ public struct ColorResolver: Sendable {
     /// 主题色编号的坑：样式里的 0、1、2、3 指的是 lt1、dk1、lt2、dk2，和主题文件里 dk1、lt1、dk2、lt2 的顺序两两对调。
     /// 不对调的话，腾讯文档默认字体的 `theme="1"` 会变成白色，整张表的字都看不见。
     func themeColor(_ index: Int) -> RGBAColor? {
+        guard index >= 0 else { return nil }
         let slot = index < 4 ? [1, 0, 3, 2][index] : index
         return theme.indices.contains(slot) ? theme[slot] : nil
     }
@@ -77,6 +78,8 @@ public struct ColorResolver: Sendable {
                          "Magenta": "FF00FF", "Red": "FF0000", "White": "FFFFFF", "Yellow": "FFFF00"]
             return named[name].flatMap(RGBAColor.init(hex:))
         case .indexed(let number):
+            // 格式色只有 1…56；先查原编号再加偏移，恶意文件的 Int.max 也不能溢出。
+            guard (1...56).contains(number) else { return nil }
             return indexedColor(number + 7)   // [Color1] 是调色板的第 8 个
         }
     }
