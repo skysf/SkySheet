@@ -15,7 +15,7 @@
 2026-11-15T19:33:37.7370070Z     ✗ SkySheet UI checks (offscreen)
 2026-11-15T19:33:37.7838280Z ==> SampleData 没有进仓库
 2026-11-15T19:33:37.7839190Z     ✓ SampleData 没有进仓库
-2026-11-15T19:33:37.7843150Z 
+2026-11-15T19:33:37.7843150Z
 2026-11-15T19:33:37.7843780Z ✗ 没过的检查：
 2026-11-15T19:33:37.7844080Z   - SkySheet UI checks (offscreen)
 2026-11-15T19:33:37.7876430Z ##[error]Process completed with exit code 1.

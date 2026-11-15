@@ -1,10 +1,10 @@
-wall clock: open: read xlsx 32 ms, open: recalculate 3 ms, open: window + first screen 82 ms
+wall clock: open: read xlsx 69 ms, open: recalculate 6 ms, open: window + first screen 367 ms
 workbook: 1 sheets, 116 cell styles, window 1280×800 @2.0x
   sheet: 212 rows × 33 columns, 6952 cells, 124 formulas, 0 merges, frozen 1×1  ← measured
 verify: 1004 view comparisons, 0 mismatches
 
 action                                    frames    median       p95       max   per frame: builds / panes / headers / area
-open: read xlsx                                1     29.00     29.00     29.00   0.0 / 0.0 / 0.0 / 0k
-open: recalculate                              1      1.92      1.92      1.92   0.0 / 0.0 / 0.0 / 0k
-open: window + first screen                    1     68.30     68.30     68.30   1.0 / 4.0 / 2.0 / 894k
+open: read xlsx                                1     52.53     52.53     52.53   0.0 / 0.0 / 0.0 / 0k
+open: recalculate                              1      3.99      3.99      3.99   0.0 / 0.0 / 0.0 / 0k
+open: window + first screen                    1    194.67    194.67    194.67   1.0 / 4.0 / 2.0 / 894k
 (milliseconds of main-thread CPU time; wall clock of the open steps is printed above)
