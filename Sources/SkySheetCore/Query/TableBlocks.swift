@@ -20,7 +20,7 @@ public struct TableBlock: Sendable, Equatable {
     public var headerRow: Int?
     /// 数据行（只有标题、表头时是 nil）。不含合计行。
     public var dataRows: ClosedRange<Int>?
-    /// 块的最后一行是合计（有 SUM 公式，如「合计」那一行）：不算数据，免得求和、查询时把合计又加一遍。
+    /// 块的最后一行明确标了合计，或竖向加总上方数据：不算数据，免得查询重复累计。
     public var totalsRow: Int?
     public var columns: [Column]
 }
@@ -63,7 +63,9 @@ public enum TableBlocks {
                 remaining = remaining.dropFirst()
             }
             var totalsRow: Int?
-            if remaining.count > 1, let bottom = remaining.last, isTotals(row: bottom, columns: columnsByRow[bottom] ?? [], sheet) {
+            if remaining.count > 1, let bottom = remaining.last,
+               isTotals(row: bottom, firstDataRow: remaining.first!, firstColumn: first,
+                        columns: columnsByRow[bottom] ?? [], sheet) {
                 totalsRow = bottom
                 remaining = remaining.dropLast()
             }
@@ -84,12 +86,28 @@ public enum TableBlocks {
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
     }
 
-    /// 合计行：这一行有 SUM（或 SUBTOTAL）公式。
-    private static func isTotals(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
-        columns.contains { column in
-            guard let source = sheet.cells[row, column]?.formula?.source.uppercased() else { return false }
-            let body = source.hasPrefix("=") ? String(source.dropFirst()) : source
-            return body.hasPrefix("SUM(") || body.hasPrefix("SUBTOTAL(")
+    /// 误删数据比漏认合计更危险：常量 SUM、横向 SUM、跨表或只有零碎引用都不能证明这是合计。
+    private static func isTotals(row: Int, firstDataRow: Int, firstColumn: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        if let cell = sheet.cells[row, firstColumn], cell.formula == nil, case .text(let text) = cell.value {
+            let label = text.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if ["合计", "总计", "小计", "total", "totals", "grand total", "subtotal"].contains(label) { return true }
+        }
+        return columns.contains { column in
+            guard let source = sheet.cells[row, column]?.formula?.source,
+                  case .call(let name, let arguments) = try? FormulaParser.parse(source) else { return false }
+            let ranges: [FormulaNode]
+            if name == "SUM" { ranges = arguments }
+            else if name == "SUBTOTAL", case .number(let code)? = arguments.first, code == 9 || code == 109 {
+                ranges = Array(arguments.dropFirst())
+            } else { return false }
+            guard !ranges.isEmpty else { return false }
+            return ranges.allSatisfy { node in
+                guard case .reference(let reference) = node,
+                      reference.sheet == nil || reference.sheet?.caseInsensitiveCompare(sheet.name) == .orderedSame else { return false }
+                let range = reference.range
+                return range.start.column == column && range.end.column == column
+                    && range.start.row == firstDataRow && range.end.row == row - 1
+            }
         }
     }
 
