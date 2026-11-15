@@ -163,6 +163,28 @@ public struct SparseGrid<Value: Sendable>: Sendable {
         return changed
     }
 
+    /// 和另一版比，存储不是同一份的行（2026-11-15）：两版共用的行（值类型写时复制，改哪一行只复制哪一行）一定一模一样，
+    /// 其余的都算「可能改过」，不看内容。和 `rowsDiffering` 的区别：那个按 == 比内容，可 == 对字符串按规范等价算，
+    /// é 和 e + U+0301 算相等——公式原文只换了写法时它看不出来（重新载入文件时就会这样），重算计划就会接着用旧的
+    /// （RecalcCache，自检 exactTextChecks）。改一格时只有那一行不共用，和 `rowsDiffering` 一样快。
+    /// 两版都得活着（调用方拿着）：活着的两份存储地址不会重，「字节一样」才说明是同一份。
+    func rowsNotShared(with other: SparseGrid) -> [Int] {
+        guard !Self.sameStorage(rows, other.rows) else { return [] }
+        var changed: [Int] = []
+        for (row, line) in rows {
+            if let old = other.rows[row], Self.sameStorage(old, line) { continue }
+            changed.append(row)
+        }
+        for row in other.rows.keys where rows[row] == nil { changed.append(row) }
+        return changed
+    }
+
+    /// 两个字典是不是同一份存储：一个字典就是一个指向存储的引用，按字节比它本身。字节一样就是同一份、内容一定一样；
+    /// 不一样也可能内容一样（说不准，调用方当它「可能改过」）。
+    static func sameStorage<Key, Element>(_ a: [Key: Element], _ b: [Key: Element]) -> Bool {
+        withUnsafeBytes(of: a) { first in withUnsafeBytes(of: b) { second in first.elementsEqual(second) } }
+    }
+
     /// 一行里的格子，顺序不定。
     public func forEach(inRowUnordered row: Int, _ body: (Int, Value) throws -> Void) rethrows {
         guard let line = rows[row] else { return }

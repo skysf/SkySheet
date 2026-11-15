@@ -61,17 +61,17 @@ public final class RecalcCache: Sendable {
             var formulas: FormulaLayout.SheetFormulas
             if let previous = known[sheet.id] {
                 formulas = previous.formulas
-                if previous.cells != sheet.cells {
-                    let changed = sheet.cells.rowsDiffering(from: previous.cells)
-                    for row in changed {
-                        let now = FormulaLayout.formulas(inRow: row, of: sheet.cells)
-                        if now != formulas[row] {
-                            formulas[row] = now
-                            formulasChanged = true
-                        }
+                // 不共用存储的行都重看一遍、按标量比公式原文（rowsNotShared、FormulaLayout.Entry）：只换了写法的公式
+                // （é 和 e + U+0301）按 == 看不出来，计划就会接着用旧的。改一格时只有那一行不共用。
+                let changed = sheet.cells.rowsNotShared(with: previous.cells)
+                for row in changed {
+                    let now = FormulaLayout.formulas(inRow: row, of: sheet.cells)
+                    if now != formulas[row] {
+                        formulas[row] = now
+                        formulasChanged = true
                     }
-                    rescans.withLock { $0 += changed.count }
                 }
+                rescans.withLock { $0 += changed.count }
             } else {
                 formulas = FormulaLayout.formulas(in: sheet.cells)
                 formulasChanged = true

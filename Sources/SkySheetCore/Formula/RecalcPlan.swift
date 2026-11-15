@@ -23,6 +23,11 @@ struct FormulaLayout: Equatable {
     struct Entry: Equatable {
         let source: String
         let arrayRange: CellRange?
+
+        /// 原文按标量比（ExactText）：规范等价、写法不同的两个公式切出来的词可能不一样，不能当成「没变」接着用旧计划。
+        static func == (lhs: Entry, rhs: Entry) -> Bool {
+            ExactText(lhs.source) == ExactText(rhs.source) && lhs.arrayRange == rhs.arrayRange
+        }
     }
 
     /// 一张表里的公式，按行：行 → 列 → 公式。
@@ -72,17 +77,20 @@ struct FormulaLayout: Equatable {
 
 /// 解析过的公式（原文 → 语法树），跨重算留着：一万行的还款表每次重算都把 5 万个公式从头切词、解析一遍，
 /// 占了重算的三成多（2026-11-14 实测）。解析只看原文，同一个原文结果一样。条目太多就整个清掉重来，内存有个上限。
+/// 原文按标量做键（ExactText）：按 String 做键时，é 和 e + U+0301 两种写法共用一条，先读到读不出来的那个，后一个
+/// 有效的公式也跟着「读不出来」、显示文件里的旧缓存值（反过来也一样；所有窗口共用这一份，会跨工作簿串）。
 final class FormulaParseCache: Sendable {
     static let shared = FormulaParseCache()
     private static let limit = 500_000
-    private let storage = Mutex<[String: Result<FormulaNode, FormulaSyntaxError>]>([:])
+    private let storage = Mutex<[ExactText: Result<FormulaNode, FormulaSyntaxError>]>([:])
 
     func parse(_ source: String) -> Result<FormulaNode, FormulaSyntaxError> {
-        if let hit = storage.withLock({ $0[source] }) { return hit }
+        let key = ExactText(source)
+        if let hit = storage.withLock({ $0[key] }) { return hit }
         let result = Result { () throws(FormulaSyntaxError) -> FormulaNode in try FormulaParser.parse(source) }
         storage.withLock { cache in
             if cache.count >= Self.limit { cache.removeAll(keepingCapacity: true) }
-            cache[source] = result
+            cache[key] = result
         }
         return result
     }

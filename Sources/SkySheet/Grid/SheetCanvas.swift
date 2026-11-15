@@ -129,15 +129,17 @@ private struct TextStyleKey: Hashable {
 ///
 /// 量出来的宽高、数字放不下时显示成什么（CellDisplay.fitNumber）也按文字记在这里：同一种样式、同一个缩放，同一段文字
 /// 量出来总是一样（整块重画时，量字、缩数字曾经占了画字的两成，2026-11-14）。条数有上限，满了清空重来。
+/// 文字按标量做键（ExactText，2026-11-15）：按 String 做键时 é 和 e + U+0301 共用一条，Verdana、Georgia 这类字体里
+/// 两种写法宽度不同，后量的那一格就拿了前一格的宽度，靠右、居中的字画歪（截图复现）。
 final class TextAttributes {
     private let dictionary: CFDictionary
-    private var sizes: [String: CGSize] = [:]
+    private var sizes: [ExactText: CGSize] = [:]
     private var fitted: [FitKey: String] = [:]
     private static let limit = 20_000
 
     /// 「常规」格式放不下时按数的全精度缩短：显示文字一样的两个数可能缩出来不一样，所以数也算进去。
     private struct FitKey: Hashable {
-        let text: String
+        let text: ExactText
         let number: Decimal?
         let general: Bool
         let width: Double
@@ -167,16 +169,17 @@ final class TextAttributes {
 
     /// 这段文字画出来多大（`line(text).size()`，记着）。
     func size(of text: String) -> CGSize {
-        if let known = sizes[text] { return known }
+        let key = ExactText(text)
+        if let known = sizes[key] { return known }
         let size = line(text).size()
         if sizes.count >= Self.limit { sizes.removeAll(keepingCapacity: true) }
-        sizes[text] = size
+        sizes[key] = size
         return size
     }
 
     /// 数字在 `width` 这么宽里显示成什么（CellDisplay.fitNumber，记着：结果只由显示文字、数、是不是「常规」和宽度定）。
     func fit(_ content: DisplayContent, width: Double) -> String {
-        let key = FitKey(text: content.text, number: content.number, general: content.isGeneralNumber, width: width)
+        let key = FitKey(text: ExactText(content.text), number: content.number, general: content.isGeneralNumber, width: width)
         if let known = fitted[key] { return known }
         let text = CellDisplay.fitNumber(content, width: width, measure: { self.size(of: $0).width })
         if fitted.count >= Self.limit { fitted.removeAll(keepingCapacity: true) }
