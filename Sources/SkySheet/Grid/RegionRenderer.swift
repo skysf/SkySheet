@@ -151,7 +151,10 @@ struct RegionRenderer {
             area = canvas.rect(of: CellRange(CellAddress(row: address.row, column: span.lowerBound),
                                              CellAddress(row: address.row, column: span.upperBound)))
         }
-        guard area.intersects(clip) else { return }
+        // 这一格在这次重画的范围里一点都没有（或者它本身没有大小：藏起来的行列）就不画：拿空的、null 的框去裁剪
+        // 等于没裁（见 drawWrapped）。
+        let visible = area.intersection(clip)
+        guard !visible.isEmpty else { return }
         let x: CGFloat = switch content.placement {
         case .left: area.minX + padding
         case .center: area.midX - size.width / 2
@@ -163,12 +166,20 @@ struct RegionRenderer {
         case .bottom: rect.maxY - size.height - 1
         }
         NSGraphicsContext.saveGraphicsState()
-        area.intersection(clip).clip()
+        visible.clip()
         attributes.line(text).draw(at: CGPoint(x: x, y: y))
         NSGraphicsContext.restoreGraphicsState()
     }
 
+    /// 自动换行的字，裁在格子里（上下各多 1 点）。两种情况不画（2026-11-15，verify 复现）：
+    /// - 格子扣掉边距以后没地方了（藏起来的行高 0、比边距还窄的列）：框成了 null，原点在无穷远，排出来的字全挤到裁剪框的
+    ///   一角，成了一团黑块；
+    /// - 格子和这次重画的范围不相交（局部重画时在重画的条外面）：`NSRectClip` 拿 null 的框裁剪等于没裁，它下面那几行字会
+    ///   画进重画的条里，盖在别的格子上。
+    /// 两种情况整块重画时也一样不画；这一格本来也一点都看不见。
     private func drawWrapped(_ line: NSAttributedString, in rect: CGRect, vertical: VerticalAlignment) {
+        let visible = rect.insetBy(dx: -padding, dy: -1).intersection(clip)
+        guard !rect.isEmpty, !visible.isEmpty else { return }
         let bounding = line.boundingRect(with: CGSize(width: rect.width, height: .greatestFiniteMagnitude),
                                          options: [.usesLineFragmentOrigin], context: nil)
         let height = min(bounding.height, rect.height)
@@ -178,7 +189,7 @@ struct RegionRenderer {
         case .bottom: rect.maxY - height
         }
         NSGraphicsContext.saveGraphicsState()
-        rect.insetBy(dx: -padding, dy: -1).intersection(clip).clip()
+        visible.clip()
         line.draw(with: CGRect(x: rect.minX, y: y, width: rect.width, height: bounding.height),
                   options: [.usesLineFragmentOrigin], context: nil)
         NSGraphicsContext.restoreGraphicsState()
