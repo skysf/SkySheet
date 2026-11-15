@@ -56,6 +56,8 @@ enum FormatToken: Sendable, Equatable {
     case literal(String)
     case digit(DigitPlaceholder)
     case decimalPoint
+    /// 未转义的分数斜杠；引号里的斜杠仍是 literal，不能误认成分数。
+    case fractionSlash
     /// 千分位或者缩放，解析时归好类，渲染时不输出。
     case comma
     case percent
