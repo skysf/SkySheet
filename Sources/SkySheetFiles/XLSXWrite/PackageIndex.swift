@@ -1,4 +1,5 @@
 import Foundation
+import SkySheetCore
 
 /// 包的目录：关系文件（`*.rels`）和 `[Content_Types].xml` 的增删（设计 7.2 节）。别的条目原文照抄。
 enum PackageIndex {
@@ -11,13 +12,13 @@ enum PackageIndex {
     static let contentTypesName = "[Content_Types].xml"
 
     /// 在关系文件上删掉一些关系（按 id，或者按类型结尾，如 "calcChain"），加上一些。都不用动返回 nil。
-    static func patchRelationships(_ original: Data, part: String, removingIDs ids: Set<String>,
+    static func patchRelationships(_ original: Data, part: String, removingIDs ids: Set<ExactText>,
                                    removingTypes types: [String], adding: [NewRelationship]) throws(XLSXWriteError) -> Data? {
         guard var document = XMLFragments(original) else { throw XLSXWriteError.unreadablePart(part) }
         let count = document.children.count
         document.children.removeAll { child in
             guard child.name == "Relationship" else { return false }
-            if let id = XMLFragments.attribute("Id", in: child.raw), ids.contains(id) { return true }
+            if let id = XMLFragments.attribute("Id", in: child.raw), ids.contains(ExactText(id)) { return true }
             let type = XMLFragments.attribute("Type", in: child.raw) ?? ""
             return types.contains { type.hasSuffix("/" + $0) }
         }
@@ -32,14 +33,14 @@ enum PackageIndex {
     }
 
     /// `[Content_Types].xml`：删掉一些部件的 Override（部件名不分大小写），给新部件加 Override。都不用动返回 nil。
-    static func patchContentTypes(_ original: Data, removing parts: Set<String>,
+    static func patchContentTypes(_ original: Data, removing parts: Set<ExactText>,
                                   adding: [(part: String, type: String)]) throws(XLSXWriteError) -> Data? {
         guard var document = XMLFragments(original) else { throw XLSXWriteError.unreadablePart(contentTypesName) }
         let count = document.children.count
         document.children.removeAll { child in
             guard child.name == "Override", let name = XMLFragments.attribute("PartName", in: child.raw) else { return false }
             let part = name.hasPrefix("/") ? String(name.dropFirst()) : name
-            return parts.contains((part.removingPercentEncoding ?? part).lowercased())
+            return parts.contains(ExactText((part.removingPercentEncoding ?? part).lowercased()))
         }
         guard document.children.count != count || !adding.isEmpty else { return nil }
         document.children += adding.map { XMLFragments.Child(name: "Override", raw: override($0.part, $0.type, document.prefix)) }

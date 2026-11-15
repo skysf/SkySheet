@@ -1,12 +1,13 @@
 import Foundation
+import SkySheetCore
 import SkyZip
 
 /// xlsx 的包结构（Open Packaging Conventions）：zip 里的每个文件是一个「部件」，部件之间靠 `_rels/*.rels` 里的关系连起来。
 /// 部件名统一不带开头的 "/"，如 `xl/worksheets/sheet1.xml`。
 struct OPCPackage: Sendable {
     let zip: ZipArchive
-    /// OPC 规定部件名不分大小写；zip 里是区分的。先精确找，找不到再不分大小写找。
-    private let lowercasedNames: [String: String]
+    /// OPC 规定部件名不分大小写；zip 里是区分的。先精确找，找不到再不分大小写找，不能顺带合并不同标量的部件名。
+    private let lowercasedNames: [ExactText: String]
 
     init(data: Data) throws(XLSXError) {
         do {
@@ -16,9 +17,10 @@ struct OPCPackage: Sendable {
         } catch {
             throw XLSXError.zip(error)
         }
-        var names: [String: String] = [:]
+        var names: [ExactText: String] = [:]
         for entry in zip.entries where !entry.isDirectory {
-            names[entry.name.lowercased()] = names[entry.name.lowercased()] ?? entry.name
+            let key = ExactText(entry.name.lowercased())
+            names[key] = names[key] ?? entry.name
         }
         lowercasedNames = names
     }
@@ -75,7 +77,7 @@ struct OPCPackage: Sendable {
 
     private func zipName(for part: String) -> String? {
         if zip.entry(named: part) != nil { return part }
-        return lowercasedNames[part.lowercased()]
+        return lowercasedNames[ExactText(part.lowercased())]
     }
 
     /// 不是 zip 的时候，看看是不是 OLE 文件（D0 CF 11 E0 开头）：有密码的 xlsx 里有一个叫 EncryptedPackage 的流，

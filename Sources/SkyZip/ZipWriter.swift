@@ -12,7 +12,8 @@ public struct ZipWriter: Sendable {
 
     private var body: [UInt8] = []
     private var directory: [UInt8] = []
-    private var names: Set<String> = []
+    // 和中央目录的字节名称一致，不能把规范等价的两个条目当成重名。
+    private var names: Set<[UInt8]> = []
     private var count = 0
 
     public init() {}
@@ -79,12 +80,12 @@ public struct ZipWriter: Sendable {
         modified: DOSDateTime,
         externalAttributes: Int
     ) throws(ZipError) {
-        guard names.insert(name).inserted else { throw ZipError.duplicateEntry(name) }
+        let nameBytes = Array(name.utf8)
+        guard names.insert(nameBytes).inserted else { throw ZipError.duplicateEntry(name) }
         // 超过这些上限就得用 zip64，xlsx 到不了这么大。
         guard count < 0xFFFF, body.count + payload.count < 0xFFFF_FFFF, uncompressedSize < 0xFFFF_FFFF else {
             throw ZipError.unsupported("zip64")
         }
-        let nameBytes = Array(name.utf8)
         // 第 11 位：名字是 UTF-8。只在真有非 ASCII 字符时才置，老工具更认。
         let flags = nameBytes.contains { $0 >= 0x80 } ? 0x0800 : 0
         let offset = body.count
