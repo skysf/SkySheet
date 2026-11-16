@@ -143,6 +143,39 @@ func exactTextChecks() {
         checkEqual(reloaded.sheets[0].cells[address]?.value, num("7"), "after: the reused plan follows the new spelling")
     }
 
+    group("string keys: the save check compares text scalar by scalar") {
+        // 第三道保险（PR #11 审查）：写出来的字换成规范等价的另一种写法（K 换成开尔文符号 U+212A，豈 U+8C48 换成兼容汉字
+        // U+F900），按 String 比照样通过。拿换了写法的那一本写文件，再和原来那一本核对，必须对不上。
+        func failure(memory: Workbook, written: Workbook) throws -> String? {
+            let result = try XLSXWriter.write(written, source: nil, baseline: nil)
+            do throws(XLSXWriteError) {
+                _ = try SaveVerifier.verify(result.data, written: result, workbook: memory, source: nil)
+                return nil
+            } catch {
+                return "\(error)"
+            }
+        }
+        check("K" == "\u{212A}" && "\u{8C48}" == "\u{F900}", "Swift's String equality is canonical")
+        let text = Workbook(sheets: [makeSheet("Data", id: 1, ["A1": "K", "A2": "=LEN(\"\u{8C48}\")"])])
+        let kelvin = Workbook(sheets: [makeSheet("Data", id: 1, ["A1": "\u{212A}", "A2": "=LEN(\"\u{8C48}\")"])])
+        check(try failure(memory: text, written: kelvin)?.contains("cell A1") == true, "a Kelvin sign is not a K")
+        let compatibility = Workbook(sheets: [makeSheet("Data", id: 1, ["A1": "K", "A2": "=LEN(\"\u{F900}\")"])])
+        check(try failure(memory: text, written: compatibility)?.contains("cell A2") == true, "nor in a formula")
+        let renamed = Workbook(sheets: [makeSheet("\u{F900}", id: 1, [:])])
+        check(try failure(memory: Workbook(sheets: [makeSheet("\u{8C48}", id: 1, [:])]), written: renamed)?
+                .contains("different name") == true, "sheet names compare by scalars")
+        var styled = Workbook(sheets: [makeSheet("Data", id: 1, [:])])
+        styled.styles.customNumberFormats[164] = "0 \"K\""
+        var kelvinStyled = styled
+        kelvinStyled.styles.customNumberFormats[164] = "0 \"\u{212A}\""
+        check(try failure(memory: styled, written: kelvinStyled)?.contains("styles") == true, "so do format codes")
+        let named = Workbook(sheets: [makeSheet("Data", id: 1, [:])], definedNames: [DefinedName(name: "K", formula: "Data!$A$1")])
+        var kelvinNamed = named
+        kelvinNamed.definedNames[0].name = "\u{212A}"
+        check(try failure(memory: named, written: kelvinNamed)?.contains("Defined names") == true, "and defined names")
+        check(try failure(memory: named, written: named) == nil, "the same scalars still pass")
+    }
+
     group("string keys: cached display text follows the cell's own scalars") {
         // 同一格从一种写法换成另一种（比如重新载入了文件）：显示的文字要跟着换，不能接着用记下的那一种
         // （有的字体里两种写法画出来不一样）。

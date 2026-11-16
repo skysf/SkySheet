@@ -7,7 +7,7 @@ struct FormulaLexer {
     private let indices: [String.Index]
     private var position = 0
 
-    private static let errorCodes = ["#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A",
+    static let errorCodes = ["#NULL!", "#DIV/0!", "#VALUE!", "#REF!", "#NAME?", "#NUM!", "#N/A",
                                      "#GETTING_DATA", "#SPILL!", "#CALC!", "#FIELD!", "#BLOCKED!",
                                      "#CONNECT!", "#BUSY!", "#UNKNOWN!"]
 

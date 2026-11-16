@@ -17,13 +17,14 @@ Task { @MainActor in
     for suite in selected {
         switch suite {
         case "editing": sessionEditingChecks(); closeDecisionChecks(); dateSystemPasteChecks(); editingRenameChecks(); benchmarkModeChecks()
+            recoveryChecks(); lockedFormulaChecks(); formulaRecordChecks()
         case "copy-cost": sparseClipboardCostChecks()
         case "copy-limit": copyLimitChecks()
         case "theme": invalidThemeChecks()
         case "format": invalidFormatColorChecks()
         case "appearance": chromeContrastChecks()
         case "locale": sizeLocaleChecks()
-        case "ai": aiSessionChecks()
+        case "ai": lockedFormulaRoundChecks(); aiSessionChecks(); lockedFormulaAIChecks()
         case "drawing":
             mergedPaneBorderChecks()
             centeredOverflowChecks()

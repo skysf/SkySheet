@@ -15,9 +15,9 @@ enum WorksheetWriter {
 
     /// `original` 是原来的部件（新 sheet 传 nil）；`baseline` 是打开时的样子：页签颜色、冻结窗格没变就不碰原文。
     /// 原来用了富文本的格子记在 `sheet.richTextSources`。`defaultRowHeight` 是 sheet 没写默认行高时
-    /// 按工作簿默认字体算的那个（StyleTable.defaultRowHeight）。
+    /// 按工作簿默认字体算的那个（StyleTable.defaultRowHeight）。`formulas` 是照原样写回 `<f>` 的格子（FormulaElements）。
     static func write(_ sheet: Sheet, original: XMLFragments?, baseline: Sheet?, defaultRowHeight: Double,
-                      strings: inout SharedStringTable) -> Data {
+                      strings: inout SharedStringTable, formulas: [CellAddress: StoredFormula] = [:]) -> Data {
         var document = original ?? XMLFragments(
             declaration: OOXML.declaration,
             rootStart: "<worksheet xmlns=\"\(OOXML.main)\" xmlns:r=\"\(OOXML.relationships)\">", rootName: "worksheet")
@@ -38,7 +38,7 @@ enum WorksheetWriter {
                                                            fallbackHeight: defaultRowHeight, p), order: order)
         }
         document.set("cols", raw: columns(sheet.columns, p), order: order)
-        document.set("sheetData", raw: sheetData(sheet, p, &strings), order: order)
+        document.set("sheetData", raw: sheetData(sheet, p, &strings, formulas), order: order)
         document.set("mergeCells", raw: merges(sheet.merges, p), order: order)
         if original == nil {
             document.set("pageMargins", raw: "<\(p)pageMargins left=\"0.7\" right=\"0.7\" top=\"0.75\" bottom=\"0.75\" "
@@ -123,7 +123,8 @@ enum WorksheetWriter {
 
     // MARK: - 格子
 
-    private static func sheetData(_ sheet: Sheet, _ p: String, _ strings: inout SharedStringTable) -> String {
+    private static func sheetData(_ sheet: Sheet, _ p: String, _ strings: inout SharedStringTable,
+                                  _ formulas: [CellAddress: StoredFormula]) -> String {
         var xml = "<\(p)sheetData>"
         let rows = Set(sheet.cells.rowIndices).union(sheet.rowFormats.keys).sorted()
         for row in rows {
@@ -141,7 +142,7 @@ enum WorksheetWriter {
             xml += "<\(p)row \(attributes)>"
             for (column, cell) in cells {
                 let address = CellAddress(row: row, column: column)
-                xml += cellXML(cell, at: address, p, sheet.richTextSources[address], &strings)
+                xml += cellXML(cell, at: address, p, sheet.richTextSources[address], &strings, formulas[address])
             }
             xml += "</\(p)row>"
         }
@@ -149,18 +150,24 @@ enum WorksheetWriter {
     }
 
     /// 一个格子。公式写成 Excel 的标准写法（不带 "="、新函数加 _xlfn.），后面跟着算出来的值（别的软件打开时先显示它）。
-    /// 循环引用的格子不写值（设计 5.5 节）。
+    /// 循环引用的格子不写值（设计 5.5 节）。`stored` 不是 nil 的公式没改过：`<f>` 带上原来的类型和全部属性，
+    /// 共享公式的跟随者照旧不写原文。公式原文是空的、又没有原来的 `<f>` 可以照写的（比如从算不出来的跟随者复制过来的），
+    /// 只写值：空的 `<f></f>` Excel 要修复，公式也就丢了（PR #17 第一轮审查第 2 条）。
     private static func cellXML(_ cell: Cell, at address: CellAddress, _ p: String, _ richIndex: Int?,
-                                _ strings: inout SharedStringTable) -> String {
+                                _ strings: inout SharedStringTable, _ stored: StoredFormula?) -> String {
         var attributes = "r=\"\(address.a1)\""
         if cell.styleIndex != 0 { attributes += " s=\"\(cell.styleIndex)\"" }
         var type: String?
         var inner = ""
         func value(_ text: String) { inner += "<\(p)v>\(text)</\(p)v>" }
 
-        if let formula = cell.formula {
+        if let formula = cell.formula, stored != nil || !formula.source.isEmpty {
             let source = XMLText.formula(FormulaRewriter.storageForm(formula.source))
-            if let range = formula.arrayRange {
+            if let stored {
+                let text = stored.shared?.follower == true ? "" : source
+                let element = "<\(p)f" + FormulaElements.attributesXML(stored.attributes)
+                inner += text.isEmpty ? element + "/>" : element + ">\(text)</\(p)f>"
+            } else if let range = formula.arrayRange {
                 inner += "<\(p)f t=\"array\" ref=\"\(range.a1)\">\(source)</\(p)f>"
             } else {
                 inner += "<\(p)f>\(source)</\(p)f>"

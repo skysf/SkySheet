@@ -27,9 +27,11 @@ final class WorkbookDocument: NSDocument {
     nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?)?
     /// 这次打开以后备份过原文件没有（第四道保险：第一次覆盖前备份）。
     var backedUp = false
-    /// 恢复副本的编号和上次写恢复副本时的改动次数（第五道保险）。
-    let recoveryID = UUID()
+    /// 恢复副本的编号（第五道保险）。从恢复副本打开的文档接着用那一份的编号：新副本写好之前旧的不删（RecoveryCoordinator.reopen）。
+    var recoveryID = UUID()
+    /// 恢复副本写好了的那一版（改动次数），和正在后台写的那一版。写成了才记进 recoveredRevision，没写成的下一轮重写。
     var recoveredRevision: Int?
+    var recoveringRevision: Int?
     /// 从恢复副本打开的：原来那个文件。存的时候默认存回它旁边。
     var recoveredFrom: URL?
 
@@ -48,6 +50,7 @@ final class WorkbookDocument: NSDocument {
         let session = SheetSession(workbook: loaded.workbook, recalcCache: loaded.recalcCache)
         session.undoManager = undoManager
         session.structureLock = { [weak self] id in self?.structureLock(forSheet: id) }
+        session.refusedChange = { [weak self] locked in LayoutCommands.explain(locked, in: self?.windowForSheet) }
         self.session = session
         addWindowController(WorkbookWindowController(session: session))
     }
@@ -66,7 +69,11 @@ final class WorkbookDocument: NSDocument {
     /// 这张表（按编号）为什么不能插删行列；能就是 nil。这次新建、复制、导入的表不在原包里，总是能。
     func structureLock(forSheet id: Int) -> StructureLock? {
         if let known = structureLocks[id] { return known }
-        let lock = source?.structureLock(forSheet: id)
+        var lock = source?.structureLock(forSheet: id)
+        // 复制出来的表不在原包里，模拟运算表却跟着复制过来了（Sheet.storedFormulas）：一样不能插删（PR #17 第一轮审查第 5 条）。
+        if lock == nil, session?.workbook.sheets.first(where: { $0.id == id })?.dataTableCell != nil {
+            lock = .otherContent("data table")
+        }
         structureLocks[id] = lock
         return lock
     }
