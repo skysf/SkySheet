@@ -1,6 +1,6 @@
 import Foundation
 import SkySheetCore
-import SkySheetFiles
+@testable import SkySheetFiles
 import SkyZip
 
 /// 读文件排查第 1 条（2026-11-16）：扫描器以前去掉前缀就认元素，扩展（别的命名空间、`extLst` 里）的同名元素能改掉
