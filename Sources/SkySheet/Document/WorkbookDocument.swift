@@ -27,9 +27,11 @@ final class WorkbookDocument: NSDocument {
     nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?)?
     /// 这次打开以后备份过原文件没有（第四道保险：第一次覆盖前备份）。
     var backedUp = false
-    /// 恢复副本的编号和上次写恢复副本时的改动次数（第五道保险）。
-    let recoveryID = UUID()
+    /// 恢复副本的编号（第五道保险）。从恢复副本打开的文档接着用那一份的编号：新副本写好之前旧的不删（RecoveryCoordinator.reopen）。
+    var recoveryID = UUID()
+    /// 恢复副本写好了的那一版（改动次数），和正在后台写的那一版。写成了才记进 recoveredRevision，没写成的下一轮重写。
     var recoveredRevision: Int?
+    var recoveringRevision: Int?
     /// 从恢复副本打开的：原来那个文件。存的时候默认存回它旁边。
     var recoveredFrom: URL?
 

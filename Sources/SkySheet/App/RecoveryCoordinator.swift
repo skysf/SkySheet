@@ -1,4 +1,5 @@
 import AppKit
+import os
 import SkySheetCore
 import SkySheetFiles
 
@@ -11,6 +12,8 @@ final class RecoveryCoordinator {
     private let store: RecoveryStore
     /// 写和删排在同一条串行队列上：先写后删的顺序不会乱（乱了会留下一份不该有的恢复副本）。
     private let queue = DispatchQueue(label: "ai.skylu.skysheet.recovery", qos: .utility)
+    /// 后台写完的恢复副本：哪份文档（恢复编号）、哪一版、写成没有。回到主线程后（下一轮开始前、drain）记到文档上。
+    private let finished = OSAllocatedUnfairLock<[(id: UUID, revision: Int, saved: Bool)]>(initialState: [])
     private var timer: Timer?
     private var activationObserver: NSObjectProtocol?
     /// 启动时就在的恢复副本：只有它们是上次没正常退出留下的。
@@ -46,16 +49,20 @@ final class RecoveryCoordinator {
         }
     }
 
-    /// 改过、而且自上次写过以后又改了的文档，各写一份。写 xlsx 放在后台，不卡界面。
+    /// 改过、而且自上次写好以后又改了的文档，各写一份。写 xlsx 放在后台，不卡界面。
+    /// 写好了才记下这一版：以前排上队就记，写失败了（磁盘满、文件夹一时写不了）这一版就再也不写了（保存排查第 9 条，2026-11-16）。
     func writeCopies() {
+        noteFinishedWrites()
         for case let document as WorkbookDocument in NSDocumentController.shared.documents {
             guard let session = document.session else { continue }
             guard document.isDocumentEdited else {
-                if document.recoveredRevision != nil { forget(document) }
+                if document.recoveredRevision != nil || document.recoveringRevision != nil { forget(document) }
                 continue
             }
-            guard document.recoveredRevision != session.revision else { continue }
-            document.recoveredRevision = session.revision
+            let revision = session.revision
+            // 写好了的这一版不再写，正在写的也不再排一次；没写成的（recoveringRevision 已经放开）这一轮重写。
+            guard document.recoveredRevision != revision, document.recoveringRevision != revision else { continue }
+            document.recoveringRevision = revision
             let workbook = session.workbook
             let source = document.source
             let baseline = document.baseline
@@ -63,16 +70,36 @@ final class RecoveryCoordinator {
                                             originalPath: (document.fileURL ?? document.recoveredFrom)?.path,
                                             displayName: document.displayName, savedAt: Date())
             let store = self.store
+            let finished = self.finished
             queue.async {
-                guard let result = try? XLSXWriter.write(workbook, source: source, baseline: baseline) else { return }
-                try? store.save(result.data, entry: entry)
+                let saved = (try? XLSXWriter.write(workbook, source: source, baseline: baseline))
+                    .map { (try? store.save($0.data, entry: entry)) != nil } ?? false
+                finished.withLock { $0.append((entry.id, revision, saved)) }
             }
+        }
+    }
+
+    /// 后台写完的结果记到文档上：写成的那一版才算写好；没写成的放开，下一轮再写。文档已经存了、关了（forget 过）
+    /// 或者又排了新的一版，这个结果就不算数。
+    private func noteFinishedWrites() {
+        let results = finished.withLock { list -> [(id: UUID, revision: Int, saved: Bool)] in
+            defer { list.removeAll() }
+            return list
+        }
+        guard !results.isEmpty else { return }
+        let documents = NSDocumentController.shared.documents.compactMap { $0 as? WorkbookDocument }
+        for result in results {
+            guard let document = documents.first(where: { $0.recoveryID == result.id }),
+                  document.recoveringRevision == result.revision else { continue }
+            document.recoveringRevision = nil
+            if result.saved { document.recoveredRevision = result.revision }
         }
     }
 
     /// 文档存了、关了：它的恢复副本不要了。
     func forget(_ document: WorkbookDocument) {
         document.recoveredRevision = nil
+        document.recoveringRevision = nil
         let id = document.recoveryID
         let store = self.store
         queue.async { store.remove(id) }
@@ -81,6 +108,7 @@ final class RecoveryCoordinator {
     /// 退出前等队列做完：删恢复副本的事要是没做完，下次启动会多问一次。
     func drain() {
         queue.sync {}
+        noteFinishedWrites()
     }
 
     func offerRestore() {
@@ -119,13 +147,15 @@ final class RecoveryCoordinator {
         }
     }
 
-    /// 从恢复副本读出来的文档变成「（Recovered）」的未命名文档，恢复副本删掉。
+    /// 从恢复副本读出来的文档变成「（Recovered）」的未命名文档。旧副本不删：文档接着用它的恢复编号，下一轮写恢复副本时
+    /// 原地换成新的（原子写，换的那一下也不会两份都没有）；存了、关了才删（forget）。以前恢复完马上删，新副本写好之前再崩一次，
+    /// 恢复出来的改动就没了（保存排查第 8 条，2026-11-16）。
     func adopt(_ entry: RecoveryStore.Entry, into document: WorkbookDocument) {
         document.fileURL = nil
         document.recoveredFrom = entry.originalPath.map { URL(fileURLWithPath: $0) }
         let name = (entry.displayName as NSString).deletingPathExtension
         document.displayName = name + String(localized: " (Recovered)")
+        document.recoveryID = entry.id
         NSDocumentController.shared.addDocument(document)
-        store.remove(entry.id)
     }
 }
