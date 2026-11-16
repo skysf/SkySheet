@@ -22,6 +22,53 @@ public enum ReferenceShift {
         return result
     }
 
+    /// `shift` 对这个公式算得准不准。能切词的都准。切不了词的（结构化引用 `Table1[Amount]`、`[@Qty]`，外部引用
+    /// `[1]Sheet1!A1`）`shift` 原样返回：方括号以外没有会跟着平移的引用时（`SUM(Table1[Amount])*$B$1`），原文就是
+    /// 平移后的样子，也准；方括号以外还有 A1 这种相对引用就不准。只判断，不替它平移（读文件第 2 条，2026-11-16：
+    /// 共享公式的主格切不了词时，跟随者不能拿原样返回的那份当自己的公式）。
+    public static func isExact(_ formula: String) -> Bool {
+        if (try? FormulaLexer.tokenize(formula)) != nil { return true }
+        guard let masked = maskingBrackets(formula), (try? FormulaLexer.tokenize(masked)) != nil else { return false }
+        return ExactText(shift(masked, rows: 1, columns: 1)) == ExactText(masked)
+    }
+
+    /// 方括号整段（连同里面套着的方括号）换成一个数字：结构化引用、外部引用的那一截。引号里的字、引号括起来的 sheet 名
+    /// 原样；方括号里 ' 转义下一个字符（Excel 的写法，`Table1['[x']]`）。括号、引号不配对返回 nil。
+    static func maskingBrackets(_ formula: String) -> String? {
+        var result = String.UnicodeScalarView()
+        var depth = 0
+        var quote: Unicode.Scalar?
+        var scalars = formula.unicodeScalars.makeIterator()
+        while let scalar = scalars.next() {
+            if depth > 0 {
+                switch scalar {
+                case "'": guard scalars.next() != nil else { return nil }
+                case "[": depth += 1
+                case "]":
+                    depth -= 1
+                    if depth == 0 { result.append(contentsOf: " 0 ".unicodeScalars) }
+                default: break
+                }
+                continue
+            }
+            if let open = quote {
+                // "" 和 '' 是转义：这一段到这里结束，紧接着的引号又开一段，效果一样。
+                if scalar == open { quote = nil }
+                result.append(scalar)
+                continue
+            }
+            switch scalar {
+            case "\"", "'":
+                quote = scalar
+                result.append(scalar)
+            case "[": depth = 1
+            case "]": return nil
+            default: result.append(scalar)
+            }
+        }
+        return depth == 0 && quote == nil ? String(result) : nil
+    }
+
     private static func shifted(_ reference: ReferenceToken, rows: Int, columns: Int) -> String? {
         guard let start = move(reference.start, rows, columns) else { return nil }
         guard let end = reference.end else { return render(start) }

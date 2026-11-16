@@ -8,8 +8,11 @@ import SkySheetCore
 /// - `<c t="s"/>` 没有 `<v>`：空格子（只带样式）。
 /// - 格子、行没写 r：按顺序往后排。
 /// - 共享公式（`<f t="shared" si="0">`，Excel 大量使用）：跟随者用 ReferenceShift 从主公式平移出来。
+///   主公式切不了词、平移又会改它的，跟随者的公式算不出来，原文空着（ReferenceShift.isExact）。
+/// - `<f>` 带着属性的（共享公式、数组公式、模拟运算表……）记下原样（StoredFormula），保存时没改过的照原样写回。
 final class WorksheetPart: XMLScanHandler {
     private(set) var sheet: Sheet
+    private(set) var storedFormulas: [CellAddress: StoredFormula] = [:]
     private let sharedStrings: [String]
     private let richIndices: Set<Int>
     private let dateSystem: DateSystem
@@ -21,6 +24,8 @@ final class WorksheetPart: XMLScanHandler {
     private var phoneticDepth = 0
     private var sharedMasters: [String: (address: CellAddress, source: String)] = [:]
     private var sharedFollowers: [(address: CellAddress, index: String)] = []
+    /// 所有带 `t="shared"` 的格子和它们 `<f>` 上的属性：主格、跟随者都在里面，读完 sheetData 再记成 StoredFormula。
+    private var sharedCells: [(address: CellAddress, index: String, follower: Bool, attributes: [String: String])] = []
 
     private struct PendingCell {
         let address: CellAddress
@@ -102,6 +107,8 @@ final class WorksheetPart: XMLScanHandler {
         var formula: CellFormula?
         if let attributes = pending.formulaAttributes {
             let source = pending.formula ?? ""
+            // 写回时只带没有前缀的属性：CT_CellFormula 的属性都没有前缀，带前缀的扩展属性写回去对不上命名空间。
+            let plain = attributes.filter { !$0.key.contains(":") }
             switch attributes["t"] {
             case "shared":
                 let index = attributes["si"] ?? ""
@@ -110,6 +117,7 @@ final class WorksheetPart: XMLScanHandler {
                 } else {
                     sharedMasters[index] = (pending.address, source)
                 }
+                sharedCells.append((pending.address, index, source.isEmpty, plain))
             case "array":
                 formula = CellFormula(source: source, arrayRange: attributes["ref"].flatMap { CellRange(a1: $0) })
             default:
@@ -119,6 +127,10 @@ final class WorksheetPart: XMLScanHandler {
                 formula = CellFormula(source: source)
             }
             formula?.cachedValue = pending.value == nil && pending.type != "inlineStr" ? nil : value
+            if attributes["t"] != "shared", !plain.isEmpty, let formula {
+                storedFormulas[pending.address] = StoredFormula(attributes: plain, source: formula.source,
+                                                                arrayRange: formula.arrayRange, shared: nil)
+            }
         }
         guard value != .empty || formula != nil || pending.style != 0 else { return }
         sheet.cells[pending.address] = Cell(value: value, formula: formula, styleIndex: pending.style)
@@ -147,12 +159,25 @@ final class WorksheetPart: XMLScanHandler {
     }
 
     /// 共享公式的跟随者：主公式按相对位置平移（同一个 ReferenceShift）。找不到主公式的留空原文，重算时算「未重算」、显示缓存值。
+    /// 主公式切不了词、平移又会改它的（`A1+SUM(Table1[Amount])`）也留空：以前拿主公式原文冒充，B2 读成指着 A1，改了别的格子
+    /// 一保存就写成了引用错的公式（读文件排查第 2 条，2026-11-16）。这种跟随者保存时只能照原样写（XLSXWriter）。
     private func resolveSharedFormulas() {
+        let exact = sharedMasters.mapValues { ReferenceShift.isExact($0.source) }
         for (address, index) in sharedFollowers {
             guard let master = sharedMasters[index], var cell = sheet.cells[address] else { continue }
-            cell.formula?.source = ReferenceShift.shift(master.source, rows: address.row - master.address.row,
-                                                        columns: address.column - master.address.column)
+            cell.formula?.source = exact[index] == true
+                ? ReferenceShift.shift(master.source, rows: address.row - master.address.row,
+                                       columns: address.column - master.address.column)
+                : ""
             sheet.cells[address] = cell
+        }
+        for (address, index, follower, attributes) in sharedCells {
+            guard let formula = sheet.cells[address]?.formula else { continue }
+            let master = sharedMasters[index]?.address
+            storedFormulas[address] = StoredFormula(
+                attributes: attributes, source: formula.source, arrayRange: formula.arrayRange,
+                shared: .init(group: index, master: master, follower: follower,
+                              unknown: follower && master != nil && exact[index] != true))
         }
     }
 

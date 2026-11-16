@@ -265,6 +265,11 @@ extension XLSXWriteError: LocalizedError {
             String(localized: "Part of the original file couldn't be read (\(part)), so SkySheet didn't save over it.")
         case .existingStylesChanged:
             String(localized: "SkySheet ran into an internal problem with cell styles and didn't save. The file wasn't changed.")
+        case .sharedFormulaMasterChanged(let sheet, let cell, let master):
+            String(localized: """
+                SkySheet didn't save: on “\(sheet)”, \(cell) uses the shared formula in \(master), which was changed, \
+                and SkySheet can't work out \(cell)'s own formula. The file wasn't changed.
+                """)
         case .zip:
             String(localized: "SkySheet couldn't put the file together. The file wasn't changed.")
         case .verificationFailed:
@@ -276,6 +281,11 @@ extension XLSXWriteError: LocalizedError {
         switch self {
         case .verificationFailed(let detail): detail
         case .zip(let error): "\(error)"
+        case .sharedFormulaMasterChanged(_, let cell, let master):
+            String(localized: """
+                Undo the change to \(master), or type the formulas of the cells that share it (starting with \(cell)) \
+                again, then save.
+                """)
         default: nil
         }
     }

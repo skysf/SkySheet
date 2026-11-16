@@ -115,6 +115,20 @@ func formulaChecks() {
                    "RATE(C6, -F6, B6) * 12", "spacing kept")
         checkEqual(ReferenceShift.shift("LOG10(A1)", rows: 1, columns: 0), "LOG10(A2)", "function names are not references")
     }
+
+    group("formula: which formulas the shift gets right") {
+        // 共享公式的跟随者只能拿算得准的平移结果当公式（读文件排查第 2 条）：切不了词的，方括号以外没有会平移的引用才算准。
+        check(ReferenceShift.isExact("A1*2"), "anything we can tokenize")
+        check(!ReferenceShift.isExact("A1+SUM(Table1[Amount])"), "a relative reference next to a structured one")
+        check(ReferenceShift.isExact("SUM(Table1[Amount])*$A$1"), "only absolute references outside the brackets")
+        check(ReferenceShift.isExact("[@Price]*[@Qty]"), "this-row references without a table name")
+        check(ReferenceShift.isExact("Table1[[#This Row],[Price]]*2"), "nested brackets")
+        check(ReferenceShift.isExact("Table1['[Odd']]+1"), "escaped brackets in a column name")
+        check(!ReferenceShift.isExact("[1]Sheet1!A1"), "an external reference still shifts")
+        check(!ReferenceShift.isExact("Table1[Amount"), "unbalanced brackets")
+        check(!ReferenceShift.isExact("SUM(Table1[x])+\"[\"&B2"), "a bracket inside text doesn't hide B2")
+        check(!ReferenceShift.isExact("SUM(Table1[x])+'Q[1]'!B2"), "nor one inside a quoted sheet name")
+    }
 }
 
 private func decimalPower(_ base: String, _ exponent: Int) throws -> Decimal {

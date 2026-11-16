@@ -77,9 +77,10 @@ private struct PackagePatch {
             let old = baselineSheets[sheet.id]
             if let old, old.hasSameContent(as: sheet) { continue }
             guard let original = XMLFragments(try read(part.path)) else { throw XLSXWriteError.unreadablePart(part.path) }
+            let formulas = try FormulaElements.kept(in: sheet, stored: source.formulas[sheet.id] ?? [:])
             replaced[ExactText(part.path.lowercased())] = WorksheetWriter.write(sheet, original: original, baseline: old,
                                                                      defaultRowHeight: workbook.styles.defaultRowHeight,
-                                                                     strings: &strings)
+                                                                     strings: &strings, formulas: formulas)
             regenerated.insert(sheet.id)
         }
         // 删掉的 sheet：部件和它的关系文件不要了。它引用的图片、批注留在包里没人指着，Excel 不在意。

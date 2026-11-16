@@ -32,6 +32,8 @@ public struct XLSXSource: Sendable {
     /// docProps/custom.xml（有的话）和里面 SkySheet.AI.* 那几条：哪些是 AI 的 sheet、谁写的（设计 9.3 节）。
     let customPropertiesPart: String?
     let aiProperties: [String: String]
+    /// sheetId → 格子 → 原来的 `<f>` 带着的属性（StoredFormula）。保存时没改过的公式照原样写回。
+    let formulas: [Int: [CellAddress: StoredFormula]]
 }
 
 /// 读 xlsx，得到 SkySheetCore 的工作簿模型（设计 7.1 节）。读进来的公式都是 `.pending`：
@@ -73,6 +75,7 @@ public enum XLSXReader {
 
         var sheets: [Sheet] = []
         var sheetParts: [Int: XLSXSource.SheetPart] = [:]
+        var formulas: [Int: [CellAddress: StoredFormula]] = [:]
         /// workbook.xml 里第几个 <sheet>（包括跳过的图表 sheet）→ 模型里第几张。定义名称的 localSheetId 按前者数。
         var modelIndex: [Int: Int] = [:]
         for (position, entry) in workbookPart.sheets.enumerated() {
@@ -85,6 +88,7 @@ public enum XLSXReader {
                                        dateSystem: workbookPart.dateSystem)
             try XMLScanner.scan(try package.data(relationship.target), part: relationship.target, handler: reader)
             sheets.append(reader.sheet)
+            if !reader.storedFormulas.isEmpty { formulas[entry.sheetID] = reader.storedFormulas }
             sheetParts[entry.sheetID] = XLSXSource.SheetPart(path: relationship.target, relationshipID: entry.relationshipID,
                                                              name: entry.name)
         }
@@ -128,7 +132,7 @@ public enum XLSXReader {
                                 stylesPart: part("styles"), fileStyles: fileStyles, sharedStringsPart: part("sharedStrings"),
                                 sharedStrings: strings.strings, richStrings: strings.richIndices,
                                 calcChainPart: part("calcChain"), relationshipIDs: Set(relationships.map(\.id)),
-                                customPropertiesPart: customPart, aiProperties: aiProperties)
+                                customPropertiesPart: customPart, aiProperties: aiProperties, formulas: formulas)
         return XLSXDocument(workbook: workbook, source: source)
     }
 
