@@ -8,13 +8,18 @@ import SkySheetFiles
 final class RecoveryCoordinator {
     static let shared = RecoveryCoordinator()
 
-    private let store = RecoveryStore()
+    private let store: RecoveryStore
     /// 写和删排在同一条串行队列上：先写后删的顺序不会乱（乱了会留下一份不该有的恢复副本）。
     private let queue = DispatchQueue(label: "ai.skylu.skysheet.recovery", qos: .utility)
     private var timer: Timer?
     private var activationObserver: NSObjectProtocol?
     /// 启动时就在的恢复副本：只有它们是上次没正常退出留下的。
     private var leftAtLaunch: Set<UUID> = []
+
+    /// 自检用临时目录里的 store；App 用默认的恢复目录。
+    init(store: RecoveryStore = RecoveryStore()) {
+        self.store = store
+    }
 
     /// 被 AI 拉起来以后，用户第一次切到 SkySheet：这时再问要不要恢复。
     private func userArrived() {
@@ -102,21 +107,25 @@ final class RecoveryCoordinator {
 
     private func restore(_ entry: RecoveryStore.Entry) {
         do {
-            let controller = NSDocumentController.shared
-            guard let document = try controller.makeDocument(withContentsOf: store.dataURL(entry.id),
-                                                             ofType: WorkbookDocument.xlsxType) as? WorkbookDocument
+            guard let document = try NSDocumentController.shared.makeDocument(
+                withContentsOf: store.dataURL(entry.id), ofType: WorkbookDocument.xlsxType) as? WorkbookDocument
             else { return }
-            document.fileURL = nil
-            document.recoveredFrom = entry.originalPath.map { URL(fileURLWithPath: $0) }
-            let name = (entry.displayName as NSString).deletingPathExtension
-            document.displayName = name + String(localized: " (Recovered)")
-            controller.addDocument(document)
+            adopt(entry, into: document)
             document.makeWindowControllers()
             document.showWindows()
             document.updateChangeCount(.changeDone)
-            store.remove(entry.id)
         } catch {
             NSApp.presentError(error)
         }
+    }
+
+    /// 从恢复副本读出来的文档变成「（Recovered）」的未命名文档，恢复副本删掉。
+    func adopt(_ entry: RecoveryStore.Entry, into document: WorkbookDocument) {
+        document.fileURL = nil
+        document.recoveredFrom = entry.originalPath.map { URL(fileURLWithPath: $0) }
+        let name = (entry.displayName as NSString).deletingPathExtension
+        document.displayName = name + String(localized: " (Recovered)")
+        NSDocumentController.shared.addDocument(document)
+        store.remove(entry.id)
     }
 }
