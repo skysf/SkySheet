@@ -223,6 +223,10 @@ enum AIWriteTools {
         if merge == true, let given, given.coversAllRows || given.coversAllColumns {
             throw AIToolError("merge needs a block of cells such as A1:D1, not whole rows or columns.")
         }
+        // 合并和改格式一样每一格都要换样式：同一个上限（设计 9.7 节）。在开撤销组之前查：组里再拒绝会挤掉用户的重做历史。
+        if merge == true, let range, range.rowCount * range.columnCount > formatLimit {
+            throw AIToolError(mergeTooLarge(formatLimit))
+        }
         if let width, !(0...255).contains(width) { throw AIToolError("column_width must be between 0 and 255.") }
         let frozenRows = try freeze.map { try AIToolArguments(.object($0)).int("rows") ?? 0 }
         let frozenColumns = try freeze.map { try AIToolArguments(.object($0)).int("columns") ?? 0 }
@@ -230,7 +234,7 @@ enum AIWriteTools {
             try context.change(String(localized: "AI: Format Cells"), { workbook in
                 if let range, !change.isEmpty { workbook.restyle(range, sheet: index, change) }
                 if let range, let merge {
-                    // 合并和改格式一样每一格都要换样式：同一个上限，先按面积查（设计 9.7 节）。
+                    // 上面已经按面积查过；limit 是兜底：Workbook.merge 在一格一格走之前自己再查一遍。
                     if merge {
                         try workbook.merge(range, sheet: index, limit: formatLimit)
                     } else {
@@ -259,12 +263,16 @@ enum AIWriteTools {
             throw AIToolError("The range cuts through the merged cells \(existing.a1). Merge a range that contains them "
                 + "whole, or unmerge them first.")
         } catch let MergeError.tooLarge(limit) {
-            throw AIToolError("That range has more than \(limit) cells, too many to merge into one; merge a smaller block.")
+            throw AIToolError(mergeTooLarge(limit))
         }
         var payload: [String: JSONValue] = ["sheet": .string(context.workbook.sheets[index].name)]
         if let range { payload["range"] = .string(range.a1) }
         if merge == true, let range { payload["merged"] = .string(range.a1) }
         return .ok(.object(payload), changed: true)
+    }
+
+    private static func mergeTooLarge(_ limit: Int) -> String {
+        "That range has more than \(limit) cells, too many to merge into one; merge a smaller block."
     }
 
     // MARK: - edit_sheet
@@ -280,25 +288,22 @@ enum AIWriteTools {
         let name = context.workbook.sheets[index].name
         do {
             // 改名、删表会把原始 sheet 里指着它的公式一起改掉：那样就整个不做（设计 9.3 节第 7 条）。
-            try context.change(String(localized: "AI: Edit Sheet")) { workbook in
-                try workbook.editSparingOriginalFormulas { workbook in
-                    if delete {
-                        try workbook.deleteSheet(index)
-                        return
-                    }
-                    if let newName { try workbook.renameSheet(index, to: newName.trimmingCharacters(in: .whitespaces)) }
-                    if let position { workbook.moveSheet(from: index, to: position - 1) }
+            try context.changeSparingOriginals(String(localized: "AI: Edit Sheet"), refusal: { conflict in
+                AIContext.refusal(conflict, sheet: name,
+                                  effect: delete ? "Deleting \(name) would turn them into #REF!" : "Renaming \(name) would rewrite them",
+                                  instead: delete ? "Keep \(name), or ask the user." : "Keep the name, or ask the user.")
+            }) { workbook in
+                if delete {
+                    try workbook.deleteSheet(index)
+                    return
                 }
+                if let newName { try workbook.renameSheet(index, to: newName.trimmingCharacters(in: .whitespaces)) }
+                if let position { workbook.moveSheet(from: index, to: position - 1) }
             }
         } catch let SheetEditError.invalidName(problem) {
             throw AIToolError(SheetCommands.message(for: problem))
         } catch SheetEditError.lastVisibleSheet {
             throw AIToolError("That is the last visible sheet; a workbook must keep one.")
-        } catch let conflict as OriginalFormulasWouldChange {
-            throw AIContext.refusal(conflict, sheet: name,
-                                    effect: delete ? "Deleting \(name) would turn them into #REF!"
-                                                   : "Renaming \(name) would rewrite them",
-                                    instead: delete ? "Keep \(name), or ask the user." : "Keep the name, or ask the user.")
         }
         return .ok(["sheets": .array(context.workbook.sheets.map { .string($0.name) })], changed: true)
     }

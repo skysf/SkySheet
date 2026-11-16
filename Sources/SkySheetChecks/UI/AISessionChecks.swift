@@ -53,6 +53,8 @@ func aiSessionChecks() {
         checkEqual(value("A1", afterAI), .number(2), "the user's change stays")
     }
 
+    refusedEditsKeepUndoHistory(role: role)
+
     group("ui-ai-3: a huge number for a string parameter is a parameter error") {
         do {
             _ = try AIToolArguments(["sheet": .number(1e100)]).string("sheet")
@@ -61,5 +63,85 @@ func aiSessionChecks() {
             checkEqual(error.message, "sheet must be a string.", "describe_sheet({\"sheet\": 1e100})")
         }
         checkEqual(try AIToolArguments(["sheet": 2024]).string("sheet"), "2024", "a whole number still reads as digits")
+    }
+}
+
+/// 这个 PR 加的拒绝（会改原始 sheet 的公式、合并超过上限、整轮撤销）不许动撤销和重做栈（PR #15 审查）。以前拒绝在
+/// AIContext.change 开了撤销组以后才抛：关上的空组把用户刚 ⌘Z 撤掉的那一步从重做栈里挤掉了，撤销栈顶也换成了一个没名字的空组。
+/// 照 App 的样子搭：一个文档、真的撤销管理器（按事件分组，和窗口里一样），工具按 MCP 的参数直接调。
+@MainActor
+private func refusedEditsKeepUndoHistory(role: SheetRole) {
+    func open() -> (WorkbookDocument, SheetSession, UndoManager) {
+        var original = Sheet(id: 1, name: "Orig")
+        original.cells[CellAddress(a1: "A1")!] = Cell(formula: CellFormula(source: "R!A1"))
+        var result = Sheet(id: 2, name: "R", role: role)
+        result.cells[CellAddress(a1: "A1")!] = Cell(value: .number(1))
+        let session = SheetSession(workbook: Workbook(sheets: [original, result]))
+        let manager = UndoManager()
+        session.undoManager = manager
+        let document = WorkbookDocument()
+        document.session = session
+        NSDocumentController.shared.addDocument(document)
+        AIWorkbooks.makeCurrent(document)
+        return (document, session, manager)
+    }
+    func stacks(_ manager: UndoManager) -> String {
+        "undo \(manager.canUndo) \"\(manager.undoActionName)\", redo \(manager.canRedo) \"\(manager.redoActionName)\""
+    }
+    func userTypes(_ value: Int, at a1: String, _ session: SheetSession, _ manager: UndoManager) {
+        AIUndoGrouping.step(manager) {
+            session.apply("User step") { $0.enter(.number(Decimal(value), format: nil), at: CellAddress(a1: a1)!, sheet: 1) }
+        }
+    }
+    /// 工具必须拒绝，而且工作簿、改动次数、撤销和重做栈都和之前一样。
+    func refused(_ what: String, _ session: SheetSession, _ manager: UndoManager, _ call: () throws -> Void) {
+        let workbook = session.workbook, revision = session.revision, before = stacks(manager)
+        do {
+            try call()
+            fail("\(what): went through")
+        } catch is AIToolError {
+        } catch {
+            fail("\(what): unexpected \(error)")
+        }
+        check(session.workbook == workbook && session.revision == revision, "\(what): nothing changed")
+        checkEqual(stacks(manager), before, "\(what): undo and redo are as the user left them")
+    }
+
+    group("ui-ai-4: refused AI edits leave the user's undo and redo alone") {
+        let edits: [(String, () throws -> Void)] = [
+            ("rename R", { _ = try AIWriteTools.editSheet(AIToolArguments(["sheet": "R", "rename": "NewR"])) }),
+            ("delete R", { _ = try AIWriteTools.editSheet(AIToolArguments(["sheet": "R", "delete": true])) }),
+            ("insert row 1", { _ = try AIRowColumnTools.edit(AIToolArguments(["sheet": "R", "rows": "1", "insert": true])) }),
+            ("delete row 1", { _ = try AIRowColumnTools.edit(AIToolArguments(["sheet": "R", "rows": "1", "delete": true])) }),
+            ("merge 52,000 cells", { _ = try AIWriteTools.formatCells(AIToolArguments(["sheet": "R", "range": "A1:Z2000", "merge": true])) }),
+        ]
+        for (what, call) in edits {
+            let (document, session, manager) = open()
+            // 审查的复现：用户写一格、再 ⌘Z，重做栈上有这一步。
+            userTypes(3, at: "B1", session, manager)
+            userTypes(4, at: "C1", session, manager)
+            manager.undo()
+            refused(what, session, manager, call)
+            NSDocumentController.shared.removeDocument(document)
+        }
+
+        // 整轮撤销被拒：AI 改 → 用户改 → AI 改两步 → AI 撤一步（重做栈上有 AI 那一步），再要整轮撤销。
+        let (document, session, manager) = open()
+        let context = AIContext(document: document, session: session)
+        @MainActor func aiWrites(_ value: Int, at a1: String) throws {
+            try context.change("AI step") { $0.enter(.number(Decimal(value), format: nil), at: CellAddress(a1: a1)!, sheet: 1) }
+        }
+        try aiWrites(7, at: "B1")
+        userTypes(2, at: "A2", session, manager)
+        try aiWrites(8, at: "B2")
+        try aiWrites(9, at: "B3")
+        _ = try AIWriteTools.undo(AIToolArguments([:]))
+        refused("undo round=true after the user changed it", session, manager) {
+            _ = try AIWriteTools.undo(AIToolArguments(["round": true]))
+        }
+        let before = stacks(manager)
+        checkEqual(AISession.shared.undoRound(in: session), .userChanged, "the banner's button is refused too")
+        checkEqual(stacks(manager), before, "the banner's refusal leaves undo and redo alone")
+        NSDocumentController.shared.removeDocument(document)
     }
 }

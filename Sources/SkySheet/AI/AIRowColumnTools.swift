@@ -106,18 +106,16 @@ enum AIRowColumnTools {
         var report = StructureEditReport()
         let name = shift.kind == .insert ? String(localized: "AI: Insert Rows or Columns")
                                          : String(localized: "AI: Delete Rows or Columns")
+        let what = "\(shift.kind == .insert ? "Inserting" : "Deleting") \(shift.axis == .rows ? "rows" : "columns") "
+            + AIFormat.label(shift.axis, shift.lines)
         do {
             // 原始 sheet 里指着这张表的公式会跟着挪、变成 #REF!：那样就整个不做（设计 9.3 节第 7 条）。
-            try context.change(name) { workbook in
-                try workbook.editSparingOriginalFormulas { report = try $0.shiftLines(shift, sheet: index) }
-            }
+            try context.changeSparingOriginals(name, refusal: { conflict in
+                AIContext.refusal(conflict, sheet: sheet.name, effect: "\(what) would change their references",
+                                  instead: "Insert or delete only below or to the right of the cells they use, or ask the user.")
+            }) { report = try $0.shiftLines(shift, sheet: index) }
         } catch let error as StructureEditError {
             throw AIToolError(message(error))
-        } catch let conflict as OriginalFormulasWouldChange {
-            let what = "\(shift.kind == .insert ? "Inserting" : "Deleting") \(shift.axis == .rows ? "rows" : "columns") "
-                + AIFormat.label(shift.axis, shift.lines)
-            throw AIContext.refusal(conflict, sheet: sheet.name, effect: "\(what) would change their references",
-                                    instead: "Insert or delete only below or to the right of the cells they use, or ask the user.")
         }
         context.session.remapHighlights(after: shift, sheetID: sheet.id)
         let workbook = context.workbook

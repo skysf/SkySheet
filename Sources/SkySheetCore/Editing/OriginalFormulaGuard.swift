@@ -33,7 +33,9 @@ extension Workbook {
             guard let after = now[sheet.id] else { continue }
             var changed: [CellAddress] = []
             sheet.cells.forEachUnordered { address, cell in
-                guard let source = cell.formula?.source, after.cells[address]?.formula?.source != source else { return }
+                // 按标量比（ExactText）：String 的 == 把规范等价的两种写法当成一样，原文换了写法也看不出来。
+                guard let source = cell.formula?.source,
+                      after.cells[address]?.formula.map({ ExactText($0.source) }) != ExactText(source) else { return }
                 changed.append(address)
             }
             let name = FormulaRewriter.quotedSheetName(sheet.name)

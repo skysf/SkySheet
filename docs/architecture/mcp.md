@@ -41,6 +41,9 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
    「AI 的 sheet」= `SheetRole.ai`：AI 用 add_sheet 建的，或者用户在页签右键里标的。
 2. **一个工具 = 一步撤销**：改工作簿只走 `AIContext.change` → `AIUndoGrouping.step` → `SheetSession.apply`。撤销管理器按事件
    自动分组，AI 的调用不是事件，不显式分组的话 AI 的每一步堆进同一组、⌘Z 一按全退（SrtFlow 踩过）。包的那一段不许有 await。
+   **要拒绝的在开组之前拒绝**：组开了再抛错，关上的空组会把用户刚 ⌘Z 撤掉的那一步挤出重做栈，撤销栈顶也多一个没名字的空组
+   （PR #15 审查实测）。会改原始 sheet 公式的改名、删表、插删走 `AIContext.changeSparingOriginals`（先在副本上做、查，通过了才开组
+   换上结果），合并超过上限在 `change` 之前查。main 原有的几处拒绝（名字不合规矩、合并会丢内容、插删挤出表外……）还在组里抛，待修。
 3. **AI 的 undo 撤不到用户的活**：`AISession` 记着撤销栈顶上连着几步是 AI 的；用户在 AI 之后改过就拒绝。
 4. **这一轮**：AI 第一次改一个工作簿时存一份快照，30 秒没有新调用算结束；「撤销这一轮」= 换回快照（一步，⌘Z 能回来）。
    改到的格子淡紫高亮（`SheetSession.aiTouched`），下一轮开始时清掉，不存进文件。
