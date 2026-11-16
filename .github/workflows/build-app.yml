@@ -1,0 +1,94 @@
+# 在 CI 上编要装的 App：作者 2026-11-16 定本机不再编 release（本机卡），打包也交给 CI（设计第十一节）。
+# 只手动触发，PR 和 push 都不跑，不白占 macOS 机器（账号同时最多 5 台，和 SrtFlow 共用）。
+#
+# CI 上没有签名身份：sign-app.sh 按它本来的设计退回 ad-hoc 签名，这是预期的。私钥只在作者那台机器的
+# ~/.config/skylu/signing/，绝不放到 CI 上，这里也不放任何证书或 secret。拿下来以后在本机用
+# scripts/signing/sign-app.sh 重签（CLAUDE.md「打包」）。DMG 不上传：里面是 ad-hoc 签的包，不能拿去给人。
+#
+# 用法：
+#   gh workflow run build-app.yml -f version=x.y.z
+#   gh run download <run id> -n SkySheet-x.y.z-arm64-adhoc -D <新目录>   # 得到 SkySheet-x.y.z-arm64-adhoc.zip
+#   ditto -x -k <zip> <新目录>                                            # 解出 SkySheet.app，再在本机签名
+name: build-app
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "App version, x.y.z (digits only)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-app:
+    name: build-app
+    runs-on: macos-26
+    timeout-minutes: 30
+    env:
+      # 输入只经 env 进 run:，脚本里不直接写 ${{ inputs.version }}：那样输入里的引号、$() 会被当成脚本执行。
+      VERSION: ${{ inputs.version }}
+    steps:
+      # 先校验再做别的：版本号会进 Info.plist、文件名和 artifact 名。不回显收到的值，免得日志里出现别的东西。
+      - name: Validate version
+        run: |
+          if [[ ! "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "✗ version 必须是 x.y.z，三段都是数字" >&2
+            exit 1
+          fi
+          echo "version: ${VERSION}"
+
+      - uses: actions/checkout@v4
+
+      - name: Toolchain versions (diagnostics)
+        run: |
+          sw_vers
+          swift --version
+
+      - name: Build app
+        run: scripts/build-app.sh
+
+      # 打包脚本只管组装；这里核对装出来的东西齐不齐，缺了就别上传。
+      - name: Check app structure
+        run: |
+          APP=dist/SkySheet.app
+          PLIST="${APP}/Contents/Info.plist"
+          fail() { echo "✗ $1" >&2; exit 1; }
+          [ -x "${APP}/Contents/MacOS/SkySheet" ] || fail "缺 Contents/MacOS/SkySheet"
+          [ -x "${APP}/Contents/Helpers/skysheet-mcp" ] || fail "缺 Contents/Helpers/skysheet-mcp"
+          PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST}")"
+          [ "${PLIST_VERSION}" = "${VERSION}" ] || fail "Info.plist 的版本号是 ${PLIST_VERSION}，不是 ${VERSION}"
+          # Info.plist 里占位的版本号就是 0.0.0，所以再看打包时间：有值说明 build-app.sh 真的写过 Info.plist。
+          BUILD_DATE="$(/usr/libexec/PlistBuddy -c 'Print :SkySheetBuildDate' "${PLIST}")"
+          [ -n "${BUILD_DATE}" ] || fail "Info.plist 的 SkySheetBuildDate 是空的"
+          ICON="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${PLIST}")"
+          [ -s "${APP}/Contents/Resources/${ICON}.icns" ] || fail "缺图标 Contents/Resources/${ICON}.icns"
+          # 只支持 M 芯片：两个可执行文件都得是 arm64。lipo -archs 一次只收一个文件。
+          for BIN in "${APP}/Contents/MacOS/SkySheet" "${APP}/Contents/Helpers/skysheet-mcp"; do
+            ARCHS="$(lipo -archs "${BIN}")"
+            [ "${ARCHS}" = "arm64" ] || fail "${BIN} 的架构是 ${ARCHS}，不是 arm64"
+          done
+          codesign --verify --deep --strict "${APP}" || fail "签名校验没过"
+          echo "版本 ${PLIST_VERSION}，打包时间 ${BUILD_DATE}，图标 ${ICON}.icns，两个可执行文件都是 arm64"
+          codesign -dv "${APP}" 2>&1 | grep -E '^(Identifier|Signature|TeamIdentifier)=' || true
+          find "${APP}" -maxdepth 3 | sort
+
+      # 用 ditto 打 zip：upload-artifact 不保留文件权限，直接传 .app 下回来可执行位就没了；ditto 的 zip 带着权限，
+      # 本机用 ditto -x -k 解开就是原样的 App 包。
+      - name: Zip app
+        run: ditto -c -k --keepParent dist/SkySheet.app "dist/SkySheet-${VERSION}-arm64-adhoc.zip"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SkySheet-${{ env.VERSION }}-arm64-adhoc
+          path: dist/SkySheet-${{ env.VERSION }}-arm64-adhoc.zip
+          if-no-files-found: error
+          retention-days: 7
+          # 已经是 zip，再压一遍只费时间。
+          compression-level: 0
