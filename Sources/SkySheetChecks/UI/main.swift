@@ -8,6 +8,8 @@ import SkyZip
 let application = NSApplication.shared
 application.setActivationPolicy(.prohibited)
 application.appearance = NSAppearance(named: .aqua)
+// 和正式 App 一样在任何文档之前建好，让子类成为 shared（NSDocument 的 init 会先建出一个普通的）。ui-29 用它。
+_ = WorkbookDocumentController()
 let suites = ["editing", "copy-limit", "theme", "format", "appearance", "locale", "drawing"]
 let requested = CommandLine.arguments.dropFirst().first
 let selected = requested.map { [$0] } ?? suites

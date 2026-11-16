@@ -234,16 +234,32 @@ extension SheetSession {
         for entry in clip.entries {
             guard (0..<clip.rowCount).contains(entry.row), (0..<clip.columnCount).contains(entry.column) else { throw CopyLimit.exceeded }
             var value = entry.value
+            var numberFormat = entry.numberFormat
             if entry.formula == nil, clip.dateSystem != workbook.dateSystem,
                let code = entry.numberFormat, case .number(let number) = value,
-               ValueFormatter.isCalendarDateFormat(code, for: number) {
-                value = .number(number + (clip.dateSystem == .from1900 ? -1462 : 1462))
+               let dateCode = ValueFormatter.calendarDateSection(code, for: number) {
+                let shifted = number + (clip.dateSystem == .from1900 ? -1462 : 1462)
+                // 目标系统里没有这一天就不换算、原样粘贴（设计第十五节）；换算了，常规格只套生效的日期段：
+                // 整份格式跟过去，换算后的数会按条件、正负零重新选段，日期变回数字，复制回去也换不回来。
+                if Self.isCalendarDay(shifted, in: workbook.dateSystem) {
+                    value = .number(shifted)
+                    numberFormat = dateCode
+                }
             }
             entries[CellAddress(row: entry.row, column: entry.column)] = PasteCell(
-                input: entry.formula.map(CellInput.formula) ?? .value(value), numberFormat: entry.numberFormat)
+                input: entry.formula.map(CellInput.formula) ?? .value(value), numberFormat: numberFormat)
         }
         try paste(rows: clip.rowCount, columns: clip.columnCount, entries: entries,
                   from: CellAddress(row: clip.originRow, column: clip.originColumn), actionName: actionName)
+    }
+
+    /// 换算后的序列号在这个日期系统里是不是真有的一天：1904 不早于 1904-01-01；1900 不是「1900-01-00」，
+    /// 也不是 Excel 虚构的 1900-02-29。
+    private static func isCalendarDay(_ serial: Decimal, in system: DateSystem) -> Bool {
+        switch system {
+        case .from1904: serial >= 0
+        case .from1900: serial >= 1 && !(serial >= 60 && serial < 61)
+        }
     }
 
     private struct PasteCell {

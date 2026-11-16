@@ -72,6 +72,34 @@ func closeDecisionChecks() {
         check(!document.isDocumentEdited, "equivalent parsed value stays clean")
         checkEqual(session.revision, 0, "equivalent parsed value makes no revision")
     }
+    group("ui-29: quitting commits pending editor text before documents are filtered") {
+        // 退出时系统先问 hasEditedDocuments，只对标脏的文档调 canClose；只有编辑框里有字的文档必须在这一问之前提交。
+        // 走 Objective-C 派发（静态类型是 NSDocumentController），和 AppKit 调它的方式一样。
+        let controller: NSDocumentController = NSDocumentController.shared
+        check(controller is WorkbookDocumentController, "shared document controller is the subclass (created before any document)")
+        let address = CellAddress(a1: "A1")!
+        for text in ["", "typed before quit"] {
+            let document = WorkbookDocument()
+            let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))
+            document.session = session
+            session.undoManager = document.undoManager
+            controller.addDocument(document)
+            defer { controller.removeDocument(document) }
+            session.beginEditing(.typing, text: text)
+            let changed = !text.isEmpty
+            checkEqual(controller.hasEditedDocuments, changed, "quit sees pending input [\(text)]")
+            check(session.editing == nil, "pending editor is committed before quit decides [\(text)]")
+            checkEqual(document.isDocumentEdited, changed, "dirty state matches pending input [\(text)]")
+            checkEqual(document.undoManager?.groupingLevel, 0, "undo group closed synchronously [\(text)]")
+            guard changed, document.undoManager?.groupingLevel == 0 else {
+                check(document.undoManager?.canUndo == false, "unchanged input leaves no undo step")
+                continue
+            }
+            checkEqual(session.sheet.cells[address]?.value, .text(text), "pending text is in the workbook")
+            document.undoManager?.undo()
+            check(!document.isDocumentEdited && document.undoManager?.canUndo == false, "one undo returns to clean")
+        }
+    }
 }
 
 /// 先记录系统真正读到的值，只对当前测试文档回答 false 以抑制保存框；不替换提交、撤销和 canClose。

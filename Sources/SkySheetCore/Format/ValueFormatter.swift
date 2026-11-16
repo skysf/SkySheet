@@ -54,6 +54,16 @@ public enum ValueFormatter {
         FormatCodeCache.shared.parsed(code).section(for: number).section.isCalendarDate
     }
 
+    /// 源值当时生效的那一段是日历日期时，返回只有这一段、去掉条件的格式原文；否则 nil。
+    /// 跨日期系统粘贴到常规格用它：整份格式跟过去，换算后的数会按条件和正负零重新选段，日期就变回数字。
+    public static func calendarDateSection(_ code: String, for number: Decimal) -> String? {
+        let format = FormatCodeCache.shared.parsed(code)
+        let index = format.sectionIndex(for: number).index
+        guard format.sections[index].isCalendarDate else { return nil }
+        // parse 就是按 splitSections 的结果逐段解析的，下标一一对应。
+        return FormatParser.removingCondition(FormatParser.splitSections(code)[index])
+    }
+
     /// 这个格式（第一段）有几个 %：每个乘一次 100。存 csv 时百分比写成「5%」，读回来还是同一个数。
     public static func percentCount(_ code: String) -> Int {
         FormatCodeCache.shared.parsed(code).sections.first?.percentCount ?? 0

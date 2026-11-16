@@ -161,9 +161,11 @@ func sessionEditingChecks() {
             for row in 0..<4 {
                 let cell = target.sheet.cells[CellAddress(row: row, column: 0)]!
                 let sourceValue = row == 3 ? Decimal(string: "0.5")! : row == 1 ? Decimal(string: "61.5")! : Decimal(string: "45000.5")!
-                let expected = sourceValue + (row == 0 || row == 3 ? 0 : sourceSystem == .from1900 ? -1462 : 1462)
+                // 1900 的 61.5（1900-03-01）落在 1904 纪元之前：不换算，原样粘贴（设计第十五节）。
+                let early = row == 1 && sourceSystem == .from1900
+                let expected = sourceValue + (row == 0 || row == 3 || early ? 0 : sourceSystem == .from1900 ? -1462 : 1462)
                 checkEqual(cell.value, .number(expected), "serial converted only for calendar date/time formats")
-                if row > 0 {
+                if row > 0, !early {
                     let code = table.formatCode(forStyle: row)
                     checkEqual(ValueFormatter.format(cell.value, code: code, dateSystem: targetSystem).text, ValueFormatter.format(.number(sourceValue), code: code, dateSystem: sourceSystem).text, "displayed day/time survives cross-system paste")
                 }
