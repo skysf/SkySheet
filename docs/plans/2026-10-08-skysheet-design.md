@@ -51,7 +51,7 @@ SkySheet 是一个**给 AI 用的**轻量 macOS 表格工具：
 | 17 | AI 客户端 | Claude Code 和 Claude 桌面版的普通聊天（9.5 节） | 协议层是通用的。第一版只接 Claude Code；2026-10-09 作者要桌面版的普通聊天（不是它的 Code 页，那里跑的就是 Claude Code）也能用。Codex 等以后要了再加 |
 | 18 | 敏感信息 | 不做脱敏 | 作者确认数据里没有身份证号、手机号这类信息 |
 | 19 | 测试数据 | 只提交 `Fixtures/loan.xlsx`（从作者表格里抽出的 Loan 表，来历见 `Fixtures/README.md`）；`SampleData/` 永不入库 | 仓库是公开的；真实表格里还有房产、装修、理财等个人信息 |
-| 20 | 仓库流程 | main 禁止直推，走 PR，CI 绿了才合；CI 只占 1 台 macOS 机器 | 和 SrtFlow 一样；免费档同时最多 5 台 macOS，是整个账号共用的 |
+| 20 | 仓库流程 | main 禁止直推，走 PR，CI 绿了才合；CI 一个 PR 一轮最多占 2 台 macOS 机器（2026-11-16 起，原来是 1 台；第十一节） | 和 SrtFlow 一样；免费档同时最多 5 台 macOS，是整个账号共用的。2026-11-16 作者定本机不跑全量自检、CI 多用几台 |
 | 21 | 代码 | 按职责拆文件，一个文件大约 500 行就考虑拆，不设守卫脚本；多用泛型和共用内核，不复制第二份 | 作者定：方便维护、效率高就好，不必像 SrtFlow 那么严 |
 | 22 | 语言 | 界面先只做英文；注释和文档用中文；给模型看的 MCP 文字用英文 | 作者 2026-10-08 定：先做英文版，中文以后再加。界面文字一律用 `String(localized:)`、开发语言英文，以后加中文只是补翻译。本机只有命令行工具，没有编 String Catalog（.xcstrings）的 xcstringstool（2026-10-08 实测），所以翻译照 SrtFlow 用 `.lproj/Localizable.strings`。本文引号里的界面文字只写意思，实际是英文 |
 | 23 | AI 署名 | 每张 AI 的 sheet 记下是哪个 AI 建的、最后是谁改的；页签上显示 AI 的名字（如 Claude）；存进文件，下次打开还在；不写进 sheet 名 | 作者要求；以后会让用户接别的 AI，得分得清是谁写的。不进 sheet 名：名字会变长（Excel 限 31 个字符），换了 AI 再改时名字里的署名也会过时。做法见 9.3 节 |
@@ -820,8 +820,18 @@ Tools by need:
     ad-hoc 签名的每个版本都算新 App，每次升级都要重新给。
   - 作者以后别的个人工具也用这一把证书（bundle id 不同，权限各算各的）。SrtFlow 那把不动。
 - CI（`.github/workflows/checks.yml`）：每个 PR 和合进 main 之后跑 `scripts/check-all.sh`。用 `macos-26`
-  （和本机工具链一致）。只开 1 个 job：免费档同时最多 5 台 macOS，整个账号共用，SrtFlow 一跑就占满。同一个 PR
-  推了新提交就取消旧的那一轮。签名私钥不在 CI 上，CI 只编译和自检。
+  （和本机工具链一致）。同一个 PR 推了新提交就取消旧的那一轮，main 上的每一次都跑完。签名私钥不在 CI 上。
+  - 起初只开 1 个 job：免费档同时最多 5 台 macOS，整个账号共用，SrtFlow 一跑就占满。
+  - 2026-11-16 作者定本机不再跑全量自检（本机卡），CI 多用几台：拆成两台 macOS 并行，`core`（`check-all.sh core`：
+    编译、SkySheetChecks、SampleData 守卫）和 `ui`（`check-all.sh ui`：UI 自检，自己编一份在 `.build/ui-checks`），
+    两边编的东西不一样，缓存各用各的 key。一个 PR 一轮最多占 2 台，给 SrtFlow 留 3 台。
+  - 保护规则要的 `check-all` 改成汇总 job：跑在 ubuntu 上不占 macOS 名额，`needs` 两边、`if: always()`，两边都是
+    success 才过。不用 always() 的话，前面一失败它就被跳过，GitHub 把「跳过」的必过检查当成通过，就是假绿。
+  - SkySheetChecks 不再分片：要改自检程序本身，只省几十秒，还要多占 SrtFlow 的名额。
+- 打包也能在 CI 上编（`.github/workflows/build-app.yml`，2026-11-16）：只手动触发（`gh workflow run build-app.yml -f version=x.y.z`），
+  PR 和 push 不跑。版本号先按 `x.y.z` 校验、只经环境变量进脚本（防注入）。CI 上没有签名身份，`sign-app.sh` 按设计
+  退回 ad-hoc；产物用 `ditto` 打成 zip 传成 artifact（保留 7 天），拿下来在本机用 `sign-app.sh` 重签。DMG 不传：
+  里面是 ad-hoc 签的包，不能拿去给人。证书、私钥和任何 secret 都不进 CI。
 - 仓库规则：main 只能经 PR 合入；M1 有了 CI 之后，再把 `check-all` 设成必须通过。
 - 发版：本机 `build-app.sh` 打包签名 → `gh release` 上传 DMG。
 
@@ -1011,3 +1021,7 @@ M6–M10 的顺序是作者 2026-11-16 定的：改名要动约 120 个文件，
 - 2026-11-16 PR #15 审查返工：被拒绝的改名、删表、插删行列和超过上限的合并，以前在开了撤销组以后才拒绝，关上的空组
   清掉了用户的重做历史。改成先在副本上做、查原始 sheet 的公式，合并先查面积，都在开组之前拒绝，撤销和重做栈不动
   （`docs/architecture/mcp.md` 第三节第 2 条）。整轮撤销被拒本来就不开组，自检确认不动。main 原有的几处组里拒绝不在这次范围。
+- 2026-11-16 CI 用足：作者说本机卡，测试放 CI，CI 开到最大。自检拆成两台 macOS 并行（`check-all.sh core` / `ui`，不带参数
+  照旧跑全部），保护规则要的 `check-all` 改成 ubuntu 上的汇总 job，两边都 success 才过，不会因为被跳过而假绿；一个 PR
+  一轮最多占 2 台，账号上限 5 台和 SrtFlow 共用，所以不再把 SkySheetChecks 分片。另加手动触发的 `build-app.yml`，在 CI 上编
+  ad-hoc 签名的 App 传成 zip，本机下载后用 `sign-app.sh` 重签，私钥不离开本机（第 20 条、第十一节）。

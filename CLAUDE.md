@@ -18,10 +18,18 @@
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
 - 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，耗时随合成表负载与机器变化）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
+  CI 把它拆成两台 macOS 并行跑：`scripts/check-all.sh core`（编译、SkySheetChecks、SampleData 守卫）和
+  `scripts/check-all.sh ui`（UI 自检）；汇总的 `check-all` 两边都 success 才绿。本机照旧不带参数跑全部。
   后台 UI 自检用 `nice -n 10 scripts/check-ui.sh [editing|copy-limit|theme|format|appearance|locale|drawing|ai]`，不给套件就全跑。
   在 `Sources/SkySheetChecks/UI/` 加断言，再到唯一套件入口 `UI/main.swift` 注册；SPM 换入口编译同一份 App 源文件，
   不启动文档恢复或 MCP、不接系统剪贴板。
 - 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
+  本机不编的做法（`.github/workflows/build-app.yml`，只能手动触发）：
+  1. `gh workflow run build-app.yml -f version=x.y.z`；
+  2. 跑完 `gh run download <run id> -n SkySheet-x.y.z-arm64-adhoc -D 新目录` 拿到 zip，`ditto -x -k <zip> 新目录` 解开；
+  3. 本机 `scripts/signing/sign-app.sh <解出的 SkySheet.app>` 签名：CI 上没有私钥，那份是 ad-hoc 签的，私钥只在本机；
+  4. 签完核对 `codesign --verify --deep --strict <App>`，`codesign -dvv <App>` 的 Authority 是「Skylu Signing」。
+  CI 不传 DMG（里面是 ad-hoc 签的包，不能给人）；发版的 DMG 照旧本机 `build-app.sh` 出（设计第十一节）。
 - 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5] [--appearance aqua|dark]`，
   把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。截图、测速只写新文件，输出路径已经有东西就拒绝。
 - 测速（设计 8.2 节「性能」）：`swift build -c release --arch arm64 --product SkySheet` 以后
