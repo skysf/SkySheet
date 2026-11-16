@@ -270,19 +270,28 @@ enum AIWriteTools {
         let position = try arguments.int("move_to")
         let delete = try arguments.bool("delete") ?? false
         guard newName != nil || position != nil || delete else { throw AIToolError("Give rename, move_to or delete.") }
+        let name = context.workbook.sheets[index].name
         do {
+            // 改名、删表会把原始 sheet 里指着它的公式一起改掉：那样就整个不做（设计 9.3 节第 7 条）。
             try context.change(String(localized: "AI: Edit Sheet")) { workbook in
-                if delete {
-                    try workbook.deleteSheet(index)
-                    return
+                try workbook.editSparingOriginalFormulas { workbook in
+                    if delete {
+                        try workbook.deleteSheet(index)
+                        return
+                    }
+                    if let newName { try workbook.renameSheet(index, to: newName.trimmingCharacters(in: .whitespaces)) }
+                    if let position { workbook.moveSheet(from: index, to: position - 1) }
                 }
-                if let newName { try workbook.renameSheet(index, to: newName.trimmingCharacters(in: .whitespaces)) }
-                if let position { workbook.moveSheet(from: index, to: position - 1) }
             }
         } catch let SheetEditError.invalidName(problem) {
             throw AIToolError(SheetCommands.message(for: problem))
         } catch SheetEditError.lastVisibleSheet {
             throw AIToolError("That is the last visible sheet; a workbook must keep one.")
+        } catch let conflict as OriginalFormulasWouldChange {
+            throw AIContext.refusal(conflict, sheet: name,
+                                    effect: delete ? "Deleting \(name) would turn them into #REF!"
+                                                   : "Renaming \(name) would rewrite them",
+                                    instead: delete ? "Keep \(name), or ask the user." : "Keep the name, or ask the user.")
         }
         return .ok(["sheets": .array(context.workbook.sheets.map { .string($0.name) })], changed: true)
     }

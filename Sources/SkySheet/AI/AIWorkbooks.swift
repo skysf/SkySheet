@@ -34,6 +34,16 @@ struct AIContext {
         }
     }
 
+    /// 改名、删表、插删行列会连带改原始 sheet 的公式时的拒绝（设计 9.3 节第 7 条）：哪几格、会怎样、可以怎么办。
+    static func refusal(_ conflict: OriginalFormulasWouldChange, sheet: String, effect: String, instead: String) -> AIToolError {
+        let shown = conflict.cells.prefix(10).joined(separator: ", ")
+        let cells = conflict.cells.count > 10 ? "\(shown) and \(conflict.cells.count - 10) more" : shown
+        return AIToolError("""
+            Formulas in original sheets refer to \(sheet): \(cells). \(effect), and original sheets are read-only for \
+            you, so nothing changed. \(instead)
+            """)
+    }
+
     /// 改工作簿：开这一轮、一步撤销、记下改到的格子（高亮）。`cells` 在改完以后算（新建的 sheet 才有编号）。
     func change(_ actionName: String, _ edit: (inout Workbook) throws -> Void,
                 cells: (Workbook) -> [Int: Set<CellAddress>] = { _ in [:] }) throws {
