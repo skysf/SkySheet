@@ -22,12 +22,18 @@ extension XMLScanHandler {
 ///
 /// 属性：没有前缀的按名字；关系命名空间里的（`r:id`）统一叫 `r:id`；别的命名空间里的保持文件里的写法（`x14ac:dyDescent`），
 /// 不会和没有前缀的同名属性撞上，也不会冒充它。
+///
+/// `mc:AlternateContent`（标记兼容，ECMA-376 第 3 部分）照兼容规则选一支：第一个 Requires 里的命名空间都认识的
+/// `mc:Choice`，没有就 `mc:Fallback`；选中那一支里的东西按 AlternateContent 原来的位置读，别的支不读。以前整棵跳过，
+/// Fallback 里主命名空间的格子、文字就读丢了（PR #17 第一轮审查第 1 条）。保存时它在 sheet 的顶层原文照抄，没变。
 enum XMLScanner {
     /// 关系命名空间（过渡版和严格版）：workbook.xml 的 `<sheet r:id>` 靠它连到 sheet 部件。
     static let relationshipNamespaces: Set<String> = [
         "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
         "http://purl.oclc.org/ooxml/officeDocument/relationships",
     ]
+    /// 标记兼容（mc:AlternateContent、mc:Choice、mc:Fallback）的命名空间。
+    static let compatibilityNamespace = "http://schemas.openxmlformats.org/markup-compatibility/2006"
 
     static func scan(_ data: Data, part: String, handler: some XMLScanHandler) throws(XLSXError) {
         let delegate = Delegate(handler: handler)
@@ -48,6 +54,16 @@ enum XMLScanner {
     }
 
     private final class Delegate: NSObject, XMLParserDelegate {
+        /// 没跳过的每一层元素。
+        private enum Frame {
+            /// 交给了 handler：结束时也交给它。
+            case delivered
+            /// mc:AlternateContent，`chosen` 是已经选了一支（后面的 Choice、Fallback 都跳过）。
+            case alternatives(chosen: Bool)
+            /// 选中的那一支：它自己不交给 handler，里面的照常读。
+            case branch
+        }
+
         private let handler: any XMLScanHandler
         private let otherNamespaces: Set<String>
         /// 每层元素直接包含的文字。`<t xml:space="preserve"> </t>` 里的空格也要原样留着。跳过的元素也占一层：
@@ -57,6 +73,7 @@ enum XMLScanner {
         private var mainNamespace: String?
         /// 正在跳过的扩展有几层深：不是 0 就不交给 handler。
         private var skipping = 0
+        private var frames: [Frame] = []
         /// 前缀 → 命名空间，按声明的先后压栈（里层的声明盖住外层的）。
         private var prefixes: [String: [String]] = [:]
 
@@ -82,11 +99,34 @@ enum XMLScanner {
                 skipping += 1
                 return
             }
+            if namespace == XMLScanner.compatibilityNamespace {
+                switch (elementName, frames.last) {
+                case ("AlternateContent", _):
+                    frames.append(.alternatives(chosen: false))
+                case ("Choice", .alternatives(chosen: false)?) where understands(attributeDict["Requires"]),
+                     ("Fallback", .alternatives(chosen: false)?):
+                    frames[frames.count - 1] = .alternatives(chosen: true)
+                    frames.append(.branch)
+                default:
+                    skipping = 1
+                }
+                return
+            }
             guard namespace == mainNamespace || otherNamespaces.contains(namespace), elementName != "extLst" else {
                 skipping = 1
                 return
             }
+            frames.append(.delivered)
             handler.start(elementName, attributes: attributes(attributeDict))
+        }
+
+        /// Choice 的 Requires：几个前缀，指的命名空间都要认识（这个部件的主命名空间、另外要读的）。
+        private func understands(_ requires: String?) -> Bool {
+            let required = (requires ?? "").split(whereSeparator: \.isWhitespace)
+            return !required.isEmpty && required.allSatisfy { prefix in
+                guard let namespace = prefixes[String(prefix)]?.last else { return false }
+                return namespace == mainNamespace || otherNamespaces.contains(namespace)
+            }
         }
 
         func parser(_ parser: XMLParser, foundCharacters string: String) {
@@ -108,6 +148,7 @@ enum XMLScanner {
                 skipping -= 1
                 return
             }
+            guard case .delivered? = frames.popLast() else { return }
             handler.end(elementName, text: text)
         }
 
