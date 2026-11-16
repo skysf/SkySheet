@@ -2,9 +2,9 @@ import Foundation
 import SkySheetCore
 
 /// 生成的表格版式与固定期望：表头行、合计行、列名、某一列的 describe 统计和 SQL 统计。
-/// 期望就是 main 的输出（2026-11-16 和审查者留下的 main 版式输出逐例核对过）。和 main 不同的只有末行是
-/// 横向求和、常量求和的记录（不再当合计删掉），用例旁边写了。main 认不出两行表头、手填数字的合计行，
-/// 期望也照 main 写：认表头、认合计要改得另行设计、由作者拍板，改的时候先在这里改期望，不能悄悄变。
+/// 期望全是 main 的输出（2026-11-16 和审查者留下的 main 版式输出逐例核对过），包括 main 的已知限制：
+/// 认不出两行表头、手填数字的合计行，末行横向求和、常量求和的记录会被当成合计删掉（设计 9.7 节）。
+/// 认表头、认合计要改得另行设计、由作者拍板，改的时候先在这里改期望，不能悄悄变。
 struct TableLayoutCase {
     var name: String
     var cells: [String: String]
@@ -85,7 +85,8 @@ func tableLayoutCases() -> [TableLayoutCase] {
                    "SUBTOTAL(9,B2:B4)", "SUBTOTAL(109,B1:B4)", "SUBTOTAL(9;B2:B4)", "SUM(B2:B2,B3:B4)"] {
         append("review-formula-\(source)", ["B5": "=" + source])
     }
-    for (source, value) in [("SUM(B3:B4)", 500), ("SUM(B2:B3)", 300), ("SUM(Other!B2:B4)", 90),
+    // 常量求和、只引本行的求和也一样当合计删掉：main 的已知限制。
+    for (source, value) in [("SUM(B3:B4)", 500), ("SUM(B2:B3)", 300), ("SUM(Other!B2:B4)", 90), ("SUM(1,2)", 3), ("SUM(C5:D5)", 0),
                             ("SUBTOTAL(1,B2:B4)", 200), ("SUM(B2,3)", 103), ("SUM(B2:B4,B2:B4)", 1200), ("SUM(B1:B3)", 300)] {
         append("review-retain-\(source)", ["B5": "=" + source],
                cached: source == "SUBTOTAL(1,B2:B4)" ? ("B5", source, Decimal(value)) : nil)
@@ -104,9 +105,6 @@ func tableLayoutCases() -> [TableLayoutCase] {
             append("review-structured-\(code)-\(label)", ["A5": label], cached: ("B5", "SUBTOTAL(\(code),表1[金额])", 600))
         }
     }
-    // 和 main 不同：常量求和、只引用本行的求和算的是这一行自己的数，保留成记录（main 当合计删掉）。
-    append("review-retain-SUM(1,2)", ["B5": "=SUM(1,2)"], rows: 4, sum: 603, total: nil)
-    append("review-retain-SUM(C5:D5)", ["B5": "=SUM(C5:D5)"], rows: 4, sum: 600, total: nil)
     // 公式不以 SUM( 开头、手填的数字，main 都不当合计，算一条记录。
     append("review-round-sum", ["A5": "合计：", "B5": "=ROUND(SUM(B2:B4),2)"], rows: 4, sum: 1200, total: nil)
     append("precision-rounded-total", ["A5": "合计", "B5": "600.004"], rows: 4, sum: Decimal(string: "1200.004")!,
@@ -141,11 +139,12 @@ func tableLayoutCases() -> [TableLayoutCase] {
             column: 1, header: 0, rows: total == nil ? 3 : 2, sum: Decimal(total == nil ? 3 + value : 3), total: total,
             names: ["项目", "金额"], cached: source == "SUM (B3:B3)+1" ? ("B4", source, 3) : nil))
     }
-    // 和 main 不同（PR #12 最初的问题）：横向逐行求和、常量求和的最后一条记录不再被删。
+    // main 的已知限制（排查最初发现的问题，以后单独设计）：横向逐行求和、常量求和的最后一条记录被当成合计删掉，
+    // 乙只剩甲的 3，Bob 删掉后 Jan 只剩 1。
     cases.append(TableLayoutCase(name: "review-constant-row-sums", cells: ["A1":"项目", "B1":"金额", "A2":"甲", "B2":"=SUM(1,2)", "A3":"乙", "B3":"=SUM(3,4)"],
-        column: 1, header: 0, rows: 2, sum: 10, total: nil, names: ["项目", "金额"]))
+        column: 1, header: 0, rows: 1, sum: 3, total: 2, names: ["项目", "金额"]))
     cases.append(TableLayoutCase(name: "review-horizontal-row-sums", cells: ["A1":"Name", "B1":"Jan", "C1":"Feb", "D1":"Total", "A2":"Alice", "B2":"1", "C2":"2", "D2":"=SUM(B2:C2)", "A3":"Bob", "B3":"3", "C3":"4", "D3":"=SUM(B3:C3)"],
-        column: 1, header: 0, rows: 2, sum: 4, total: nil, names: ["Name", "Jan", "Feb", "Total"]))
+        column: 1, header: 0, rows: 1, sum: 1, total: 2, names: ["Name", "Jan", "Feb", "Total"]))
     // 范围从标题行开始的 SUM 照样是合计。
     let titled = ["A1":"Report", "A2":"项目", "B2":"金额", "A3":"甲", "B3":"100", "A4":"乙", "B4":"200", "B5":"=SUM(B1:B4)"]
     cases.append(TableLayoutCase(name: "range-starts-at-title", cells: titled, column: 1, header: 1, rows: 2, sum: 300, total: 4,
