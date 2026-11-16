@@ -21,8 +21,11 @@ public struct CivilDate: Hashable, Comparable, Sendable, CustomStringConvertible
     }
 
     /// 本机时区的今天。
-    public static func today(calendar: Calendar = .current) -> CivilDate {
-        let parts = calendar.dateComponents([.year, .month, .day], from: Date())
+    public static func today(at date: Date = Date(), calendar: Calendar = Calendar(identifier: .gregorian)) -> CivilDate {
+        // 本机的时区决定哪一天，系统选择的佛历等历法不能改变 Excel 的公历年份。
+        var gregorian = Calendar(identifier: .gregorian)
+        gregorian.timeZone = calendar.timeZone
+        let parts = gregorian.dateComponents([.year, .month, .day], from: date)
         return CivilDate(year: parts.year ?? 1970, month: parts.month ?? 1, day: parts.day ?? 1)
     }
 }
@@ -33,7 +36,7 @@ public struct CivilDate: Hashable, Comparable, Sendable, CustomStringConvertible
 /// 我们照抄，否则 1900 年 3 月以后的每个日期都和 Excel、腾讯文档差一天。
 public enum DateSerial {
     public static func civilDate(fromSerial serial: Int, system: DateSystem) -> CivilDate? {
-        guard serial >= 0 else { return nil }
+        guard serial >= 0, serial <= maximumSerial(system: system) else { return nil }
         switch system {
         case .from1904:
             return civil(fromDays: epoch1904 + serial)
@@ -47,8 +50,8 @@ public enum DateSerial {
     /// 序列号写成 ISO 的样子：2025-12-01；带时刻的 2025-12-01 10:30:00（四舍五入到秒）；不到一天的只有时刻。
     /// 存 csv、导出给 Python、SQL 查询里的日期都用它。负数和不存在的日子返回 nil。
     public static func isoText(_ serial: Decimal, system: DateSystem) -> String? {
-        guard serial >= 0 else { return nil }
-        var seconds = Int(DecimalMath.double(serial * 86_400).rounded())
+        guard serial >= 0, serial < Decimal(maximumSerial(system: system) + 1),
+              var seconds = DecimalMath.int(DecimalMath.round(serial * 86_400, scale: 0)) else { return nil }
         let days = seconds / 86_400
         seconds %= 86_400
         let time = String(format: "%02d:%02d:%02d", seconds / 3600, seconds / 60 % 60, seconds % 60)
@@ -66,6 +69,11 @@ public enum DateSerial {
         case .from1900:
             return days >= march1st1900 ? days - epoch1900 + 1 : days - epoch1900
         }
+    }
+
+    /// Excel 日期只能到 9999 年；先限制序列号，后面的整数换算才不会被坏文件溢出。
+    public static func maximumSerial(system: DateSystem) -> Int {
+        system == .from1900 ? 2_958_465 : 2_957_003
     }
 
     /// 1 = 星期日 … 7 = 星期六（Excel 的 WEEKDAY 默认就是这样）。

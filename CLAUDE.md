@@ -12,7 +12,7 @@
 ## 常用命令
 
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
-- 自检：`scripts/check-all.sh`（本机和 CI 跑同一个；已有构建约 30–60 秒，首次还需编译约 1–2 分钟）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
+- 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，耗时随合成表负载与机器变化）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
   后台 UI 自检用 `nice -n 10 scripts/check-ui.sh [editing|copy-limit|theme|format|appearance|locale|drawing]`，不给套件就全跑。
   在 `Sources/SkySheetChecks/UI/` 加断言，再到唯一套件入口 `UI/main.swift` 注册；SPM 换入口编译同一份 App 源文件，

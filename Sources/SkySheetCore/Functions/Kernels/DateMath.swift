@@ -5,13 +5,18 @@ enum DateMath {
     /// DATE(year, month, day) 的规则：0–1899 年加 1900；月、日可以超出范围，自动进位
     /// （第 13 个月是下一年 1 月，第 0 天是上个月最后一天）。在序列号上加天数，所以 DATE(1900,2,29) 也和 Excel 一样是 60。
     static func serial(year: Int, month: Int, day: Int, system: DateSystem) throws(CellError) -> Int {
+        guard (0...9999).contains(year) else { throw CellError.num }
         let fullYear = (0...1899).contains(year) ? year + 1900 : year
-        let months = fullYear * 12 + (month - 1)
+        let (monthOffset, underflow) = month.subtractingReportingOverflow(1)
+        let (months, overflow) = (fullYear * 12).addingReportingOverflow(monthOffset)
+        guard !underflow, !overflow, months >= 1900 * 12, months < 10000 * 12 else { throw CellError.num }
         let (normalizedYear, normalizedMonth) = splitMonths(months)
         guard (1900...9999).contains(normalizedYear) else { throw CellError.num }
         let first = DateSerial.serial(from: CivilDate(year: normalizedYear, month: normalizedMonth, day: 1), system: system)
-        let result = first + day - 1
-        guard result >= 0 else { throw CellError.num }
+        let (sum, dayOverflow) = first.addingReportingOverflow(day)
+        let (result, subtractionOverflow) = sum.subtractingReportingOverflow(1)
+        guard !dayOverflow, !subtractionOverflow, result >= 0,
+              result <= DateSerial.maximumSerial(system: system) else { throw CellError.num }
         return result
     }
 
@@ -23,7 +28,7 @@ enum DateMath {
     /// EDATE：加 n 个月，日子超过那个月的天数就取月底（1 月 31 日加一个月是 2 月 28 / 29 日）。
     static func addMonths(_ serial: Int, months: Int, system: DateSystem) throws(CellError) -> Int {
         let date = try civil(serial, system: system)
-        let (year, month) = splitMonths(date.year * 12 + date.month - 1 + months)
+        let (year, month) = try shiftedMonth(date, by: months)
         guard (1900...9999).contains(year) else { throw CellError.num }
         let day = min(date.day, DateSerial.daysInMonth(year: year, month: month))
         return DateSerial.serial(from: CivilDate(year: year, month: month, day: day), system: system)
@@ -32,7 +37,7 @@ enum DateMath {
     /// EOMONTH：加 n 个月之后那个月的最后一天。
     static func endOfMonth(_ serial: Int, months: Int, system: DateSystem) throws(CellError) -> Int {
         let date = try civil(serial, system: system)
-        let (year, month) = splitMonths(date.year * 12 + date.month - 1 + months)
+        let (year, month) = try shiftedMonth(date, by: months)
         guard (1900...9999).contains(year) else { throw CellError.num }
         return DateSerial.serial(from: CivilDate(year: year, month: month,
                                                  day: DateSerial.daysInMonth(year: year, month: month)), system: system)
@@ -63,6 +68,12 @@ enum DateMath {
         default:
             throw CellError.num
         }
+    }
+
+    private static func shiftedMonth(_ date: CivilDate, by offset: Int) throws(CellError) -> (Int, Int) {
+        let (months, overflow) = (date.year * 12 + date.month - 1).addingReportingOverflow(offset)
+        guard !overflow, months >= 1900 * 12, months < 10000 * 12 else { throw CellError.num }
+        return splitMonths(months)
     }
 
     /// 从 0 年 1 月起数的月数 → (年, 月)，负数也对。

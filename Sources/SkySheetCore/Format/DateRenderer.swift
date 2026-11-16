@@ -11,11 +11,13 @@ enum DateRenderer {
         if section.isCalendarDate, system == .from1904, value < 0, value >= -1462 {
             return render(value + 1462, section: section, system: .from1900)
         }
-        guard value >= 0 else { return invalid }
+        guard value >= 0, value < Decimal(DateSerial.maximumSerial(system: system) + 1) else { return invalid }
         let subsecondDigits = section.tokens.lazy.compactMap { token -> Int? in
             if case .date(.subsecond(let digits)) = token { return digits }
             return nil
         }.first ?? 0
+        // 一天的最小刻度必须放得进 Int；先拒绝精度，再做 10ⁿ 和乘法，坏格式不能触发 trap。
+        guard (0...14).contains(subsecondDigits) else { return invalid }
         let unitsPerSecond = Int(pow(10, Double(subsecondDigits)))
         let unitsPerDay = 86_400 * unitsPerSecond
 

@@ -6,8 +6,12 @@ enum NumberRenderer {
         var magnitude = abs(value)
         for _ in 0..<section.percentCount { magnitude *= 100 }
         for _ in 0..<section.thousandsScale { magnitude /= 1000 }
+        // 源数有限不代表缩放后仍有限；所有数字排版共用这道边界，避免 NaN 进入整数转换。
+        guard !magnitude.isNaN else { return DateRenderer.invalid }
         let body: String
-        if let exponentIndex = section.tokens.firstIndex(where: \.isExponent) {
+        if let slash = section.tokens.firstIndex(of: .fractionSlash) {
+            body = FractionRenderer.render(magnitude, tokens: section.tokens, slash: slash)
+        } else if let exponentIndex = section.tokens.firstIndex(where: \.isExponent) {
             body = scientific(magnitude, tokens: section.tokens, exponentIndex: exponentIndex)
         } else {
             body = fixed(magnitude, tokens: section.tokens, groupsThousands: section.groupsThousands)
@@ -65,6 +69,8 @@ enum NumberRenderer {
                 // 格式里没有整数占位符（如 ".00"）时，整数部分照样要显示出来。
                 result += (integerSlots.isEmpty ? integerDigits : "") + "."
             case .decimalPoint: result += "."
+            case .fractionSlash: result += "/"
+            case .fixedDenominator(let text): result += text
             case .percent: result += "%"
             case .general: result += GeneralFormat.render(magnitude)
             case .comma, .text, .date, .exponent: break
