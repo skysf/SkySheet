@@ -14,9 +14,14 @@ func lockedFormulaChecks() {
 
     group("ui-32: the master of a shared formula SkySheet can't work out can't be changed") {
         let session = SheetSession(workbook: try XLSXReader.read(try sharedFormulaLockWorkbook()))
+        var refusal: LockedFormulaChange?
+        session.refusedChange = { refusal = $0 }
         let before = session.workbook
         type(session, 7, at: "B1")
         check(session.workbook == before, "typing over B1 is refused")
+        checkEqual(refusal, LockedFormulaChange(sheet: "Data", cell: CellAddress(a1: "B1")!,
+                                                reason: .sharedFormula(follower: CellAddress(a1: "B2")!)),
+                   "the window is told which cell and why")
         session.apply("Clear") { $0.clearContents(CellRange(a1: "B1:B3")!, sheet: 0) }
         check(session.workbook == before, "clearing B1:B3 is refused (B1 is in it)")
         type(session, 9, at: "B2")
@@ -33,9 +38,13 @@ func lockedFormulaChecks() {
 
     group("ui-33: a data table can't be changed in part") {
         let session = SheetSession(workbook: try XLSXReader.read(try dataTableLockWorkbook()))
+        var refusal: LockedFormulaChange?
+        session.refusedChange = { refusal = $0 }
         let before = session.workbook
         type(session, 99, at: "H3")
         check(session.workbook == before, "a result cell is refused (Excel: Cannot change part of a data table)")
+        checkEqual(refusal, LockedFormulaChange(sheet: "Data", cell: CellAddress(a1: "H3")!,
+                                                reason: .dataTable(CellRange(a1: "H2:H3")!)), "with the table's range")
         type(session, 5, at: "H2")
         check(session.workbook == before, "so is the table's first cell")
         type(session, 5, at: "G2")
@@ -54,7 +63,6 @@ func lockedFormulaChecks() {
 func lockedFormulaAIChecks() {
     func open(_ data: Data) throws -> (WorkbookDocument, SheetSession, Int) {
         let session = SheetSession(workbook: try XLSXReader.read(data))
-        session.undoManager = UndoManager()
         let document = WorkbookDocument()
         document.session = session
         NSDocumentController.shared.addDocument(document)

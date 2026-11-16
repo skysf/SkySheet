@@ -46,6 +46,8 @@ final class SheetSession {
     /// 这张 sheet（按编号）为什么不能插删行列，能就是 nil（设计第 11 条，StructureLock）。文档建窗口时接上；
     /// 没接（截图模式）就是都能。
     @ObservationIgnored var structureLock: (@MainActor (_ sheetID: Int) -> StructureLock?)?
+    /// 改动碰到了 SkySheet 写不回去的公式占着的格子，整个没做：告诉用户为什么（文档建窗口时接上，弹提示）。
+    @ObservationIgnored var refusedChange: (@MainActor (LockedFormulaChange) -> Void)?
     /// 公式栏编辑完把键盘还给表格（窗口建好时接上）。
     @ObservationIgnored var focusGrid: (@MainActor () -> Void)?
     /// 上一次重算排好的计划：公式没变的编辑接着用（RecalcCache，2026-11-14）。读文件时那一次重算排的也交过来。

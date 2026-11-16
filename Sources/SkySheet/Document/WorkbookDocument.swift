@@ -50,6 +50,7 @@ final class WorkbookDocument: NSDocument {
         let session = SheetSession(workbook: loaded.workbook, recalcCache: loaded.recalcCache)
         session.undoManager = undoManager
         session.structureLock = { [weak self] id in self?.structureLock(forSheet: id) }
+        session.refusedChange = { [weak self] locked in LayoutCommands.explain(locked, in: self?.windowForSheet) }
         self.session = session
         addWindowController(WorkbookWindowController(session: session))
     }
@@ -68,7 +69,11 @@ final class WorkbookDocument: NSDocument {
     /// 这张表（按编号）为什么不能插删行列；能就是 nil。这次新建、复制、导入的表不在原包里，总是能。
     func structureLock(forSheet id: Int) -> StructureLock? {
         if let known = structureLocks[id] { return known }
-        let lock = source?.structureLock(forSheet: id)
+        var lock = source?.structureLock(forSheet: id)
+        // 复制出来的表不在原包里，模拟运算表却跟着复制过来了（Sheet.storedFormulas）：一样不能插删（PR #17 第一轮审查第 5 条）。
+        if lock == nil, session?.workbook.sheets.first(where: { $0.id == id })?.dataTableCell != nil {
+            lock = .otherContent("data table")
+        }
         structureLocks[id] = lock
         return lock
     }

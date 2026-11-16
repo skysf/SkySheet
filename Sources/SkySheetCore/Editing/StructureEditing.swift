@@ -53,6 +53,8 @@ extension Workbook {
         sheet.richTextSources = Dictionary(uniqueKeysWithValues: target.richTextSources.compactMap { address, entry in
             shift.map(shift.axis.index(of: address)).map { (shift.axis.moving(address, to: $0), entry) }
         })
+        // 原来的 `<f>`（共享公式的 ref、si 这些）按位置写着，格子挪了就对不上：这张表的公式以后照常写。
+        sheet.storedFormulas = [:]
         Self.moveFormats(of: &sheet, from: target, shift)
         sheet.merges = target.merges.compactMap { merge in
             shift.map(merge).flatMap { $0.rowCount * $0.columnCount > 1 ? $0 : nil }
@@ -77,6 +79,8 @@ extension Workbook {
     // MARK: - 先检查
 
     private static func checkShift(_ shift: LineShift, on sheet: Sheet) throws(StructureEditError) {
+        // 模拟运算表按位置指着结果区和输入格，插删以后就指错了；跟着 sheet 复制过来的也一样（PR #17 第一轮审查第 5 条）。
+        if let table = sheet.dataTableCell { throw StructureEditError.unreadableFormula(sheet: sheet.name, cell: table) }
         let everything = CellRange(CellAddress(row: 0, column: 0),
                                    CellAddress(row: CellAddress.maxRows - 1, column: CellAddress.maxColumns - 1))
         if shift.kind == .insert {

@@ -92,6 +92,24 @@ enum LayoutCommands {
         }
     }
 
+    /// 改动碰到了 SkySheet 写不回去的公式占着的格子，整个没做（工作簿没动；LockedFormulaChange）。
+    static func explain(_ locked: LockedFormulaChange, in window: NSWindow?) {
+        guard let window else { return }
+        let message = switch locked.reason {
+        case .sharedFormula(let follower):
+            String(localized: """
+                \(locked.cell.a1) on “\(locked.sheet)” can't be changed: \(follower.a1) and other cells take their formula \
+                from it, and SkySheet can't work out what their formulas are. Nothing was changed.
+                """)
+        case .dataTable(let range):
+            String(localized: """
+                \(locked.cell.a1) on “\(locked.sheet)” is part of the data table in \(range.a1), and a data table can't be \
+                changed in part. Nothing was changed.
+                """)
+        }
+        explain(message, in: window)
+    }
+
     /// 插删没做成（工作簿没动）。
     static func explain(_ error: StructureEditError, in window: NSWindow?) {
         guard let window else { return }
