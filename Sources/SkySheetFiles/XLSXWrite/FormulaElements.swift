@@ -13,7 +13,7 @@ import SkySheetCore
 /// - 动了几格，跟随者的公式算不出来（StoredFormula.Shared.unknown）：主格没动，就保留主格和没动的那几格，动了的写新内容
 ///   （ECMA-376 第 1 部分 18.3.1.40：区域里自己写了公式、不带 si 的格子用自己的，前后的照旧跟主格）；文件里本来就没有主格的，
 ///   没动的照原样留着。主格动了，这几格的公式写不出来，拒绝保存，绝不写成引用错的公式（读文件排查第 2 条，2026-11-16）。
-///   主格本来就改不了（Workbook.lockedFormulaChange，改之前就拒绝），这里只是兜底。
+///   这种组整组本来就改不了（Workbook.lockedFormulaChange，改之前就拒绝），这里只是兜底。
 enum FormulaElements {
     static func kept(in sheet: Sheet, stored: [CellAddress: StoredFormula]) throws(XLSXWriteError)
         -> [CellAddress: StoredFormula] {

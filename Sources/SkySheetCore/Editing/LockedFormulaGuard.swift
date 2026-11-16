@@ -1,15 +1,17 @@
 import Foundation
 
-/// 一次改动碰到了 SkySheet 写不回去的公式占着的格子（PR #17 第一轮审查第 3、4、5 条）。这些格子的内容不能改，样式可以：
-/// - 跟随者的公式算不出来的共享公式组的主格：主格一改，跟随者就写不出来了。以前允许改、到保存才拒绝，从那以后整本存不了，
-///   恢复副本也写不出来；
+/// 一次改动碰到了 SkySheet 写不回去的公式占着的格子（PR #17 第一轮审查第 3、4、5 条，最后一次复查的收尾）。这些格子的内容
+/// 不能改，样式可以：
+/// - 跟随者的公式算不出来的共享公式组，主格和每一个跟随者。主格一改，跟随者就写不出来了（以前到保存才拒绝，从那以后整本
+///   存不了，恢复副本也写不出来）。跟随者以前能单独改，可改了以后记录作废，整轮撤销经 apply 换回快照时又作废一次，`<f>`
+///   悄悄丢了（最后一次复查）。和模拟运算表一样整组锁住，要改在 Excel 里改。
 /// - 模拟运算表的整个区域，包括它的第一格：Excel 也不让只改一部分（Cannot change part of a data table），改了的值 Excel
 ///   一重算就被表的结果盖回去。
 /// 改之前就拒绝，工作簿一点不动：界面上是 SheetSession.apply，AI 那边是 AIContext.change（在开撤销组之前）。
 public struct LockedFormulaChange: Error, Equatable, Sendable {
     public enum Reason: Equatable, Sendable {
-        /// `follower` 这一格（可能还有别的）从这一格平移出公式，SkySheet 算不出来是什么。
-        case sharedFormula(follower: CellAddress)
+        /// 跟随者的公式算不出来的共享公式组占的区域（主格的 `ref`；文件里没有主格时是组里格子围成的范围）。
+        case sharedFormula(CellRange)
         /// 模拟运算表占的区域。
         case dataTable(CellRange)
     }
@@ -51,32 +53,54 @@ extension Workbook {
     }
 
     private static func lockedChange(from old: Sheet, to new: Sheet) -> LockedFormulaChange? {
-        func same(_ address: CellAddress) -> Bool { sameContent(old.cells[address], new.cells[address]) }
-        var tables: [(cell: CellAddress, range: CellRange)] = []
-        /// 主格 → 还在组里（改之前记录没作废、原文没变）的、公式算不出来的跟随者里最前面的那一格。都被改掉了，主格就能改了。
-        var masters: [CellAddress: CellAddress] = [:]
+        var locked: [(cell: CellAddress, reason: LockedFormulaChange.Reason)] = []
+        /// 共享公式组（si）→ 记录还对得上的格子（主格、跟随者）；哪几组有算不出来的跟随者；各组主格的 `ref`。
+        var members: [String: [CellAddress]] = [:]
+        var unknown: Set<String> = []
+        var refs: [String: CellRange] = [:]
         for (address, record) in old.storedFormulas {
-            if let range = record.dataTableRange(at: address) { tables.append((cell: address, range: range)) }
-            guard let shared = record.shared, shared.unknown, let master = shared.master,
-                  record.describes(old.cells[address]) else { continue }
-            masters[master] = min(masters[master] ?? address, address)
-        }
-        for table in tables.sorted(by: { $0.cell < $1.cell }) {
-            var cells: [CellAddress] = [table.cell]
-            cells += old.cells.entries(in: table.range).map { $0.address }
-            cells += new.cells.entries(in: table.range).map { $0.address }
-            if let changed = cells.sorted().first(where: { !same($0) }) {
-                return LockedFormulaChange(sheet: old.name, cell: changed, reason: .dataTable(table.range))
+            if let range = record.dataTableRange(at: address) {
+                var cells: [CellAddress] = [address]
+                cells += old.cells.entries(in: range).map { $0.address }
+                cells += new.cells.entries(in: range).map { $0.address }
+                locked += cells.map { (cell: $0, reason: LockedFormulaChange.Reason.dataTable(range)) }
             }
+            guard let shared = record.shared, record.describes(old.cells[address]) else { continue }
+            members[shared.group, default: []].append(address)
+            if shared.unknown { unknown.insert(shared.group) }
+            if !shared.follower, let ref = record.attributes["ref"].flatMap({ CellRange(a1: $0) }) { refs[shared.group] = ref }
         }
-        for (master, follower) in masters.sorted(by: { $0.key < $1.key }) where !same(master) {
-            return LockedFormulaChange(sheet: old.name, cell: master, reason: .sharedFormula(follower: follower))
+        // 最后一次复查的收尾：主格、跟随者整组锁住（以前只锁主格，跟随者能单独改）。
+        for group in unknown {
+            let cells = members[group] ?? []
+            let range = refs[group] ?? enclosing(cells)
+            locked += cells.map { (cell: $0, reason: LockedFormulaChange.Reason.sharedFormula(range)) }
         }
-        return nil
+        func rank(_ reason: LockedFormulaChange.Reason) -> Int {
+            if case .dataTable = reason { return 0 }
+            return 1
+        }
+        let changed = locked.filter { !untouched(old.cells[$0.cell], new.cells[$0.cell]) }
+            .min { ($0.cell, rank($0.reason)) < ($1.cell, rank($1.reason)) }
+        return changed.map { LockedFormulaChange(sheet: old.name, cell: $0.cell, reason: $0.reason) }
     }
 
-    /// 改之前、改之后一格的内容一样不一样（拒绝和作废记录用同一个标准）：有公式的比原文和数组区域（值是算出来的），
-    /// 没有公式的比值。样式不算。
+    /// 锁住的格子比得更严：整格（值，公式连同文件里的缓存值和状态）一点没动才算没改，样式不算。写回同样的原文也是改写：
+    /// 缓存值没了，算不出来的公式就成了 #NAME?。这些格子 SkySheet 一律不写，粘贴、填充、清空只要碰到就拒绝。
+    /// 没碰到的格子在改之前、改之后是同一份（重算在拒绝之后），值和状态不会对不上。
+    private static func untouched(_ lhs: Cell?, _ rhs: Cell?) -> Bool {
+        (lhs?.value ?? .empty) == (rhs?.value ?? .empty) && lhs?.formula == rhs?.formula
+    }
+
+    /// 几格围成的最小区域：文件里没有主格的共享公式组，用它说是哪一片。
+    private static func enclosing(_ cells: [CellAddress]) -> CellRange {
+        let rows = cells.map { $0.row }, columns = cells.map { $0.column }
+        return CellRange(CellAddress(row: rows.min() ?? 0, column: columns.min() ?? 0),
+                         CellAddress(row: rows.max() ?? 0, column: columns.max() ?? 0))
+    }
+
+    /// 改之前、改之后一格的内容一样不一样（作废记录用；锁住的格子比得更严，见 untouched）：有公式的比原文和数组区域
+    /// （值是算出来的），没有公式的比值。样式不算。
     ///
     /// 原文是空的公式（算不出来的跟随者、模拟运算表的第一格）只是个占位，原文说明不了是哪个公式：整格一点没动才算一样。
     /// 粘贴、填充、输入写进来的空原文是新的公式，没有文件里的缓存值、也还没算过，和打开文件时就在那里的总有地方不一样
@@ -92,8 +116,9 @@ extension Workbook {
 
     /// 内容被改写过的格子，文件里的 `<f>` 记录作废（StoredFormula.replaced），以后不会再对上（PR #17 第二轮审查第 2 条）。
     /// SheetSession.apply 每一步都在拒绝之后调：输入、清空、粘贴、填充、AI 写入……改工作簿都从那里过；撤销、重做换回的是
-    /// 整本快照，记录跟着内容一起回来。按 sheet 编号和 `before` 对上，比法和拒绝一样（sameContent）；新出来的表（复制的，
-    /// 记录跟着格子一起复制）没有可比的，只看格子还是不是记录里那个公式。
+    /// 整本快照，记录跟着内容一起回来。按 sheet 编号和 `before` 对上（sameContent）；新出来的表（复制的，记录跟着格子
+    /// 一起复制）没有可比的，只看格子还是不是记录里那个公式。整轮撤销也经 apply 换回快照：锁住的格子（算不出来的共享公式组、
+    /// 模拟运算表）这一轮里改不了，记录不受影响；别的格子换回来以后记录照旧作废，照常写原文，公式不丢（最后一次复查）。
     public mutating func retireReplacedFormulas(since before: Workbook) {
         let previous = Dictionary(before.sheets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
         for index in sheets.indices where !sheets[index].storedFormulas.isEmpty {

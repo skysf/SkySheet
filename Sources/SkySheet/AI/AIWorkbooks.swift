@@ -68,7 +68,7 @@ struct AIContext {
     /// 改工作簿：开这一轮、一步撤销、记下改到的格子（高亮）。`cells` 在改完以后算（新建的 sheet 才有编号）。
     /// 要拒绝的先在调它之前拒绝：在 `edit` 里抛错会留下一个空的撤销组、清掉重做栈。
     ///
-    /// 先在副本上改一遍：碰到 SkySheet 写不回去的公式占着的格子（算不出来的共享公式组的主格、模拟运算表），就在开这一轮、
+    /// 先在副本上改一遍：碰到 SkySheet 写不回去的公式占着的格子（算不出来的共享公式组、模拟运算表），就在开这一轮、
     /// 开撤销组之前拒绝（PR #17 第一轮审查第 3–5 条）。通过了把副本上的结果换上去，和在组里现做一遍一样；
     /// `edit` 自己的错误照旧在组里抛，和以前一模一样。
     func change(_ actionName: String, _ edit: (inout Workbook) throws -> Void,
@@ -100,10 +100,10 @@ struct AIContext {
     static func message(_ locked: LockedFormulaChange) -> String {
         let cell = "\(FormulaRewriter.quotedSheetName(locked.sheet))!\(locked.cell.a1)"
         switch locked.reason {
-        case .sharedFormula(let follower):
+        case .sharedFormula(let range):
             return """
-                \(cell) can't be changed: \(follower.a1) and other cells take their formula from it (an Excel shared \
-                formula) and SkySheet can't work out their formulas, so nothing changed. Leave \(locked.cell.a1) as it is.
+                \(cell) is part of an Excel shared formula in \(range.a1) whose formulas SkySheet can't work out, so none \
+                of its cells can be changed and nothing changed. Leave \(range.a1) as it is.
                 """
         case .dataTable(let range):
             return """

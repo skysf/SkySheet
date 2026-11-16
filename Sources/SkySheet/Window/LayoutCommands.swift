@@ -96,10 +96,10 @@ enum LayoutCommands {
     static func explain(_ locked: LockedFormulaChange, in window: NSWindow?) {
         guard let window else { return }
         let message = switch locked.reason {
-        case .sharedFormula(let follower):
+        case .sharedFormula(let range):
             String(localized: """
-                \(locked.cell.a1) on “\(locked.sheet)” can't be changed: \(follower.a1) and other cells take their formula \
-                from it, and SkySheet can't work out what their formulas are. Nothing was changed.
+                \(locked.cell.a1) on “\(locked.sheet)” is part of a shared formula in \(range.a1) that SkySheet can't work \
+                out, so its cells can only be changed in Excel. Nothing was changed.
                 """)
         case .dataTable(let range):
             String(localized: """

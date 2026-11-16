@@ -15,7 +15,7 @@ public struct StoredFormula: Hashable, Sendable {
         /// 自己不写原文的跟随者（`<f t="shared" si="0"/>`）。
         public let follower: Bool
         /// 跟随者真正的公式 SkySheet 算不出来（主格里有切不了词又会平移的引用，或者文件里没有主格）：模型里放的是空原文，
-        /// 写文件时只能照原样当跟随者写；主格因此不能改（Workbook.lockedFormulaChange）。
+        /// 写文件时只能照原样当跟随者写；这一组主格、跟随者因此都不能改（Workbook.lockedFormulaChange）。
         public let unknown: Bool
 
         public init(group: String, master: CellAddress?, follower: Bool, unknown: Bool) {
