@@ -37,6 +37,16 @@ extension SheetSession {
         var changed = workbook
         try change(&changed)
         guard changed != workbook else { return }
+        // 文件里 SkySheet 写不回去的公式占着的格子（算不出来的共享公式组、模拟运算表），内容不能改：整个不做，
+        // 说为什么（PR #17 第一轮审查第 3–5 条）。AI 的改动在 AIContext.change 里先拒绝了，到不了这里。
+        if let locked = changed.lockedFormulaChange(since: workbook) {
+            refusedChange?(locked)
+            return
+        }
+        // 内容被改写过的格子，文件里的 `<f>` 记录作废，以后不会再对上（PR #17 第二轮审查第 2 条）。AI 的改动也从这里过；
+        // ⌘Z 撤销不经这里，换回的是改之前的那一份，记录跟着内容一起回来。整轮撤销经这里换回快照，锁住的格子这一轮里
+        // 改不了，记录不受影响（retireReplacedFormulas，最后一次复查）。
+        changed.retireReplacedFormulas(since: workbook)
         let edited = Self.editedSheets(changed, comparedTo: workbook)
         Recalculator.recalculate(&changed, options: RecalcOptions(cache: recalcCache))
         Self.sign(&changed, sheets: edited, author: author)

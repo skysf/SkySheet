@@ -1,4 +1,5 @@
 import Foundation
+import SkyZip
 
 // MARK: - 极简断言
 //
@@ -97,4 +98,42 @@ func runTool(_ path: String, _ arguments: [String], in directory: URL? = nil) ->
     }
     process.waitUntilExit()
     return process.terminationStatus
+}
+
+// MARK: - 现拼 xlsx（UI 自检也要用，放在两边共用的这个文件里）
+
+/// workbook.xml 里只有一张 Data。
+let oneSheet = "<sheets><sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets>"
+
+/// 现拼一个一张表的 xlsx：workbook.xml、sheet1.xml 的根元素在 `main` 命名空间里（nil 就不写），正文由调用方给。
+/// 关系类型按 `relationships` 那一版写（严格版的类型也在那个命名空间下面）。
+func namespacedPackage(main: String? = "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+                       relationships: String = "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+                       workbookBody: String = oneSheet, sheetBody: String = "<sheetData/>") throws -> Data {
+    let package = "http://schemas.openxmlformats.org/package/2006/relationships"
+    let namespaces = (main.map { " xmlns=\"\($0)\"" } ?? "") + " xmlns:r=\"\(relationships)\""
+    var writer = ZipWriter()
+    try writer.addFile("[Content_Types].xml", contents: Data("""
+        <?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\
+        <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\
+        <Default Extension="xml" ContentType="application/xml"/>\
+        <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>\
+        <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>\
+        </Types>
+        """.utf8))
+    try writer.addFile("_rels/.rels", contents: Data("""
+        <?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="\(package)">\
+        <Relationship Id="rId1" Type="\(relationships)/officeDocument" Target="xl/workbook.xml"/></Relationships>
+        """.utf8))
+    try writer.addFile("xl/workbook.xml", contents: Data("""
+        <?xml version="1.0" encoding="UTF-8"?><workbook\(namespaces)>\(workbookBody)</workbook>
+        """.utf8))
+    try writer.addFile("xl/_rels/workbook.xml.rels", contents: Data("""
+        <?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="\(package)">\
+        <Relationship Id="rId1" Type="\(relationships)/worksheet" Target="worksheets/sheet1.xml"/></Relationships>
+        """.utf8))
+    try writer.addFile("xl/worksheets/sheet1.xml", contents: Data("""
+        <?xml version="1.0" encoding="UTF-8"?><worksheet\(namespaces)>\(sheetBody)</worksheet>
+        """.utf8))
+    return writer.finished()
 }

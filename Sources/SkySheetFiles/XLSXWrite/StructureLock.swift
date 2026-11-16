@@ -52,6 +52,11 @@ extension XLSXSource {
         for child in document.children {
             if let lock = Self.lock(forElement: child.name) { return lock }
         }
+        // 模拟运算表（`<f t="dataTable" ref r1 r2>`）保存时照原样写回，它按位置指着结果区和输入格；插删以后就指错了，
+        // Excel 会拿错的输入格算（2026-11-16，保存排查第 3 条开始原样保留它）。
+        if formulas[id]?.values.contains(where: { $0.attributes["t"] == "dataTable" }) == true {
+            return .otherContent("data table")
+        }
         // 只靠关系挂上来的东西（数据透视表放在这张表上，就只有一条关系、没有元素）也算。
         for relationship in (try? package.relationships(of: part.path)) ?? [] {
             let type = String(relationship.type.split(separator: "/").last ?? "")

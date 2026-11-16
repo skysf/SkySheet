@@ -64,8 +64,11 @@ private struct PackagePatch {
             guard let part = source.sheets[sheet.id] else {
                 let name = Self.unused(directory + "worksheets/sheet", ".xml", taken: &takenNames)
                 let id = Self.unusedID(&takenIDs)
+                // 复制出来的表带着原表的 `<f>` 记录（Sheet.storedFormulas）：共享公式组、模拟运算表照原样写进副本。
+                let formulas = try FormulaElements.kept(in: sheet, stored: sheet.storedFormulas)
                 added.append((name, WorksheetWriter.write(sheet, original: nil, baseline: nil,
-                                                          defaultRowHeight: workbook.styles.defaultRowHeight, strings: &strings)))
+                                                          defaultRowHeight: workbook.styles.defaultRowHeight,
+                                                          strings: &strings, formulas: formulas)))
                 newRelationships.append(.init(id: id, type: OOXML.worksheetType, target: relative(name)))
                 newOverrides.append((name, OOXML.worksheetContent))
                 entries.append(.init(sheet: sheet, relationshipID: id))
@@ -77,9 +80,10 @@ private struct PackagePatch {
             let old = baselineSheets[sheet.id]
             if let old, old.hasSameContent(as: sheet) { continue }
             guard let original = XMLFragments(try read(part.path)) else { throw XLSXWriteError.unreadablePart(part.path) }
+            let formulas = try FormulaElements.kept(in: sheet, stored: sheet.storedFormulas)
             replaced[ExactText(part.path.lowercased())] = WorksheetWriter.write(sheet, original: original, baseline: old,
                                                                      defaultRowHeight: workbook.styles.defaultRowHeight,
-                                                                     strings: &strings)
+                                                                     strings: &strings, formulas: formulas)
             regenerated.insert(sheet.id)
         }
         // 删掉的 sheet：部件和它的关系文件不要了。它引用的图片、批注留在包里没人指着，Excel 不在意。
@@ -240,9 +244,10 @@ enum FreshPackage {
         var overrides: [(part: String, type: String)] = [("xl/workbook.xml", OOXML.workbookContent)]
         for (index, sheet) in workbook.sheets.enumerated() {
             let name = "worksheets/sheet\(index + 1).xml"
+            let formulas = try FormulaElements.kept(in: sheet, stored: sheet.storedFormulas)
             parts.append(("xl/" + name, WorksheetWriter.write(sheet, original: nil, baseline: nil,
                                                               defaultRowHeight: workbook.styles.defaultRowHeight,
-                                                              strings: &strings)))
+                                                              strings: &strings, formulas: formulas)))
             entries.append(.init(sheet: sheet, relationshipID: "rId\(index + 1)"))
             relationships.append(.init(id: "rId\(index + 1)", type: OOXML.worksheetType, target: name))
             overrides.append(("xl/" + name, OOXML.worksheetContent))

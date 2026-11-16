@@ -67,16 +67,50 @@ struct AIContext {
 
     /// 改工作簿：开这一轮、一步撤销、记下改到的格子（高亮）。`cells` 在改完以后算（新建的 sheet 才有编号）。
     /// 要拒绝的先在调它之前拒绝：在 `edit` 里抛错会留下一个空的撤销组、清掉重做栈。
+    ///
+    /// 先在副本上改一遍：碰到 SkySheet 写不回去的公式占着的格子（算不出来的共享公式组、模拟运算表），就在开这一轮、
+    /// 开撤销组之前拒绝（PR #17 第一轮审查第 3–5 条）。通过了把副本上的结果换上去，和在组里现做一遍一样；
+    /// `edit` 自己的错误照旧在组里抛，和以前一模一样。
     func change(_ actionName: String, _ edit: (inout Workbook) throws -> Void,
                 cells: (Workbook) -> [Int: Set<CellAddress>] = { _ in [:] }) throws {
+        var trial = session.workbook
+        var failure: Error?
+        do {
+            try edit(&trial)
+        } catch {
+            failure = error
+        }
+        if failure == nil, let locked = trial.lockedFormulaChange(since: session.workbook) {
+            throw AIToolError(Self.message(locked))
+        }
         let ai = AISession.shared
         ai.beginChange(in: session)
         let before = session.revision
         try AIUndoGrouping.step(session.undoManager) {
-            try session.apply(actionName, author: ai.author, edit)
+            try session.apply(actionName, author: ai.author) { workbook in
+                if let failure { throw failure }
+                workbook = trial
+            }
         }
         guard session.revision != before else { return }
         ai.noteChange(in: session, revisionBefore: before, cells: cells(session.workbook))
+    }
+
+    /// 给 AI 的话：哪一格、为什么不能改。
+    static func message(_ locked: LockedFormulaChange) -> String {
+        let cell = "\(FormulaRewriter.quotedSheetName(locked.sheet))!\(locked.cell.a1)"
+        switch locked.reason {
+        case .sharedFormula(let range):
+            return """
+                \(cell) is part of an Excel shared formula in \(range.a1) whose formulas SkySheet can't work out, so none \
+                of its cells can be changed and nothing changed. Leave \(range.a1) as it is.
+                """
+        case .dataTable(let range):
+            return """
+                \(cell) is part of the Excel data table in \(range.a1), and a data table can't be changed in part, \
+                so nothing changed.
+                """
+        }
     }
 }
 

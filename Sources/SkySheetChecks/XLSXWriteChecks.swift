@@ -201,7 +201,7 @@ func xlsxWriteChecks() {
         check(sheetXML.contains("<x:c r=\"D1\" t=\"s\">") && sheetXML.contains("<x:f t=\"array\" ref=\"E1:E2\">"),
               "generated cells use the root's prefix")
         checkEqual(reread.workbook.sheets[0].cells[CellAddress(a1: "B3")!]?.formula?.source, "A3*2",
-                   "shared formulas written out one by one")
+                   "shared formula followers read back with their own formula")
     }
 
     group("xlsx write: the save check catches a bad file") {
@@ -344,7 +344,7 @@ func safetyStoreChecks() {
 }
 
 /// 打开时的样子：读进来、整本重算一遍（App 打开文件时也是这样）。
-private func openForEditing(_ data: Data) throws -> (workbook: Workbook, source: XLSXSource) {
+func openForEditing(_ data: Data) throws -> (workbook: Workbook, source: XLSXSource) {
     var document = try XLSXReader.readDocument(data)
     Recalculator.recalculate(&document.workbook, options: RecalcOptions(today: checkToday))
     return (document.workbook, document.source)
@@ -353,7 +353,7 @@ private func openForEditing(_ data: Data) throws -> (workbook: Workbook, source:
 /// 和 App 一样存一遍：写，再读回来核对。设了环境变量 SKYSHEET_CHECK_OUTPUT（一个文件夹）就把存出来的文件留在那里，
 /// 拿 Excel、Numbers、腾讯文档打开看（M3 的验收）。
 @MainActor
-private func save(_ workbook: Workbook, source: XLSXSource?, baseline: Workbook?) throws -> (XLSXWriteResult, XLSXDocument) {
+func save(_ workbook: Workbook, source: XLSXSource?, baseline: Workbook?) throws -> (XLSXWriteResult, XLSXDocument) {
     let result = try XLSXWriter.write(workbook, source: source, baseline: baseline,
                                       now: Date(timeIntervalSince1970: 1_790_000_000))
     if let folder = ProcessInfo.processInfo.environment["SKYSHEET_CHECK_OUTPUT"] {

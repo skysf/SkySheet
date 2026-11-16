@@ -9,6 +9,9 @@ public enum XLSXWriteError: Error, Equatable, Sendable {
     case unreadablePart(String)
     /// 样式只能往后加。已有的样式被改了是程序的错，宁可不存。
     case existingStylesChanged
+    /// 共享公式：`cell` 的公式 SkySheet 算不出来（主格 `master` 切不了词，平移又会改它），只能照原样当跟随者写回，
+    /// 可主格改了，写不出来（FormulaElements）。宁可不存，不写成引用错的公式。
+    case sharedFormulaMasterChanged(sheet: String, cell: String, master: String)
     case zip(ZipError)
     /// 写出来的文件读回来和内存里对不上（第三道保险）。附带说明是哪里。
     case verificationFailed(String)
