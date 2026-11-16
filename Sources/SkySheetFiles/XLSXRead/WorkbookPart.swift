@@ -25,7 +25,7 @@ final class WorkbookPart: XMLScanHandler {
     func start(_ element: String, attributes: [String: String]) {
         switch element {
         case "sheet":
-            guard let name = attributes["name"], let id = attributes["id"] else { return }
+            guard let name = attributes["name"], let id = attributes["r:id"] else { return }
             let visibility: SheetVisibility = switch attributes["state"] {
             case "hidden": .hidden
             case "veryHidden": .veryHidden
@@ -37,12 +37,23 @@ final class WorkbookPart: XMLScanHandler {
             dateSystem = ["1", "true"].contains(attributes["date1904"]?.lowercased() ?? "") ? .from1904 : .from1900
         case "definedName":
             if let name = attributes["name"] {
-                let extra = attributes.filter { $0.key != "name" && $0.key != "localSheetId" }
-                pendingName = (name, attributes["localSheetId"].flatMap { Int($0) }, extra)
+                pendingName = (name, attributes["localSheetId"].flatMap { Int($0) }, Self.extraAttributes(attributes))
             }
         default:
             break
         }
+    }
+
+    /// 定义名称上别的属性，写回时原样带上。带前缀的（扩展的属性）和以前一样按去掉前缀的名字记，只是不再盖掉
+    /// 没有前缀的同名属性；扫描器不再替我们去前缀，这里自己去（改写 `<definedNames>` 时写出来的样子和以前一样）。
+    private static func extraAttributes(_ attributes: [String: String]) -> [String: String] {
+        let reserved: Set<String> = ["name", "localSheetId"]
+        var extra = attributes.filter { !$0.key.contains(":") && !reserved.contains($0.key) }
+        for (key, value) in attributes.sorted(by: { $0.key < $1.key }) where key.contains(":") {
+            let local = XMLScanner.localName(key)
+            if extra[local] == nil, attributes[local] == nil, !reserved.contains(local) { extra[local] = value }
+        }
+        return extra
     }
 
     func end(_ element: String, text: String) {

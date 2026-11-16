@@ -103,6 +103,11 @@ final class CustomPropertiesPart: XMLScanHandler {
     private(set) var values: [String: String] = [:]
     private var current: String?
 
+    /// 属性的值（`<vt:lpwstr>`）在另一个命名空间里（过渡版和严格版）。
+    var otherNamespaces: Set<String> {
+        [AIProperties.typesNamespace, "http://purl.oclc.org/ooxml/officeDocument/docPropsVTypes"]
+    }
+
     func start(_ element: String, attributes: [String: String]) {
         if element == "property" { current = attributes["name"] }
     }
