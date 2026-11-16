@@ -223,6 +223,10 @@ enum AIWriteTools {
         if merge == true, let given, given.coversAllRows || given.coversAllColumns {
             throw AIToolError("merge needs a block of cells such as A1:D1, not whole rows or columns.")
         }
+        // 合并和改格式一样每一格都要换样式：同一个上限（设计 9.7 节）。在开撤销组之前查：组里再拒绝会挤掉用户的重做历史。
+        if merge == true, let range, range.rowCount * range.columnCount > formatLimit {
+            throw AIToolError(mergeTooLarge(formatLimit))
+        }
         if let width, !(0...255).contains(width) { throw AIToolError("column_width must be between 0 and 255.") }
         let frozenRows = try freeze.map { try AIToolArguments(.object($0)).int("rows") ?? 0 }
         let frozenColumns = try freeze.map { try AIToolArguments(.object($0)).int("columns") ?? 0 }
@@ -230,7 +234,12 @@ enum AIWriteTools {
             try context.change(String(localized: "AI: Format Cells"), { workbook in
                 if let range, !change.isEmpty { workbook.restyle(range, sheet: index, change) }
                 if let range, let merge {
-                    if merge { try workbook.merge(range, sheet: index) } else { workbook.unmerge(range, sheet: index) }
+                    // 上面已经按面积查过；limit 是兜底：Workbook.merge 在一格一格走之前自己再查一遍。
+                    if merge {
+                        try workbook.merge(range, sheet: index, limit: formatLimit)
+                    } else {
+                        workbook.unmerge(range, sheet: index)
+                    }
                 }
                 if let range, let width {
                     workbook.setColumnWidth(width, columns: range.start.column...range.end.column, sheet: index)
@@ -253,11 +262,17 @@ enum AIWriteTools {
         } catch let MergeError.overlapsMerge(existing) {
             throw AIToolError("The range cuts through the merged cells \(existing.a1). Merge a range that contains them "
                 + "whole, or unmerge them first.")
+        } catch let MergeError.tooLarge(limit) {
+            throw AIToolError(mergeTooLarge(limit))
         }
         var payload: [String: JSONValue] = ["sheet": .string(context.workbook.sheets[index].name)]
         if let range { payload["range"] = .string(range.a1) }
         if merge == true, let range { payload["merged"] = .string(range.a1) }
         return .ok(.object(payload), changed: true)
+    }
+
+    private static func mergeTooLarge(_ limit: Int) -> String {
+        "That range has more than \(limit) cells, too many to merge into one; merge a smaller block."
     }
 
     // MARK: - edit_sheet
@@ -270,8 +285,14 @@ enum AIWriteTools {
         let position = try arguments.int("move_to")
         let delete = try arguments.bool("delete") ?? false
         guard newName != nil || position != nil || delete else { throw AIToolError("Give rename, move_to or delete.") }
+        let name = context.workbook.sheets[index].name
         do {
-            try context.change(String(localized: "AI: Edit Sheet")) { workbook in
+            // 改名、删表会把原始 sheet 里指着它的公式一起改掉：那样就整个不做（设计 9.3 节第 7 条）。
+            try context.changeSparingOriginals(String(localized: "AI: Edit Sheet"), refusal: { conflict in
+                AIContext.refusal(conflict, sheet: name,
+                                  effect: delete ? "Deleting \(name) would turn them into #REF!" : "Renaming \(name) would rewrite them",
+                                  instead: delete ? "Keep \(name), or ask the user." : "Keep the name, or ask the user.")
+            }) { workbook in
                 if delete {
                     try workbook.deleteSheet(index)
                     return
@@ -298,9 +319,22 @@ enum AIWriteTools {
             throw AIToolError("The user changed this workbook after your last change, so undo would undo their work. "
                 + "Ask the user, or fix things with write_cells.")
         }
+        let before = session.revision
         if try arguments.bool("round") == true {
-            guard ai.undoRound(in: session) else { throw AIToolError("There is nothing of yours to undo in this round.") }
-            ai.noteUndo(in: session, round: true)
+            switch ai.undoRound(in: session) {
+            case .undone:
+                break
+            case .nothing:
+                throw AIToolError("There is nothing of yours to undo in this round.")
+            case .userChanged:
+                // 用户在这一轮中间改过，后来 AI 又改了：上面「最后是不是 AI」的检查过了，快照里却没有用户那几步。
+                throw AIToolError("""
+                    The user also changed this workbook during this round, so undoing the whole round would undo their \
+                    changes too. Nothing was undone. Undo your own later changes one at a time (undo without round), \
+                    or ask the user.
+                    """)
+            }
+            ai.noteUndo(in: session, revisionBefore: before, round: true)
             return .ok(["undone": "round", "sheets": .array(context.workbook.sheets.map { .string($0.name) })])
         }
         guard ai.hasUndoableStep(in: session), let manager = session.undoManager, manager.canUndo else {
@@ -308,7 +342,7 @@ enum AIWriteTools {
         }
         let title = manager.undoActionName
         manager.undo()
-        ai.noteUndo(in: session)
+        ai.noteUndo(in: session, revisionBefore: before)
         return .ok(["undone": .string(title.isEmpty ? "last change" : title)])
     }
 }

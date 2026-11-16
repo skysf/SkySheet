@@ -3,14 +3,23 @@ import Foundation
 /// 表格块 → SQL 的表（设计 9.2 节 query）。每张表多一列 `_row`：那条记录在 sheet 里是第几行，AI 好写指向它的公式。
 /// 日期写成 'YYYY-MM-DD' 的文字（比较、筛选按文字就对），数字是浮点数，逻辑值是 0 / 1，错误写成错误码。
 public enum QueryTables {
-    /// 整本的表：每张 sheet 认出来的块，加上 `extra` 里点名的区域（第一行是表头）。
-    public static func tables(for workbook: Workbook, extra: [(name: String, sheet: Int, range: CellRange)] = []) -> [SQLQuery.Table] {
+    /// 整本的表：每张 sheet 认出来的块。
+    public static func tables(for workbook: Workbook) -> [SQLQuery.Table] {
         var tables: [SQLQuery.Table] = []
         for sheet in workbook.sheets {
             for block in TableBlocks.find(in: sheet) {
                 tables.append(table(block, in: sheet, dateSystem: workbook.dateSystem, styles: workbook.styles))
             }
         }
+        return tables
+    }
+
+    /// 整本的表，加上 `extra` 里点名的区域（第一行是表头）。点名的区域是 AI 给的，装表时一格一格展开：先按面积查，
+    /// 加起来超过 `limit` 格就一张也不装（ExpansionLimit，设计 9.7 节）。
+    public static func tables(for workbook: Workbook, extra: [(name: String, sheet: Int, range: CellRange)],
+                              limit: Int = ExpansionLimit.cells) throws(TooManyCells) -> [SQLQuery.Table] {
+        try ExpansionLimit.check(extra.map(\.range), limit: limit)
+        var tables = tables(for: workbook)
         for item in extra where workbook.sheets.indices.contains(item.sheet) {
             let sheet = workbook.sheets[item.sheet]
             let block = TableBlocks.block(item.range, named: item.name, in: sheet)

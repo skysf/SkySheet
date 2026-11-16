@@ -10,7 +10,7 @@ application.setActivationPolicy(.prohibited)
 application.appearance = NSAppearance(named: .aqua)
 // 和正式 App 一样在任何文档之前建好，让子类成为 shared（NSDocument 的 init 会先建出一个普通的）。ui-29 用它。
 _ = WorkbookDocumentController()
-let suites = ["editing", "copy-limit", "theme", "format", "appearance", "locale", "drawing"]
+let suites = ["editing", "copy-limit", "theme", "format", "appearance", "locale", "drawing", "ai"]
 let requested = CommandLine.arguments.dropFirst().first
 let selected = requested.map { [$0] } ?? suites
 Task { @MainActor in
@@ -23,6 +23,7 @@ Task { @MainActor in
         case "format": invalidFormatColorChecks()
         case "appearance": chromeContrastChecks()
         case "locale": sizeLocaleChecks()
+        case "ai": aiSessionChecks()
         case "drawing":
             mergedPaneBorderChecks()
             centeredOverflowChecks()

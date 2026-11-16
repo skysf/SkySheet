@@ -80,11 +80,12 @@ enum MCPWriteTools {
                     Changes whole rows or columns of an AI sheet. Give rows ("3" or "3:5") or columns ("C" or \
                     "B:D") and what to do.
                     insert=true puts that many new empty rows (columns) there, pushing the existing ones down \
-                    (right); delete=true removes them and moves the rest up (left). Formulas anywhere that point at \
-                    moved cells follow them; references to deleted cells become #REF!. insert and delete are refused \
-                    on sheets with pictures, charts, comments, conditional formatting, data validation or similar, \
-                    which SkySheet keeps but cannot move (describe_sheet says so); they cannot be combined with the \
-                    other options.
+                    (right); delete=true removes them and moves the rest up (left). Formulas in AI sheets that point \
+                    at moved cells follow them; references to deleted cells become #REF!. Formulas in original sheets \
+                    are never changed, so insert and delete are refused (the error lists those cells) when one points \
+                    at cells that would move or go. They are also refused on sheets with pictures, charts, comments, \
+                    conditional formatting, data validation or similar, which SkySheet keeps but cannot move \
+                    (describe_sheet says so); they cannot be combined with the other options.
                     width (columns, in characters, up to 255) or height (rows, in points, up to 409) sets the size; \
                     autofit=true sizes them to their content. hidden=true hides them, hidden=false shows them again. \
                     freeze=true keeps them in view while scrolling: they must start at row 1 or column A (rows "1" \
@@ -110,9 +111,10 @@ enum MCPWriteTools {
             return MCPToolDefinition(
                 .editSheet, title: "Rename, move or delete AI sheet",
                 description: """
-                    Renames, moves or deletes an AI sheet; original sheets cannot be changed. Formulas that refer to \
-                    a renamed sheet follow the new name; references to a deleted sheet become #REF!. Like every \
-                    change, it can be undone.
+                    Renames, moves or deletes an AI sheet; original sheets cannot be changed, not even their formulas. \
+                    Formulas in AI sheets that refer to a renamed sheet follow the new name; references to a deleted \
+                    sheet become #REF!. Renaming or deleting is refused (the error lists the cells) while formulas in \
+                    original sheets refer to the sheet. Like every change, it can be undone.
                     """,
                 input: MCPSchema.object([
                     "sheet": MCPSchema.sheet,
@@ -128,7 +130,8 @@ enum MCPWriteTools {
                 description: """
                     Undoes your last change, or with round=true everything since your current round of changes \
                     began, as one step (the user can redo it with Cmd+Shift+Z). Refuses when the user changed the \
-                    workbook after you, so their work is never undone by mistake.
+                    workbook after you, and round=true also when they changed it at any point in the round, so their \
+                    work is never undone by mistake.
                     """,
                 input: MCPSchema.object([
                     "round": MCPSchema.boolean("Undo the whole round instead of the last change."),

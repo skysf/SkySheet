@@ -78,7 +78,10 @@ public enum CSVWriter {
 
     /// 导出给 Python / pandas 的 csv（设计 9.2 节 export_sheet）：UTF-8 不带 BOM、逗号、\n；数字写原值（百分比写小数，
     /// 不加千分位），日期写 ISO（YYYY-MM-DD），公式写算出来的值。和写回用户文件的那套不同：这里只求好读、好算。
-    public static func analysisData(_ sheet: Sheet, range: CellRange, styles: StyleTable, dateSystem: DateSystem) -> Data {
+    /// 区域里的每一格都要写（空的也写一个空字段）：先按面积查，超过 `limit` 格就不写（ExpansionLimit，设计 9.7 节）。
+    public static func analysisData(_ sheet: Sheet, range: CellRange, styles: StyleTable, dateSystem: DateSystem,
+                                    limit: Int = ExpansionLimit.cells) throws(TooManyCells) -> Data {
+        try ExpansionLimit.check([range], limit: limit)
         var lines: [String] = []
         for row in range.start.row...range.end.row {
             let fields = (range.start.column...range.end.column).map { column -> String in

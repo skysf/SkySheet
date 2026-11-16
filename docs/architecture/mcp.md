@@ -41,9 +41,14 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
    「AI 的 sheet」= `SheetRole.ai`：AI 用 add_sheet 建的，或者用户在页签右键里标的。
 2. **一个工具 = 一步撤销**：改工作簿只走 `AIContext.change` → `AIUndoGrouping.step` → `SheetSession.apply`。撤销管理器按事件
    自动分组，AI 的调用不是事件，不显式分组的话 AI 的每一步堆进同一组、⌘Z 一按全退（SrtFlow 踩过）。包的那一段不许有 await。
+   **要拒绝的在开组之前拒绝**：组开了再抛错，关上的空组会把用户刚 ⌘Z 撤掉的那一步挤出重做栈，撤销栈顶也多一个没名字的空组
+   （PR #15 审查实测）。会改原始 sheet 公式的改名、删表、插删走 `AIContext.changeSparingOriginals`（先在副本上做、查，通过了才开组
+   换上结果），合并超过上限在 `change` 之前查。main 原有的几处拒绝（名字不合规矩、合并会丢内容、插删挤出表外……）还在组里抛，待修。
 3. **AI 的 undo 撤不到用户的活**：`AISession` 记着撤销栈顶上连着几步是 AI 的；用户在 AI 之后改过就拒绝。
 4. **这一轮**：AI 第一次改一个工作簿时存一份快照，30 秒没有新调用算结束；「撤销这一轮」= 换回快照（一步，⌘Z 能回来）。
    改到的格子淡紫高亮（`SheetSession.aiTouched`），下一轮开始时清掉，不存进文件。
+   **这一轮里用户改过工作簿就不许换回快照**（`AIRoundLedger`，2026-11-16）：快照里没有用户那几步。只看「最后一次是不是 AI」
+   不够：用户改完、AI 再改一次，又成立了。AI 的 `undo round=true` 和横幅上的按钮都问它，拒绝时各说一句为什么。
 5. **署名**：AI 建的 sheet 记客户端名（握手里的，可靠）和模型名（add_sheet 的 `model`，自报），页签紫色、小标写品牌；
    直接改到 AI 的 sheet 记「最后是谁改的」（只算直接改，跟着重算变了值的不算）。存在 `docProps/custom.xml` 的
    `SkySheet.AI.<sheetId>`，紧凑 JSON ≤ 255 个字符，保存核对也比它。
@@ -52,6 +57,8 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 7. **结果给数字给全**：值按正确舍入的 Double 给（`DecimalMath.double` 按十进制文字解析；`NSDecimalNumber.doubleValue`
    会把 8673.94 变成 8673.939999999999）。表格块的合计行（有 SUM 公式的最后一行）不算数据，不进统计、不进 SQL 表。
 8. **SQL 只读**：每次现建内存库、装表、`PRAGMA query_only`，只许一条语句、`sqlite3_stmt_readonly`，最多跑 3 秒、回 500 行。
+   装完表再挂上 authorizer，只放行读表、函数、SELECT、WITH RECURSIVE 和只看表结构的几个 PRAGMA（`SQLQuery.schemaPragmas`，
+   2026-11-16）：前两道挡不住 ATTACH，它能在磁盘上建文件。
 9. **版本和打包时间从 get_status 给**（`skysheet: {version, built}`）：模型看不到 MCP 握手里的 serverInfo，用户问「什么版本、
    什么时候的」只能从这里答，不然它会去网上搜（2026-10-14 桌面版的聊天）。版本读 Info.plist 的 CFBundleShortVersionString
    （和小程序报的 serverInfo 同一个读法，`MCPBridge.appVersion`），打包时间读 build-app.sh 写的 `SkySheetBuildDate`（UTC）；
@@ -60,10 +67,16 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
    （图片、批注、条件格式、数据验证、图表……）就拒绝，话里说清楚是什么、让 AI 用 add_sheet copy_from 复制一份改副本
    （副本不带这些）。describe_sheet 对这样的 AI 的 sheet 给 `insert_delete`。改公式引用和界面上是同一份（`Workbook.shiftLines`），
    结果回改了几个公式、哪些变成了 #REF!。
+   **原始 sheet 的公式原文一个字都不许跟着变**（设计 9.3 节第 7 条）：插删行列、edit_sheet 的改名和删除都包在
+   `Workbook.editSparingOriginalFormulas` 里，会变就整个拒绝，话里列出原始 sheet 的格子。工具说明不许再写「整本的公式都跟着改」。
 11. **整列整行的区域**（C:E、3:5）：读、导出只到有内容的格子为止（`Sheet.contentRange`；腾讯文档给一大片空格子刷样式），
    改格式到刷过样式的地方为止（和界面一样）；get_status、show 的选区写成 C:E、3:5。
 12. **工具说明改了以后，还开着的客户端用的是旧说明**（要重启客户端才换）：挪走的参数在 App 里照旧收（2026-10-14 把
    format_cells 的 column_width、freeze 挪到了 edit_rows_columns，format_cells 仍然认这两个，只是说明里不写了）。
+13. **AI 给的区域先按面积查、再展开**（设计 9.7 节）：合并用改格式的上限（5 万格，`Workbook.merge` 的 `limit`），export_sheet 和
+   query 点名的区域用 `ExpansionLimit.cells`（1,000 万格，几块加起来算）。检查在真正一格一格走之前；超过回范围错误。
+14. **一个参数不许让 App 崩溃**：参数的数字转换一律先看范围（`Int(exactly:)`、`abs < 1e9`），字符串参数收到的数字走
+   `JSONValue.numberText`（`1e100` 回参数错误，2026-11-16 以前是直接崩溃）。
 
 ## 四、连接 AI 客户端（设置 ⌘, 的「AI」一节）
 
@@ -102,7 +115,8 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 
 - `MCPChecks`：真起小程序、旁边起假 App，两代协议各喂一遍（握手、清单、转发、客户端名、整数 id、版本错误、App 没开）；
   文字长度和只用英文。`ClaudeCodeConfigChecks`、`ClaudeDesktopConfigChecks`：两家配置文件的增删。`AICoreChecks`：表格块、
-  SQL、算公式不写、sheet 操作、样式、署名。`XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
+  SQL、算公式不写、sheet 操作、样式、署名。`AISafetyChecks`：上面第三节 4、8、10、13、14 条的守卫（App 里的工具够不着，
+  核对的是它们走的那几个入口）；App 那层的接线（AISession 的整轮撤销、字符串参数）在 UI 自检的 ai 套件（`UI/AISessionChecks`）。`XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
 - Claude 桌面版没法在自检里重启：发版前在真机上按清单连一遍（桌面版开着、没开各一次）。别在桌面版的 Code 页里让 AI
   替你退出 Claude：那个会话会一起被关掉。
 - 开发时调 App 这一头、又不想动装着开着的那一份：App 和小程序都认 `SKYSHEET_MCP_SOCKET`，让编出来的 App 在别的 socket 上听

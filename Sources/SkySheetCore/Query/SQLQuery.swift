@@ -45,6 +45,21 @@ public enum SQLQuery {
         defer { sqlite3_close(db) }
         try load(tables, into: db)
         try execute("PRAGMA query_only = 1", db)
+        // 装完表、锁好以后再只放行读（2026-11-16 排查第 7 条）。query_only 和下面的 sqlite3_stmt_readonly 都只管库里的
+        // 内容：ATTACH 不改内容，两道都放它过去，一条 `ATTACH '/某处/x.db' AS x` 就在磁盘上新建了文件。
+        sqlite3_set_authorizer(db, { _, action, name, _, _, _ in
+            switch action {
+            case SQLITE_SELECT, SQLITE_READ, SQLITE_FUNCTION, SQLITE_RECURSIVE:
+                return SQLITE_OK
+            case SQLITE_PRAGMA:
+                // 只读的看表结构那几个（`SELECT name FROM pragma_table_info('Loan')` 是一条正经的 SELECT，main 上能用）；
+                // 别的 PRAGMA 一律不许：有的改设置，有的会开文件。
+                let pragma = name.map { String(cString: $0).lowercased() } ?? ""
+                return SQLQuery.schemaPragmas.contains(pragma) ? SQLITE_OK : SQLITE_DENY
+            default:
+                return SQLITE_DENY
+            }
+        }, nil)
 
         let deadline = UnsafeMutablePointer<Double>.allocate(capacity: 1)
         deadline.pointee = Date().timeIntervalSinceReferenceDate + timeout
@@ -57,6 +72,8 @@ public enum SQLQuery {
         var statement: OpaquePointer?
         var tail: UnsafePointer<CChar>?
         let prepared = sql.withCString { sqlite3_prepare_v2(db, $0, -1, &statement, &tail) }
+        // authorizer 拒绝的（SQLITE_AUTH）和以前 sqlite3_stmt_readonly 拒绝的说同一句话。
+        if prepared == SQLITE_AUTH { throw QueryError(message: "only SELECT queries are allowed") }
         guard prepared == SQLITE_OK, let statement else { throw QueryError(message: message(db)) }
         defer { sqlite3_finalize(statement) }
         if let tail, !String(cString: tail).trimmingCharacters(in: CharacterSet(charactersIn: "; \t\r\n")).isEmpty {
@@ -83,6 +100,11 @@ public enum SQLQuery {
         }
         return Result(columns: columns, rows: rows, truncated: truncated)
     }
+
+    /// authorizer 放行的 PRAGMA：只读、只看表结构和有哪些函数，不带设置、不开文件。
+    static let schemaPragmas: Set<String> = [
+        "table_info", "table_xinfo", "table_list", "index_list", "index_info", "index_xinfo", "function_list", "collation_list",
+    ]
 
     // MARK: - 装表
 

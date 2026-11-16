@@ -35,6 +35,8 @@ final class AISession {
     private(set) var touched: Set<ObjectIdentifier> = []
 
     @ObservationIgnored private var snapshots: [ObjectIdentifier: Workbook] = [:]
+    /// 和快照一起开的账：这一轮里是不是只有 AI 改过这个工作簿（整轮撤销之前问它，AIRoundLedger）。
+    @ObservationIgnored private var rounds: [ObjectIdentifier: AIRoundLedger] = [:]
     @ObservationIgnored private var sessions: [ObjectIdentifier: WeakSession] = [:]
     @ObservationIgnored private var lastAIRevision: [ObjectIdentifier: Int] = [:]
     /// 撤销栈顶上连着几步是 AI 的（用户一改就从头数）：AI 的 undo 最多撤这么多步，撤不到用户的活。
@@ -58,6 +60,7 @@ final class AISession {
         if phase != .working {
             for case let weak in sessions.values { weak.session?.aiTouched = [:] }
             snapshots = [:]
+            rounds = [:]
             sessions = [:]
             touched = []
             changeCount = 0
@@ -66,6 +69,7 @@ final class AISession {
         let key = ObjectIdentifier(session)
         if snapshots[key] == nil {
             snapshots[key] = session.workbook
+            rounds[key] = AIRoundLedger(snapshotRevision: session.revision)
             sessions[key] = WeakSession(session: session)
         }
         scheduleRoundEnd()
@@ -79,6 +83,7 @@ final class AISession {
         touched.insert(key)
         aiSteps[key] = (lastAIRevision[key] == revisionBefore ? aiSteps[key] ?? 0 : 0) + 1
         lastAIRevision[key] = session.revision
+        rounds[key]?.noteAIStep(before: revisionBefore, after: session.revision)
         for (sheet, addresses) in cells {
             session.aiTouched[sheet, default: []].formUnion(addresses)
         }
@@ -94,27 +99,39 @@ final class AISession {
     }
 
     /// AI 撤了一步（或者整轮）：栈顶少了一步 AI 的。整轮撤完，栈顶是「撤销这一轮」那一步，不再往下撤。
-    func noteUndo(in session: SheetSession, round: Bool = false) {
+    /// `revisionBefore` 是撤之前的改动次数（这一轮的账要接上）。
+    func noteUndo(in session: SheetSession, revisionBefore: Int, round: Bool = false) {
         let key = ObjectIdentifier(session)
         aiSteps[key] = round ? 0 : max((aiSteps[key] ?? 0) - 1, 0)
         lastAIRevision[key] = session.revision
+        rounds[key]?.noteAIStep(before: revisionBefore, after: session.revision)
     }
 
     func canUndoRound(in session: SheetSession) -> Bool {
         snapshots[ObjectIdentifier(session)] != nil && touched.contains(ObjectIdentifier(session))
     }
 
-    /// 把这个工作簿换回这一轮开始之前（一步，可以再 ⌘Z 回来）。
+    enum RoundUndo {
+        case undone
+        /// 这一轮没改过这个工作簿（或者已经撤过、关掉了横幅）。
+        case nothing
+        /// 这一轮里用户自己也改过：换回快照会把用户的活一起撤掉，不换（AIRoundLedger）。
+        case userChanged
+    }
+
+    /// 把这个工作簿换回这一轮开始之前（一步，可以再 ⌘Z 回来）。AI 的 undo round=true 和横幅上的按钮都走这里。
     @discardableResult
-    func undoRound(in session: SheetSession) -> Bool {
+    func undoRound(in session: SheetSession) -> RoundUndo {
         let key = ObjectIdentifier(session)
-        guard let snapshot = snapshots[key], touched.contains(key) else { return false }
+        guard let snapshot = snapshots[key], touched.contains(key) else { return .nothing }
+        guard rounds[key]?.onlyAIChanged(currentRevision: session.revision) == true else { return .userChanged }
         session.apply(String(localized: "Undo AI Changes")) { $0 = snapshot }
         session.aiTouched = [:]
         touched.remove(key)
         snapshots[key] = nil
+        rounds[key] = nil
         if touched.isEmpty { phase = .idle }
-        return true
+        return .undone
     }
 
     /// 关掉横幅：这一轮的高亮也一起清掉。

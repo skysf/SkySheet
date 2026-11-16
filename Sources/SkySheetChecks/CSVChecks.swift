@@ -167,7 +167,7 @@ func largeDateExportChecks() {
         let csv = try CSVWriter.write(sheet, styles: workbook.styles, dateSystem: .from1900,
                                       format: CSVFormat(encoding: .utf8, hasByteOrderMark: false, delimiter: ",", lineEnding: "\n", endsWithLineBreak: true))
         check(String(decoding: csv.data, as: UTF8.self).contains("100000000000000000000"), "save CSV preserves number")
-        let export = CSVWriter.analysisData(sheet, range: CellRange(a1: "A1:B2")!, styles: workbook.styles, dateSystem: .from1900)
+        let export = try CSVWriter.analysisData(sheet, range: CellRange(a1: "A1:B2")!, styles: workbook.styles, dateSystem: .from1900)
         check(String(decoding: export, as: UTF8.self).contains("100000000000000000000"), "export_sheet preserves number")
         let query = try SQLQuery.run("SELECT \"日期\" FROM S", tables: QueryTables.tables(for: workbook))
         checkEqual(query.rows[0][0], .real(1e20), "query preserves number")

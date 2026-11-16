@@ -29,7 +29,10 @@ struct AIToolArguments {
         guard let value = raw[key], !value.isNull else { return nil }
         switch value {
         case .string(let text): return text
-        case .number(let number): return number.rounded() == number ? String(Int(number)) : String(number)
+        case .number:
+            // 超出 Int 的整数（1e100）没有可用的写法：报参数错误。以前直接 Int(number)，App 当场崩溃。
+            guard let text = value.numberText else { throw AIToolError("\(key) must be a string.") }
+            return text
         default: throw AIToolError("\(key) must be a string.")
         }
     }

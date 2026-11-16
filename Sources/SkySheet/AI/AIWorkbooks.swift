@@ -34,7 +34,39 @@ struct AIContext {
         }
     }
 
+    /// 改名、删表、插删行列会连带改原始 sheet 的公式时的拒绝（设计 9.3 节第 7 条）：哪几格、会怎样、可以怎么办。
+    static func refusal(_ conflict: OriginalFormulasWouldChange, sheet: String, effect: String, instead: String) -> AIToolError {
+        let shown = conflict.cells.prefix(10).joined(separator: ", ")
+        let cells = conflict.cells.count > 10 ? "\(shown) and \(conflict.cells.count - 10) more" : shown
+        return AIToolError("""
+            Formulas in original sheets refer to \(sheet): \(cells). \(effect), and original sheets are read-only for \
+            you, so nothing changed. \(instead)
+            """)
+    }
+
+    /// 改名、删表、插删行列：先在副本上做、比原始 sheet 的公式原文（设计 9.3 节第 7 条），会变就在开这一轮、开撤销组**之前**
+    /// 拒绝（`refusal` 给拒绝的话）。组开了再抛错，关上的空组会把用户刚 ⌘Z 撤掉的那一步挤出重做栈（PR #15 审查实测）。
+    /// 通过了才走 `change`，把副本上做好的结果换上去：都在主线程上、中间没人动过工作簿，和在组里现做一遍一样。
+    /// `edit` 自己的错误（名字不合规矩、最后一张表……）照旧在 `change` 里抛，和以前一模一样。
+    func changeSparingOriginals(_ actionName: String, refusal: (OriginalFormulasWouldChange) -> AIToolError,
+                                _ edit: (inout Workbook) throws -> Void) throws {
+        var trial = workbook
+        var failure: Error?
+        do {
+            try trial.editSparingOriginalFormulas(edit)
+        } catch let conflict as OriginalFormulasWouldChange {
+            throw refusal(conflict)
+        } catch {
+            failure = error
+        }
+        try change(actionName) { workbook in
+            if let failure { throw failure }
+            workbook = trial
+        }
+    }
+
     /// 改工作簿：开这一轮、一步撤销、记下改到的格子（高亮）。`cells` 在改完以后算（新建的 sheet 才有编号）。
+    /// 要拒绝的先在调它之前拒绝：在 `edit` 里抛错会留下一个空的撤销组、清掉重做栈。
     func change(_ actionName: String, _ edit: (inout Workbook) throws -> Void,
                 cells: (Workbook) -> [Int: Set<CellAddress>] = { _ in [:] }) throws {
         let ai = AISession.shared

@@ -6,6 +6,8 @@ public enum MergeError: Error, Equatable, Sendable {
     case overlapsMerge(CellRange)
     /// 左上角以外的这些格子有内容，合并会把它们丢掉。界面先问用户；AI 要先自己清掉。
     case wouldDiscard([CellAddress])
+    /// 这一块比 `limit` 格多（AI 的 format_cells 才给上限，界面上的合并不限）。
+    case tooLarge(limit: Int)
 }
 
 extension Workbook {
@@ -18,7 +20,10 @@ extension Workbook {
 
     /// 把 `range` 合并成一格。里面原来的合并单元格并进来；左上角以外有内容时，`discardingOthers` 才清掉它们，否则报错。
     /// 整块都换成左上角那一格的样式（和 Excel 一样：拆开以后每一格还是合并时的样子）。一格的区域什么都不做。
-    public mutating func merge(_ range: CellRange, sheet index: Int, discardingOthers: Bool = false) throws(MergeError) {
+    /// 换样式要一格一格地走：`limit` 先按面积查，超过就什么都不做（AI 给的区域可以有 172 亿格，2026-11-16 排查第 9 条）。
+    public mutating func merge(_ range: CellRange, sheet index: Int, discardingOthers: Bool = false,
+                               limit: Int = .max) throws(MergeError) {
+        guard range.rowCount * range.columnCount <= limit else { throw MergeError.tooLarge(limit: limit) }
         guard range.rowCount * range.columnCount > 1 else { return }
         for merge in sheets[index].merges where merge.intersection(range) != nil && merge.intersection(range) != merge {
             throw MergeError.overlapsMerge(merge)
