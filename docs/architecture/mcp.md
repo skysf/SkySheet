@@ -113,7 +113,7 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 - `MCPChecks`：真起小程序、旁边起假 App，两代协议各喂一遍（握手、清单、转发、客户端名、整数 id、版本错误、App 没开）；
   文字长度和只用英文。`ClaudeCodeConfigChecks`、`ClaudeDesktopConfigChecks`：两家配置文件的增删。`AICoreChecks`：表格块、
   SQL、算公式不写、sheet 操作、样式、署名。`AISafetyChecks`：上面第三节 4、8、10、13、14 条的守卫（App 里的工具够不着，
-  核对的是它们走的那几个入口）。`XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
+  核对的是它们走的那几个入口）；App 那层的接线（AISession 的整轮撤销、字符串参数）在 UI 自检的 ai 套件（`UI/AISessionChecks`）。`XLSXWriteChecks` 的 aiProperties 组：custom.xml 读写。
 - Claude 桌面版没法在自检里重启：发版前在真机上按清单连一遍（桌面版开着、没开各一次）。别在桌面版的 Code 页里让 AI
   替你退出 Claude：那个会话会一起被关掉。
 - 开发时调 App 这一头、又不想动装着开着的那一份：App 和小程序都认 `SKYSHEET_MCP_SOCKET`，让编出来的 App 在别的 socket 上听

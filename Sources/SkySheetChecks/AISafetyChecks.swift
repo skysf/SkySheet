@@ -4,7 +4,8 @@ import SkySheetFiles
 import SkySheetMCPKit
 
 /// AI 和 MCP 这一块紧急的几处（2026-11-16 排查第 2、3、7、9、10、12 条）：会撤掉用户的活、间接改原始 sheet、
-/// 只读的查询写文件、一个调用吃光内存、一个参数让 App 崩溃。工具本身在 App 里，自检够不着；App 的工具都走这里核对的
+/// 只读的查询写文件、一个调用吃光内存、一个参数让 App 崩溃。工具本身在 App 里，主自检够不着（App 那层的接线在 UI 自检的
+/// ai 套件，UI/AISessionChecks）；App 的工具都走这里核对的
 /// 入口：整轮撤销问 AIRoundLedger，edit_sheet 和插删行列包在 editSparingOriginalFormulas 里，query 走 SQLQuery 和
 /// QueryTables，export_sheet 走 CSVWriter.analysisData，合并带 limit，字符串参数收数字走 JSONValue.numberText。
 @MainActor
