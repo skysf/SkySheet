@@ -14,7 +14,7 @@ enum Annuity {
         var result = type == 1 && first == 1 ? payment : 0
         if start <= last {
             let logarithm = log1p(rate)
-            let exponent = Double(last) - periods - type
+            let exponent = -remaining(periods: periods, after: last) - type
             let count = Double(last - start + 1)
             result -= present * exp(exponent * logarithm) * (-expm1(-count * logarithm))
                 / (-expm1(-periods * logarithm))
@@ -36,9 +36,16 @@ enum Annuity {
         let count = Double(last - start + 1)
         let geometric = decay(count * logarithm) / decay(logarithm)
         let sum = deficit(count: count, logarithm: logarithm, geometric: geometric)
-            + decay((periods - Double(last) + 1) * logarithm) * geometric
+            + decay((remaining(periods: periods, after: last) + 1) * logarithm) * geometric
         let interest = -rate * present * (sum / decay(periods * logarithm))
         return type == 1 ? interest / (1 + rate) : interest
+    }
+
+    /// periods − last 要精确：last 超过 2^53 时 Double(last) 会并到相邻的整数（1e16 − 1 变成 1e16），尾期就算成了
+    /// 别的期。期数是 Int 范围内的整数时按整数相减；带小数的期数都小于 2^52，不超过它的 last 转 Double 本来就精确。
+    static func remaining(periods: Double, after last: Int) -> Double {
+        guard periods.rounded(.towardZero) == periods, abs(periods) < 0x1p63 else { return periods - Double(last) }
+        return Double(Int(periods) - last)
     }
 
     /// E(x) = 1 − e^(−x)，小 x 也不丢位。

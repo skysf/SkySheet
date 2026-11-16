@@ -7,7 +7,7 @@ public enum QueryTables {
     public static func tables(for workbook: Workbook, extra: [(name: String, sheet: Int, range: CellRange)] = []) -> [SQLQuery.Table] {
         var tables: [SQLQuery.Table] = []
         for sheet in workbook.sheets {
-            for block in TableBlocks.find(in: sheet, styles: workbook.styles, dateSystem: workbook.dateSystem) {
+            for block in TableBlocks.find(in: sheet) {
                 tables.append(table(block, in: sheet, dateSystem: workbook.dateSystem, styles: workbook.styles))
             }
         }

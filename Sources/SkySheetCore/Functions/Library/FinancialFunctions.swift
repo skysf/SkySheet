@@ -163,7 +163,7 @@ enum FinancialFunctions {
         let (rate, periods, present) = (try a.double(0), try a.double(1), try a.double(2))
         let (first, last) = (try a.integer(3), try a.integer(4))
         let typeValue = try a.number(5)
-        guard rate > 0, periods > 0, present > 0, first >= 1, last >= first, Double(last) <= periods,
+        guard rate > 0, periods > 0, present > 0, first >= 1, last >= first, Annuity.remaining(periods: periods, after: last) >= 0,
               typeValue == 0 || typeValue == 1 else { throw CellError.num }
         let type = DecimalMath.double(typeValue)
         // 累计函数限定正利率、零终值，可直接用贴现形式，避免高增长溢出及增长因子相减。

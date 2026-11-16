@@ -50,7 +50,8 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 6. **从不覆盖文件**：save_copy 目标已经有就拒绝；写临时文件、读回来核对、`moveItem` 挪过去（碰到同名会失败，不会盖掉）。
    AI 改的只在内存里，用户按 ⌘S 才进文件（第十节第 1 条）。
 7. **结果给数字给全**：值按正确舍入的 Double 给（`DecimalMath.double` 按十进制文字解析；`NSDecimalNumber.doubleValue`
-   会把 8673.94 变成 8673.939999999999）。表格块的合计行（有 SUM 公式的最后一行）不算数据，不进统计、不进 SQL 表。
+   会把 8673.94 变成 8673.939999999999）。表格块的合计行（有 SUM 公式的最后一行）不算数据，不进统计、不进 SQL 表；
+   那一行的公式只算它自己（横向逐行求和、常量求和）时是记录，不是合计（设计 9.7 节）。
 8. **SQL 只读**：每次现建内存库、装表、`PRAGMA query_only`，只许一条语句、`sqlite3_stmt_readonly`，最多跑 3 秒、回 500 行。
 9. **版本和打包时间从 get_status 给**（`skysheet: {version, built}`）：模型看不到 MCP 握手里的 serverInfo，用户问「什么版本、
    什么时候的」只能从这里答，不然它会去网上搜（2026-10-14 桌面版的聊天）。版本读 Info.plist 的 CFBundleShortVersionString

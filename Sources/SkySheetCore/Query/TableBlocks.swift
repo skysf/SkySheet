@@ -20,14 +20,8 @@ public struct TableBlock: Sendable, Equatable {
     public var headerRow: Int?
     /// 数据行（只有标题、表头时是 nil）。不含合计行。
     public var dataRows: ClosedRange<Int>?
-    /// 末行有完整竖向求和，或精确标签与显示精度下的和吻合：不算数据，免得查询重复累计。
+    /// 块的最后一行是合计（有 SUM 公式，如「合计」那一行）：不算数据，免得求和、查询时把合计又加一遍。
     public var totalsRow: Int?
-    /// 疑似合计仍参与计算，但必须向 AI 披露，不能静默把推断当事实。
-    public var suspectedTotalsRow: Int? = nil
-    public var note: String? {
-        if totalsRow != nil { return "The totals row is left out of the column stats and of the SQL table; read it with read_range." }
-        return suspectedTotalsRow.map { "Row \($0 + 1) might be a total row; it is kept as data." }
-    }
     public var columns: [Column]
 }
 
@@ -38,7 +32,7 @@ public enum TableBlocks {
     }
 
     /// 认出一张 sheet 里的表格块。只有一格的零碎内容不算块（describe_sheet 另外列出来）。
-    public static func find(in sheet: Sheet, styles: StyleTable = StyleTable(), dateSystem: DateSystem = .from1900) -> [TableBlock] {
+    public static func find(in sheet: Sheet) -> [TableBlock] {
         var columnsByRow: [Int: [Int]] = [:]
         sheet.cells.forEach { address, cell in
             if hasContent(cell) { columnsByRow[address.row, default: []].append(address.column) }
@@ -67,29 +61,17 @@ public enum TableBlocks {
             if remaining.count > 1, let top = remaining.first, looksLikeHeader(row: top, columns: columnsByRow[top] ?? [], sheet) {
                 headerRow = top
                 remaining = remaining.dropFirst()
-                // 认错第二行表头会静默吞掉首条记录，所以拿不准一律按单行表头。
-                if remaining.count > 1, let next = remaining.first, let record = remaining.dropFirst().first,
-                   isSubheaderRow(next, under: top, above: record, columns: columnsByRow[next] ?? [], sheet) {
-                    headerRow = next
-                    remaining = remaining.dropFirst()
-                }
             }
             var totalsRow: Int?
-            if remaining.count > 1, let bottom = remaining.last,
-               TableTotals.confirmed(row: bottom, firstDataRow: remaining.first!, tableTop: rows[0],
-                                     columns: columnsByRow[bottom] ?? [], in: sheet, styles: styles, dateSystem: dateSystem) {
+            if remaining.count > 1, let bottom = remaining.last, isTotals(row: bottom, columns: columnsByRow[bottom] ?? [], sheet) {
                 totalsRow = bottom
                 remaining = remaining.dropLast()
             }
-            let suspected = totalsRow == nil ? remaining.last.flatMap { row in
-                TableTotals.suspected(row: row, columns: columnsByRow[row] ?? [], in: sheet) ? row : nil
-            } : nil
             let name = blocks.isEmpty ? sheet.name : "\(sheet.name)_\(blocks.count + 1)"
             blocks.append(TableBlock(
                 name: name, range: CellRange(CellAddress(row: rows[0], column: first), CellAddress(row: rows[rows.count - 1], column: last)),
                 title: title, headerRow: headerRow,
                 dataRows: remaining.first.map { $0...remaining[remaining.endIndex - 1] }, totalsRow: totalsRow,
-                suspectedTotalsRow: suspected,
                 columns: namedColumns(first...last, headerRow: headerRow, sheet)))
         }
         return blocks
@@ -102,28 +84,43 @@ public enum TableBlocks {
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
     }
 
-    /// 第二行表头要强证据。首行缺格、横向合并、下一行全是文字，单看或合起来都和「表头 + 一条全是文字的记录」一样，
-    /// 不能作数。必须同时满足：首行带文字的横向合并格正好盖住下一行的几个子标题（合并格里的每一列下一行都有文字），
-    /// 下一行全是无公式的文字，并且紧接着那一行在某个子标题下面是数字，说明下一行和记录长得不一样。
-    /// 数字只看紧接着的那一行，不看更下面的合计行，也不看下一行空着的列：那一列的名字写在首行时，
-    /// 下一行空着同样可能只是普通记录缺了一格。
-    private static func isSubheaderRow(_ next: Int, under top: Int, above record: Int, columns: [Int], _ sheet: Sheet) -> Bool {
-        let groups = sheet.merges.filter { $0.start.row == top && $0.end.row == top && $0.end.column > $0.start.column }
-        guard !groups.isEmpty, columns.count >= 2, columns.allSatisfy({ isLabel(sheet.cells[next, $0]) }),
-              groups.allSatisfy({ group in
-                  isLabel(sheet.cells[top, group.start.column])
-                      && (group.start.column...group.end.column).allSatisfy { isLabel(sheet.cells[next, $0]) }
-              }) else { return false }
-        return columns.contains { column in
-            if case .number? = sheet.cells[record, column]?.value { return true }
-            return false
-        }
+    /// 合计行：这一行有 SUM（或 SUBTOTAL）公式。例外：这一行的公式只算这一行自己时（横向逐行求和 `=SUM(B3:C3)`、
+    /// 常量求和 `=SUM(3,4)`），它是一条普通记录；当合计删掉，describe_sheet 和 SQL 会静默少掉最后一条（PR #12）。
+    private static func isTotals(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        columns.contains { column in
+            guard let source = sheet.cells[row, column]?.formula?.source.uppercased() else { return false }
+            let body = source.hasPrefix("=") ? String(source.dropFirst()) : source
+            return body.hasPrefix("SUM(") || body.hasPrefix("SUBTOTAL(")
+        } && !onlyThisRow(row: row, columns: columns, sheet)
     }
 
-    /// 没有公式、不是空串的文字。
-    private static func isLabel(_ cell: Cell?) -> Bool {
-        guard let cell, cell.formula == nil, case .text(let text) = cell.value else { return false }
-        return !text.isEmpty
+    /// 这一行每个公式都切得了词，引用全在本 sheet 的这一行，或者根本没有引用（只有常量）。只要有一个公式引到别的行、
+    /// 别的 sheet，或者看不出引到哪儿（名称、拼出来的区域、#REF! 这类错误、OFFSET / INDIRECT 现拼的引用），就照旧
+    /// 当合计：「合计 | =B2+B3 | =SUM(B4:C4)」用加号做竖向合计，不能因为那个 SUM 只加本行就当成记录。
+    private static func onlyThisRow(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        func local(_ node: FormulaNode) -> Bool {
+            switch node {
+            case .number, .text, .bool, .missing:
+                return true
+            case .reference(let reference):
+                let range = reference.range
+                return range.start.row == row && range.end.row == row
+                    && (reference.sheet.map { $0.caseInsensitiveCompare(sheet.name) == .orderedSame } ?? true)
+            case .negate(let inner), .unaryPlus(let inner), .percent(let inner):
+                return local(inner)
+            case .binary(_, let left, let right):
+                return local(left) && local(right)
+            case .call(let name, let arguments):
+                return name != "OFFSET" && name != "INDIRECT" && arguments.allSatisfy(local)
+            case .error, .name, .dynamicRange:
+                return false
+            }
+        }
+        return columns.allSatisfy { column in
+            guard let source = sheet.cells[row, column]?.formula?.source else { return true }
+            guard case .success(let node) = FormulaParseCache.shared.parse(source) else { return false }
+            return local(node)
+        }
     }
 
     /// 表头：至少两格文字，文字占这一行有内容的格子的四分之三以上（表头旁边常有一两个零碎的数）。
