@@ -92,6 +92,49 @@ func storedFormulaChecks() {
         checkEqual(reread.workbook.sheets[copy].cells[CellAddress(a1: "B2")!]?.value, .number(5), "it keeps the value")
     }
 
+    group("xlsx: a shared formula with only names in it is every follower's formula") {
+        // 第一轮审查第 2 条：Sheet1!Rate（带 sheet 名的定义名称）切不了词，但平移不改它，main 给跟随者的原文本来就对。
+        let (workbook, _) = try openForEditing(try namespacedPackage(sheetBody: """
+            <sheetData><row r="1"><c r="B1"><f t="shared" ref="B1:B3" si="0">Sheet1!Rate*2</f><v>2</v></c></row>\
+            <row r="2"><c r="B2"><f t="shared" si="0"/><v>2</v></c></row>\
+            <row r="3"><c r="B3"><f t="shared" si="0"/><v>2</v></c></row></sheetData>
+            """))
+        checkEqual(cell(workbook, "B3")?.formula?.source, "Sheet1!Rate*2", "B3 has B1's formula")
+    }
+
+    group("xlsx write: a copied sheet keeps its shared formulas and data table as they were") {
+        // 第一轮审查第 2 条：复制表（Duplicate Sheet、AI 的 copy_from）以前把算不出来的跟随者和模拟运算表写成 <f></f>。
+        let (original, source) = try openForEditing(try storedFormulaWorkbook())
+        var workbook = original
+        let copy = workbook.duplicateSheet(0)
+        Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday))
+        let (result, reread) = try save(workbook, source: source, baseline: original)
+        let parts = try zipContents(result.data)
+        let name = parts.keys.first { $0.hasPrefix("xl/worksheets/sheet") && $0 != "xl/worksheets/sheet1.xml" }
+        let xml = String(decoding: parts[name ?? ""] ?? Data(), as: UTF8.self)
+        check(xml.contains("<c r=\"B1\"><f t=\"shared\" ref=\"B1:B3\" si=\"0\">A1+SUM(Table1[Amount])</f>")
+              && xml.contains("<c r=\"B2\"><f t=\"shared\" si=\"0\"/>") && xml.contains("<c r=\"B3\"><f t=\"shared\" si=\"0\"/>"),
+              "the copy keeps the shared formula, master and followers where they were")
+        check(xml.contains("<c r=\"H2\"><f t=\"dataTable\" ref=\"H2:H3\" dt2D=\"0\" dtr=\"0\" r1=\"J1\"/>"), "and the data table")
+        check(!xml.contains("<f></f>") && !xml.contains("<f/>"), "no empty formulas in the copy")
+        checkEqual(cell(reread.workbook, "B2")?.value, .number(5), "the original keeps its value")
+        checkEqual(reread.workbook.sheets[copy].cells[CellAddress(a1: "B2")!]?.value, .number(5), "so does the copy")
+    }
+
+    group("xlsx write: a formula SkySheet doesn't know is never written as an empty <f>") {
+        // 第一轮审查第 2 条：任何时候都不写 <f></f>（Excel 会要修复）。公式原文是空的、又没有原来的 <f> 可以照写的格子
+        // （比如从算不出来的跟随者复制过来的），只写值。
+        let (original, source) = try openForEditing(try storedFormulaWorkbook())
+        var workbook = original
+        workbook.sheets[0].cells[CellAddress(a1: "K1")!] = Cell(value: .number(5),
+                                                               formula: CellFormula(source: "", cachedValue: .number(5)))
+        Recalculator.recalculate(&workbook, options: RecalcOptions(today: checkToday))
+        let (result, reread) = try save(workbook, source: source, baseline: original)
+        let xml = try sheetXML(result)
+        check(!xml.contains("<f></f>") && !xml.contains("<f/>"), "no empty <f>")
+        checkEqual(cell(reread.workbook, "K1")?.value, .number(5), "the value is kept")
+    }
+
     group("xlsx write: the save check notices a lost data table") {
         let (original, source) = try openForEditing(try storedFormulaWorkbook())
         var workbook = original

@@ -128,6 +128,13 @@ func formulaChecks() {
         check(!ReferenceShift.isExact("Table1[Amount"), "unbalanced brackets")
         check(!ReferenceShift.isExact("SUM(Table1[x])+\"[\"&B2"), "a bracket inside text doesn't hide B2")
         check(!ReferenceShift.isExact("SUM(Table1[x])+'Q[1]'!B2"), "nor one inside a quoted sheet name")
+        // 第一轮审查第 2 条：没有会平移的引用就是准的，哪怕切不了词——带 sheet 名的定义名称、绝对引用的溢出区。
+        check(ReferenceShift.isExact("Sheet1!Rate*2"), "a defined name scoped to a sheet")
+        check(ReferenceShift.isExact("'Q 1'!Rate*2"), "on a sheet whose name needs quotes")
+        check(!ReferenceShift.isExact("Sheet1!Rate*A1"), "but not with a relative reference next to it")
+        check(ReferenceShift.isExact("$A$1#*2"), "the spill of an absolute reference")
+        check(!ReferenceShift.isExact("A1#*2"), "the spill of a relative one shifts")
+        check(ReferenceShift.isExact("#REF!+Sheet1!Rate"), "error values are left as they are")
     }
 }
 

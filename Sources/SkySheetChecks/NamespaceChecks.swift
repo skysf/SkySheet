@@ -57,6 +57,28 @@ func namespaceChecks() {
         checkEqual(both.sheets.map(\.name), ["Data"], "the real name and relationship id win")
     }
 
+    group("xlsx: markup compatibility takes one branch, and reads the fallback") {
+        // 第一轮审查第 1 条：mc:AlternateContent 以前整棵跳过，Fallback 里主命名空间的格子、文字就读丢了。照兼容规则：
+        // 第一个 Requires 里的命名空间都认识的 Choice，没有就 Fallback；选中的那一支按原来的位置读，别的支不读。
+        let mc = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+        let x14 = "http://schemas.microsoft.com/office/spreadsheetml/2009/9/main"
+        let main = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+        let workbook = try XLSXReader.read(try namespacedPackage(sheetBody: """
+            <sheetData xmlns:mc="\(mc)" xmlns:x14="\(x14)" xmlns:m="\(main)"><row r="1">\
+            <mc:AlternateContent><mc:Choice Requires="x14"><c r="A1"><v>2</v></c><c r="C1"><v>9</v></c></mc:Choice>\
+            <mc:Fallback><c r="A1"><v>1</v></c></mc:Fallback></mc:AlternateContent>\
+            <mc:AlternateContent><mc:Choice Requires="m"><c r="B1"><v>5</v></c></mc:Choice>\
+            <mc:Fallback><c r="B1"><v>6</v></c></mc:Fallback></mc:AlternateContent>\
+            <c r="D1" t="inlineStr"><is><mc:AlternateContent><mc:Choice Requires="x14"><t>choice</t></mc:Choice>\
+            <mc:Fallback><t>正文</t></mc:Fallback></mc:AlternateContent></is></c></row></sheetData>
+            """))
+        let cells = workbook.sheets[0].cells
+        checkEqual(cells[CellAddress(a1: "A1")!]?.value, .number(1), "x14 isn't understood: the fallback's A1")
+        checkEqual(cells[CellAddress(a1: "C1")!], nil, "nothing from the branch not taken")
+        checkEqual(cells[CellAddress(a1: "B1")!]?.value, .number(5), "a choice needing only the main namespace is taken")
+        checkEqual(cells[CellAddress(a1: "D1")!]?.value, .text("正文"), "the fallback's text")
+    }
+
     group("xlsx: a workbook written the way Excel does reads and saves as before") {
         // 和 main 对照（这一组在修之前、修之后都得过）：Excel 2016 以后的文件到处是别的命名空间里的元素和属性
         // （mc:、xr:、x14ac:dyDescent、x14 的 extLst），改成按命名空间认以后，读出来的东西一样不能变。
@@ -120,42 +142,6 @@ func namespaceChecks() {
             main: nil, workbookBody: oneSheet, sheetBody: "<sheetData><row r=\"1\"><c r=\"A1\"><v>6</v></c></row></sheetData>"))
         checkEqual(bare.sheets.first?.cells[CellAddress(a1: "A1")!]?.value, .number(6), "no namespace at all")
     }
-}
-
-/// workbook.xml 里只有一张 Data。
-let oneSheet = "<sheets><sheet name=\"Data\" sheetId=\"1\" r:id=\"rId1\"/></sheets>"
-
-/// 现拼一个一张表的 xlsx：workbook.xml、sheet1.xml 的根元素在 `main` 命名空间里（nil 就不写），正文由调用方给。
-/// 关系类型按 `relationships` 那一版写（严格版的类型也在那个命名空间下面）。
-func namespacedPackage(main: String? = "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
-                       relationships: String = "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
-                       workbookBody: String = oneSheet, sheetBody: String = "<sheetData/>") throws -> Data {
-    let package = "http://schemas.openxmlformats.org/package/2006/relationships"
-    let namespaces = (main.map { " xmlns=\"\($0)\"" } ?? "") + " xmlns:r=\"\(relationships)\""
-    var writer = ZipWriter()
-    try writer.addFile("[Content_Types].xml", contents: Data("""
-        <?xml version="1.0" encoding="UTF-8"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">\
-        <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>\
-        <Default Extension="xml" ContentType="application/xml"/>\
-        <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>\
-        <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>\
-        </Types>
-        """.utf8))
-    try writer.addFile("_rels/.rels", contents: Data("""
-        <?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="\(package)">\
-        <Relationship Id="rId1" Type="\(relationships)/officeDocument" Target="xl/workbook.xml"/></Relationships>
-        """.utf8))
-    try writer.addFile("xl/workbook.xml", contents: Data("""
-        <?xml version="1.0" encoding="UTF-8"?><workbook\(namespaces)>\(workbookBody)</workbook>
-        """.utf8))
-    try writer.addFile("xl/_rels/workbook.xml.rels", contents: Data("""
-        <?xml version="1.0" encoding="UTF-8"?><Relationships xmlns="\(package)">\
-        <Relationship Id="rId1" Type="\(relationships)/worksheet" Target="worksheets/sheet1.xml"/></Relationships>
-        """.utf8))
-    try writer.addFile("xl/worksheets/sheet1.xml", contents: Data("""
-        <?xml version="1.0" encoding="UTF-8"?><worksheet\(namespaces)>\(sheetBody)</worksheet>
-        """.utf8))
-    return writer.finished()
 }
 
 /// Excel 2016 以后存的样子（内容是编的）：两张表（Other 藏着，custom.xml 里记着是 AI 的），共享公式、数组公式、富文本、
