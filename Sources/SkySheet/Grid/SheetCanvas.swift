@@ -10,7 +10,7 @@ import SkySheetDisplay
 @MainActor
 final class SheetCanvas {
     let sheet: Sheet
-    let geometry: SheetGeometry
+    private(set) var geometry: SheetGeometry
     let styles: StyleResolver
     let dateSystem: DateSystem
     let fonts: FontBook
@@ -54,6 +54,12 @@ final class SheetCanvas {
                      else { MergeIndex(sheet.merges) }
         contents = if let reusable, reusable.styles == styles, reusable.dateSystem == dateSystem { reusable.contents }
                    else { DisplayContentCache() }
+        includeCursor(session.selection.cursor)
+    }
+
+    @discardableResult
+    func includeCursor(_ address: CellAddress) -> Bool {
+        geometry.include(mergeIndex.merge(containing: address)?.end ?? address)
     }
 
     var frozenRows: Int { min(sheet.frozen?.rows ?? 0, geometry.rowCount) }
@@ -63,10 +69,7 @@ final class SheetCanvas {
 
     /// 一块区域在 sheet 坐标里的矩形（左上角是 A1 的左上角，单位是屏幕点）。
     func rect(of range: CellRange) -> CGRect {
-        let x = geometry.x(ofColumn: range.start.column)
-        let y = geometry.y(ofRow: range.start.row)
-        return CGRect(x: x, y: y, width: geometry.x(ofColumn: range.end.column + 1) - x,
-                      height: geometry.y(ofRow: range.end.row + 1) - y)
+        geometry.rect(of: range)
     }
 
     func merge(containing address: CellAddress) -> CellRange? {

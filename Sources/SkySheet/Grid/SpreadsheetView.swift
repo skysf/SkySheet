@@ -20,7 +20,7 @@ final class SpreadsheetView: NSView {
     let session: SheetSession
     private(set) var canvas: SheetCanvas?
 
-    let scrollView = NSScrollView()
+    let scrollView: NSScrollView
     let mainPane = MainPaneView(role: .main)
     private let cornerPane = PaneView(role: .corner)
     private let frozenRowsPane = PaneView(role: .frozenRows)
@@ -45,8 +45,9 @@ final class SpreadsheetView: NSView {
     /// 上一次画上去的选区：选区再变时，只重画它和新选区经过的那几行（invalidateSelection）。
     private var drawnSelection: Selection?
 
-    init(session: SheetSession) {
+    init(session: SheetSession, scrollView: NSScrollView = NSScrollView()) {
         self.session = session
+        self.scrollView = scrollView
         super.init(frame: .zero)
         clipsToBounds = true
         cornerBox.clipsToBounds = true
@@ -168,6 +169,8 @@ final class SpreadsheetView: NSView {
         mainPane.frame = CGRect(x: 0, y: 0, width: max(restWidth, canvas.geometry.totalWidth - frozenWidth),
                                 height: max(restHeight, canvas.geometry.totalHeight - frozenHeight))
         mainPane.origin = CGPoint(x: frozenWidth, y: frozenHeight)
+        // 传统滚动条会在文档变大后占去可见区；先同步铺排，再按最终可见宽高定位活动格。
+        scrollView.tile()
         syncToScroll()
         if needsInitialScroll, bounds.width > 0, bounds.height > 0 {
             needsInitialScroll = false
@@ -191,6 +194,11 @@ final class SpreadsheetView: NSView {
     }
 
     private func selectionChanged() {
+        if canvas?.includeCursor(session.selection.cursor) == true {
+            // 先把文档视图铺到新的活动格，再请求滚动；反过来会被旧的滚动边界挡住。
+            needsLayout = true
+            layoutSubtreeIfNeeded()
+        }
         invalidateSelection(from: drawnSelection, to: session.selection)
         drawnSelection = session.selection
         scrollToCursor()
@@ -250,6 +258,13 @@ final class SpreadsheetView: NSView {
 @MainActor
 final class CornerBox: NSView {
     weak var spreadsheet: SpreadsheetView?
+    private var cachedChrome: GridChrome.Palette?
+
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        cachedChrome = nil
+        needsDisplay = true
+    }
 
     /// 测速模式要知道哪里标了脏（DrawStats）。
     override func setNeedsDisplay(_ invalidRect: NSRect) {
@@ -258,9 +273,11 @@ final class CornerBox: NSView {
     }
 
     override func draw(_ dirtyRect: NSRect) {
-        NSColor(white: 0.93, alpha: 1).setFill()
+        let chrome = cachedChrome ?? GridChrome.palette(for: effectiveAppearance)
+        cachedChrome = chrome
+        chrome.cornerBackground.setFill()
         bounds.fill()
-        NSColor(white: 0.78, alpha: 1).setFill()
+        chrome.separator.setFill()
         CGRect(x: 0, y: bounds.height - 1, width: bounds.width, height: 1).fill()
         CGRect(x: bounds.width - 1, y: 0, width: 1, height: bounds.height).fill()
     }

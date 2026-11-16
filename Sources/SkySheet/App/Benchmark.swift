@@ -28,7 +28,7 @@ final class Benchmark {
         try await open(url)
         printScale()
         if request.only == nil || request.only == "scroll" { await scrolling() }
-        if request.only == nil || request.only == "select" { await selecting() }
+        if request.only == nil || request.only == "select" || request.only == "arrows" { await selecting() }
         if request.only == nil || request.only == "edit" { await editing() }
         if request.only == nil || request.only == "resize" { await resizing() }
         if request.only == nil || request.only == "switch" { await switching() }
@@ -139,10 +139,21 @@ final class Benchmark {
             clip.scroll(to: CGPoint(x: Swift.min(Swift.max(point.x, 0), limit.x), y: Swift.min(Swift.max(point.y, 0), limit.y)))
             spreadsheet.scrollView.reflectScrolledClipView(clip)
         }
+        let cycling = request.cycleScroll && request.only == "scroll" && request.frames > 20
+        let downReset: ((Int) -> Void)? = cycling ? { index in
+            if index % 20 == 0 { scroll(to: .zero) }
+        } : nil
         await idle { scroll(to: .zero) }
-        await measure("scroll down (3 rows / frame)") { index in scroll(to: CGPoint(x: 0, y: CGFloat(index + 1) * rowStep)) }
+        await measure("scroll down (3 rows / frame)", prepare: downReset) { index in
+            scroll(to: CGPoint(x: 0, y: CGFloat((cycling ? index % 20 : index) + 1) * rowStep))
+        }
         let bottom = clip.bounds.origin.y
-        await measure("scroll up") { index in scroll(to: CGPoint(x: 0, y: bottom - CGFloat(index + 1) * rowStep)) }
+        let upReset: ((Int) -> Void)? = cycling ? { index in
+            if index % 20 == 0 { scroll(to: CGPoint(x: 0, y: bottom)) }
+        } : nil
+        await measure("scroll up", prepare: upReset) { index in
+            scroll(to: CGPoint(x: 0, y: bottom - CGFloat((cycling ? index % 20 : index) + 1) * rowStep))
+        }
         await idle { scroll(to: CGPoint(x: 0, y: 30 * rowStep)) }
         let y = clip.bounds.origin.y
         // 横着来回滚：表可能没那么宽，到头了就往回。
@@ -158,10 +169,19 @@ final class Benchmark {
 
     private func selecting() async {
         let start = firstBodyCell
+        let cycling = request.only == "arrows" && request.frames > 20
+        let reset: ((Int) -> Void)? = cycling ? { index in
+            if index % 40 == 0 { self.session.select(start) }
+        } : nil
         await idle { session.select(start) }
-        await measure("arrow down (move selection)") { _ in session.moveCursor(rows: 1, columns: 0) }
+        await measure(cycling ? "arrow up / down" : "arrow down (move selection)", prepare: reset) { index in
+            session.moveCursor(rows: cycling && index % 40 >= 20 ? -1 : 1, columns: 0)
+        }
         await idle { session.select(start) }
-        await measure("arrow right") { _ in session.moveCursor(rows: 0, columns: 1) }
+        await measure(cycling ? "arrow left / right" : "arrow right", prepare: reset) { index in
+            session.moveCursor(rows: 0, columns: cycling && index % 40 >= 20 ? -1 : 1)
+        }
+        if request.only == "arrows" { return }
         await idle { session.select(start) }
         await measure("shift + arrow down (extend)") { _ in session.moveCursor(rows: 1, columns: 0, extend: true) }
         await idle { session.select(start) }
@@ -184,12 +204,12 @@ final class Benchmark {
         let original = session.rawText(at: target)
         // 打字那几帧不算：从按回车（提交）量起，到重算、重画完。
         await measure("edit a cell + commit", frames: limited(12), prepare: { [session] index in
-            session?.editing = CellEditing(address: target, text: String(100 + index), origin: .typing)
+            session?.beginEditing(.typing, text: String(100 + index))
         }) { _ in
             session.commitEditing()
         }
         await idle {
-            session.editing = CellEditing(address: target, text: original, origin: .typing)
+            session.beginEditing(.typing, text: original)
             session.commitEditing()
         }
     }
@@ -251,6 +271,13 @@ final class Benchmark {
     /// `prepare` 在每一帧之前做、不计时（比如先进入编辑，只量提交那一下）。
     private func measure(_ name: String, frames: Int? = nil, prepare: ((Int) -> Void)? = nil,
                          _ action: (Int) -> Void) async {
+        // 长导航测量先预热，再反复走同一段；否则短样本被冷缓存和机器频率波动左右，长样本又会到边后空转。
+        if request.frames > 20, request.only == "arrows" || (request.only == "scroll" && request.cycleScroll) {
+            for index in 0..<20 {
+                if let prepare { await idle { prepare(index) } }
+                await idle { action(index) }
+            }
+        }
         var samples: [FrameSample] = []
         for index in 0..<(frames ?? request.frames) {
             if let prepare { await idle { prepare(index) } }

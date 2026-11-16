@@ -43,6 +43,38 @@ enum FormatParser {
         return sections
     }
 
+    /// 去掉一段里的条件（`[>=45000]` 这类）；颜色、地区标记、日期写法、引号和转义的文字原样留下。
+    /// 方括号的认法和 parseSection 一致：引号里、转义字符后面的 "[" 不算。
+    static func removingCondition(_ section: String) -> String {
+        var result = ""
+        let characters = Array(section)
+        var index = 0
+        var inQuotes = false
+        while index < characters.count {
+            let character = characters[index]
+            if character == "\"" {
+                inQuotes.toggle()
+            } else if !inQuotes, "\\!_*".contains(character) {
+                result.append(contentsOf: characters[index..<min(index + 2, characters.count)])
+                index += 2
+                continue
+            } else if !inQuotes, character == "[" {
+                var end = index + 1
+                while end < characters.count, characters[end] != "]" { end += 1 }
+                if let first = characters[(index + 1)..<min(end, characters.count)].first, "<>=".contains(first) {
+                    index = end + 1
+                    continue
+                }
+                result.append(contentsOf: characters[index..<min(end + 1, characters.count)])
+                index = end + 1
+                continue
+            }
+            result.append(character)
+            index += 1
+        }
+        return result
+    }
+
     static func parseSection(_ text: String) -> FormatSection {
         var section = FormatSection()
         var builder = TokenBuilder()

@@ -3,7 +3,7 @@ import SkySheetCore
 import SkySheetFiles
 
 /// 截图模式：`SkySheet --snapshot-input 文件.xlsx --snapshot-output 输出.png [--sheet 名字] [--size 1280x800] [--select K60]
-/// [--zoom 1.5]`。
+/// [--zoom 1.5] [--appearance aqua|dark]`。
 /// `--select` 选中一格或一块（A1 写法），表格会滚过去：用来看滚动以后冻结窗格、行号列标对不对；也可以是整列（C:E）、
 /// 整行（3:5），看列标行号选中的样子。
 /// 建一个不放上屏幕的窗口（OffscreenWindow），把整个窗口画成 PNG 就退出。开发时用来核对显示（不用录屏权限），
@@ -19,6 +19,7 @@ struct SnapshotRequest {
     let selection: String?
     /// 缩放比例（2026-11-14 加：改画法时要核对缩放以后画得一不一样）。
     let zoom: Double?
+    let appearance: NSAppearance.Name?
 
     init?(arguments: [String]) {
         func option(_ name: String) -> String? {
@@ -30,6 +31,11 @@ struct SnapshotRequest {
         sheetName = option("--sheet")
         selection = option("--select")
         zoom = option("--zoom").flatMap(Double.init)
+        appearance = switch option("--appearance") {
+        case "aqua": .aqua
+        case "dark": .darkAqua
+        default: nil
+        }
         let parts = option("--size")?.split(separator: "x").compactMap { Double($0) } ?? []
         size = parts.count == 2 ? NSSize(width: parts[0], height: parts[1]) : NSSize(width: 1280, height: 800)
     }
@@ -39,6 +45,7 @@ struct SnapshotRequest {
 enum SnapshotRenderer {
     static func run(_ request: SnapshotRequest) {
         do {
+            if let name = request.appearance { NSApp.appearance = NSAppearance(named: name) }
             let loaded = try DocumentLoader.load(contentsOf: request.input)
             let session = SheetSession(workbook: loaded.workbook)
             if let name = request.sheetName, let index = loaded.workbook.sheetIndex(named: name) {

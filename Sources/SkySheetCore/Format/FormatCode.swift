@@ -14,21 +14,27 @@ struct FormatCode: Sendable {
     /// 数字用哪一段，以及要不要在前面加负号。
     /// 没有条件时：一段的负数自己加 "-"；两段以上负数用第 2 段、按绝对值显示（负号要的话写在格式里）。
     func section(for value: Decimal) -> (section: FormatSection, showMinus: Bool) {
-        let numeric = Array(sections.prefix(3))
+        let (index, showMinus) = sectionIndex(for: value)
+        return (sections[index], showMinus)
+    }
+
+    /// 同一套选段规则给出第几段：跨日期系统粘贴要取这一段的原文（ValueFormatter.calendarDateSection）。
+    func sectionIndex(for value: Decimal) -> (index: Int, showMinus: Bool) {
+        let numeric = sections.prefix(3)
         if numeric.contains(where: { $0.condition != nil }) {
-            if let matched = numeric.first(where: { $0.condition?.matches(value) == true }) {
+            if let matched = numeric.firstIndex(where: { $0.condition?.matches(value) == true }) {
                 return (matched, value < 0)
             }
-            return (numeric.first(where: { $0.condition == nil }) ?? numeric[0], value < 0)
+            return (numeric.firstIndex(where: { $0.condition == nil }) ?? 0, value < 0)
         }
         switch numeric.count {
         case 1:
-            return (numeric[0], value < 0)
+            return (0, value < 0)
         case 2:
-            return (value < 0 ? numeric[1] : numeric[0], false)
+            return (value < 0 ? 1 : 0, false)
         default:
-            if value > 0 { return (numeric[0], false) }
-            return (value < 0 ? numeric[1] : numeric[2], false)
+            if value > 0 { return (0, false) }
+            return (value < 0 ? 1 : 2, false)
         }
     }
 }
@@ -50,6 +56,19 @@ struct FormatSection: Sendable {
     var thousandsScale = 0
     /// 整数部分要不要千分位。
     var groupsThousands = false
+
+    /// 只有日历日期依赖纪元；累计时长即使混有日期字母，也不能凭纪元增加小时数。
+    var isCalendarDate: Bool {
+        var calendar = false
+        for token in tokens {
+            switch token {
+            case .date(.elapsedHours), .date(.elapsedMinutes), .date(.elapsedSeconds): return false
+            case .date(.year), .date(.month), .date(.day), .date(.chineseWeekday): calendar = true
+            default: break
+            }
+        }
+        return calendar
+    }
 }
 
 enum FormatToken: Sendable, Equatable {

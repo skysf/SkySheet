@@ -10,7 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // 截图、测速只在后台画进位图：不进 Dock、不抢前台（OffscreenWindow 的说明）。
         if runsDeveloperTool { NSApp.setActivationPolicy(.prohibited) }
         // 文档控制器要在启动完成前就有：从 Finder 双击打开的文件，系统在这之后马上交给它。
-        _ = NSDocumentController.shared
+        // 第一个建出来的就是 shared；用子类是为了退出前先提交编辑框里的字（WorkbookDocumentController）。
+        _ = WorkbookDocumentController()
         NSApp.mainMenu = MainMenu.build()
     }
 
