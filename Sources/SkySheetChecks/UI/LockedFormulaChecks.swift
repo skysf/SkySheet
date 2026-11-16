@@ -20,7 +20,7 @@ func lockedFormulaChecks() {
         session.refusedChange = { refusal = $0 }
         let before = session.workbook
         /// 整个没做，窗口被告知是哪一格、因为共享公式。
-        func refused(_ what: String, at a1: String, _ edit: () throws -> Void) rethrows {
+        @MainActor func refused(_ what: String, at a1: String, _ edit: () throws -> Void) rethrows {
             refusal = nil
             try edit()
             check(session.workbook == before, "\(what) is refused")
