@@ -520,6 +520,9 @@ Sources/
 
 - 「这一轮」：和 SrtFlow 一样按时间划分。AI 开始改就开一轮、存一份工作簿快照，30 秒没有新调用算这一轮结束。
 - 横幅：「Claude 改了 N 处 · 撤销这一轮」，名字是这一轮的 AI（9.3 节）。撤销这一轮 = 换回快照（一步，可以再 ⌘Z 回来）。
+  所以这一轮里只要用户自己改过这个工作簿（哪怕一处、哪怕在 AI 两次改动之间），就不能整轮撤销：快照里没有用户那几步，
+  换回去会一起撤掉。横幅上的按钮和 AI 的 `undo round=true` 走同一个判断（`AIRoundLedger`），拒绝时弹一句话说明为什么、
+  请用户用 ⌘Z 一步一步撤（2026-11-16 排查第 2 条；作者定：不做「只撤 AI 那部分」的合并）。
 - 这一轮 AI 改过的格子淡色高亮，下一轮开始时消失；高亮不存进文件。
 - AI 打开文件、写入时不抢前台：窗口在后面也照样更新。
 - 关掉最后一个窗口不退出 App（AI 下一次调用还要用）。
@@ -579,16 +582,16 @@ Sources/
 | `open_file` | | 打开一个 xlsx / csv。只开用户给的路径或工具返回的路径 |
 | `describe_sheet` | ✓ | 一张表的结构：用到的范围；认出的表格块（标题行、每列的名字、类型、格式、非空个数、样例值、数字列的合计和最值）；公式个数；「未重算」的格子 |
 | `read_range` | ✓ | 读一块区域：值（全精度），可选显示文字和公式原文。一次最多 2,000 格，更多的用 `query` 或 `export_sheet` |
-| `query` | ✓ | 对表格块跑一条 SQL（SQLite，只许 SELECT）。表名、列名用 `describe_sheet` 给的，也可以临时指定区域；最多回 500 行。SQL 里的数字是 Double，看汇总够用，要分毫不差的金额用公式 |
+| `query` | ✓ | 对表格块跑一条 SQL（SQLite，只许读的 SELECT）。表名、列名用 `describe_sheet` 给的，也可以临时指定区域；最多回 500 行。SQL 里的数字是 Double，看汇总够用，要分毫不差的金额用公式 |
 | `evaluate` | ✓ | 用 SkySheet 的公式引擎算一个公式，不写进表（「贷 100 万、30 年、3.1%，月供多少」） |
 | `export_sheet` | ✓ | 把一张表或一块区域导出成 csv（写到 App 自己的缓存目录），回文件路径，给 Python 用 |
 | `show` | ✓ | 在窗口里切到某张表、选中某块区域，让用户看到。只动界面、不动数据，不抢前台 |
 | `add_sheet` | | 新建 AI 的 sheet：空白的、复制一张原始 sheet（`copy_from`，即第 12 条的「复制成新 tab 再改」），或者从 csv 导入（`from_csv`，接 Python 的结果）。`model` 填 AI 自己的模型名，用于署名（9.3 节） |
 | `write_cells` | | 往 AI 的 sheet 写值和公式，`=` 开头的是公式；可以把一行公式往下填充到某一行（引用跟着平移，和 Excel 的下拉一样）。回写入的范围、公式算出的值、出错的格子 |
 | `format_cells` | | 数字格式（预设名或格式代码）、粗体、斜体、字色底色、对齐、换行、合并 / 拆开。只限 AI 的 sheet |
-| `edit_rows_columns` | | 整行整列（2026-10-14 加）：插删（只在安全的表上，8.4 节）、列宽行高、按内容自动适应、隐藏、冻结。只限 AI 的 sheet |
-| `edit_sheet` | | AI 的 sheet 改名、删除、挪位置 |
-| `undo` | | 撤销上一步；`round=true` 撤销这一轮 |
+| `edit_rows_columns` | | 整行整列（2026-10-14 加）：插删（只在安全的表上，8.4 节；会让原始 sheet 的公式跟着变的不做，9.3 节第 7 条）、列宽行高、按内容自动适应、隐藏、冻结。只限 AI 的 sheet |
+| `edit_sheet` | | AI 的 sheet 改名、删除、挪位置（原始 sheet 里有公式指着它时不许改名、删除，9.3 节第 7 条） |
+| `undo` | | 撤销上一步；`round=true` 撤销这一轮（这一轮里用户改过工作簿就拒绝，8.3 节） |
 | `save_copy` | | 把整本另存成一个**新**文件，目标已存在就拒绝。AI 没有覆盖原文件的工具 |
 
 ### 9.3 AI 的 sheet：怎么认、谁写的、怎么保证改不到原始数据
@@ -612,6 +615,11 @@ Sources/
    - 用户自己改了 AI 的 sheet，「最后是谁改的」就记成用户。
 6. 第 14 条（不许用别的程序改用户的文件）只能靠总说明约束，因为 Claude Code 有终端权限。所以还有第二道保险：
    保存前发现文件被别的程序改过，就先问用户（第十节第 6 条）。
+7. **间接改也不行**（2026-11-16 排查第 3 条）：改名、删表、插删行列会整本联动改公式（和 Excel 一样，用户在界面上做照旧）。
+   AI 在自己的 sheet 上做这几样时，原始 sheet 里指着它的公式也会跟着变：引用改成新名字、跟着平移，删掉的变成 #REF!。
+   所以只要原始 sheet 里有一个公式的原文会变，就整个不做，错误里列出原始 sheet 的哪些格子指着它
+   （`Workbook.editSparingOriginalFormulas`：在副本上做完，比原始 sheet 的公式原文）。AI 的 sheet 里的公式照常跟着改；
+   原始 sheet 不指着的地方（比如在它引用的格子下面插行）照常能插删。定义的名称不算原始 sheet 的格子，照旧跟着改。
 
 9.3 节 M4 落地时的细节（2026-10-09）：
 - AI 的 sheet 页签颜色是 `FFAF52DE`（系统紫）；custom.xml 里的署名是紧凑 JSON（c / m / t 建的人、模型、时间，
@@ -701,12 +709,29 @@ Tools by need:
   已知限制（2026-11-16 PR #12）：末行只要有以 SUM( 或 SUBTOTAL( 开头的公式就被当成合计，所以横向求和（`=SUM(B3:C3)`）、
   常量求和（`=SUM(3,4)`）的数据行会被误删，统计和 SQL 少一条。更好的规则以后单独设计，要先有一套由真实表格组成的回归用例。
 - SQL：每张表多一列 `_row`（记录在 sheet 里是第几行）；日期是 'YYYY-MM-DD' 的文字；数字是浮点数；最多跑 3 秒、回 500 行。
+  只读靠三道：`PRAGMA query_only`、`sqlite3_stmt_readonly`，和 2026-11-16 加的 authorizer（`sqlite3_set_authorizer`）
+  只放行读表、调函数、SELECT 和 WITH RECURSIVE，加上只看表结构的几个 PRAGMA（table_info、table_xinfo、table_list、
+  index_list、index_info、index_xinfo、function_list、collation_list：`SELECT name FROM pragma_table_info('Loan')` 是一条
+  正经的 SELECT，以前能用），其余一律拒绝（ATTACH、DETACH、别的 PRAGMA、BEGIN / SAVEPOINT 这类事务语句、建表建视图……）。
+  前两道挡不住 ATTACH：它不改库里的内容，`sqlite3_stmt_readonly` 算它只读，一条 `ATTACH '/某处/x.db'` 就在磁盘上新建了文件
+  （排查第 7 条）。拒绝的话和以前一样是「only SELECT queries are allowed」。
 - 给 AI 的数字按正确舍入的 Double 给：`NSDecimalNumber.doubleValue` 不正确舍入，8673.94 会变成 8673.939999999999
   （端到端时看到的），`DecimalMath.double` 改成按十进制文字解析，函数里的计算也跟着更准一点。
 - write_cells 的值：数字按最短的十进制写法收（0.1 就是 0.1），文字按打字的规矩，null 清掉；一次最多 1 万格，
   fill_down_to 和 Excel 的下拉填充一样平移引用。结果里回公式算出来的值和出错的格子（算不了的写明原因）。
 - AI 的 undo：只撤 AI 自己连着的那几步；用户在 AI 之后改过就拒绝。undo round=true 撤的是「这一轮」（30 秒没调用算结束，
-  下一个改动开新的一轮）。
+  下一个改动开新的一轮）；这一轮里用户改过工作簿就拒绝（8.3 节），话里请 AI 一步一步撤自己后来的改动，或者问用户。
+- AI 给的区域先按面积查、再展开（2026-11-16 排查第 9、10 条）。合并单元格要一格一格换样式，export_sheet 要把区域里每一格
+  （空的也算）写进 csv，query 的 `tables` 要把点名的区域一格一格装进表：区域是 AI 说了算的，`A1:XFC1048575` 有 172 亿格，
+  以前一个调用就能把内存吃光。上限：
+  - 合并（format_cells merge=true）用 format_cells 现有的改格式上限 **5 万格**：合并和改格式一样每一格都要换样式。
+  - export_sheet 和 query 点名的区域（几块加起来）上限 **1,000 万格**（`ExpansionLimit.cells`）。参照现有上限时没法照搬
+    读写那几个（read_range 2,000 格、write_cells 1 万格、改格式 5 万格、from_csv 20 万格）：那些限的是一次读回、写进多少，
+    导出和查询本来就是给整张表用的。8.2 节测过的大表（10 万行 × 20 列）是 200 万格，留到 5 倍：SkySheet 打得开、算得动的表
+    照样能整张导出、整块查，整列也能点名九列（每列 104 万多格）。超过就报范围错误，说清楚多少格、上限多少，请 AI 只给用到的行列。
+  - 表格块（describe_sheet 认出来的）和 read_range 不变：前者按有内容的格子划，后者本来就限 2,000 格。
+- 字符串参数照收数字（模型偶尔把叫 2024 的 sheet 写成 2024）：整数写成整数、别的照原样（`JSONValue.numberText`）。超出 Int 的
+  整数（`1e100`）没有可用的写法，回参数错误；以前直接 `Int(1e100)`，一个调用就让 App 崩溃（2026-11-16 排查第 12 条）。
 - export_sheet 写到 `~/Library/Caches/ai.skylu.skysheet/exports/`，数字写原值（百分比写小数），日期写 ISO。
 - 和真的 Claude Code 端到端（`claude -p`，只挂 SkySheet）：它会先用 ToolSearch 加载要用的工具，再按总说明的顺序走；
   碰到 ROW、RANK 不支持就换写法（v0.3.0 补上了 ROW、COLUMN、ROWS、COLUMNS、RANK、RANK.EQ）。用 COUNTIF(">"&H2)
@@ -913,3 +938,11 @@ M6–M10 的顺序是作者 2026-11-16 定的：改名要动约 120 个文件，
   只算本行的例外、标签整串匹配）都在别的表格上比 main 差；最后这一种会把标签不在词表里（合计金额、Sum、Totals）
   或者没有标签的横向求和合计行算成记录，金额翻倍。横向求和、常量求和的数据行被误删是 main 原有的问题，不是退步，
   记为已知限制（9.7 节），以后单独设计，先要有一套由真实表格组成的回归用例。自检里的表格期望全部是 main 的输出。
+- 2026-11-16 AI 和 MCP 排查里最紧急的五条（作者要求提高效率，只修会丢用户数据、破坏「原始 sheet 对 AI 只读」、一个请求就能
+  弄崩 App 的；别的记在待修清单里），每条先写会失败的自检再改：
+  整轮撤销在这一轮里用户改过工作簿时拒绝，横幅按钮同一个判断（8.3 节，`AIRoundLedger`）；AI 改名、删除自己的 sheet、在上面
+  插删行列会连带改原始 sheet 的公式时整个拒绝、列出格子（9.3 节第 7 条），edit_sheet、edit_rows_columns 的说明不再说
+  「整本的公式都跟着改」；query 加 authorizer，ATTACH 不再能在磁盘上建文件；合并、export_sheet、query 点名的区域先按面积查
+  （合并 5 万格，导出和点名的区域 1,000 万格），172 亿格的区域不再展开；字符串参数收到 `1e100` 回参数错误、不再崩溃（9.7 节）。
+  这五条本身的拒绝以外，和 main 不同的只有 query 的几种非 SELECT 语句：BEGIN、SAVEPOINT、`ATTACH ':memory:'`
+  和看表结构以外的 PRAGMA 以前跑完回空结果（或者一个设置值），现在说只许 SELECT。
