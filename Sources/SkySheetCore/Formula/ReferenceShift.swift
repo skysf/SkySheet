@@ -29,8 +29,18 @@ public enum ReferenceShift {
     /// PR #17 第一轮审查第 2 条：带 sheet 名的定义名称、绝对引用的溢出区这类，main 给的原文本来就对，不能留空）。
     public static func isExact(_ formula: String) -> Bool {
         if (try? FormulaLexer.tokenize(formula)) != nil { return true }
-        guard let masked = maskingUnreadable(formula), (try? FormulaLexer.tokenize(masked)) != nil else { return false }
-        return ExactText(shift(masked, rows: 1, columns: 1)) == ExactText(masked)
+        guard let masked = maskingUnreadable(formula), let tokens = try? FormulaLexer.tokenize(masked) else { return false }
+        // 看引用动不动，不比平移前后写出来的字：平移会把 `$a$1` 写成 `$A$1`，引用并没有动（PR #17 第二轮审查第 1 条）。
+        return !tokens.contains { token in
+            guard case .reference(let reference) = token.kind else { return false }
+            return moves(reference)
+        }
+    }
+
+    /// 平移的时候这个引用会不会动：起点、终点里有相对的行或列就会（和 `move` 同一个规矩）。
+    private static func moves(_ reference: ReferenceToken) -> Bool {
+        let points = [reference.start] + (reference.end.map { [$0] } ?? [])
+        return points.contains { ($0.row != nil && !$0.rowAbsolute) || ($0.column != nil && !$0.columnAbsolute) }
     }
 
     /// 切不了词的公式里，和平移无关、词法又读不了的几样换成空白，剩下的才能切词：方括号整段（结构化引用 `Table1[Amount]`、
