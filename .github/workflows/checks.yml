@@ -2,7 +2,7 @@
 # main 禁止直推、必须走 PR，这个检查名叫 check-all，是 main 的保护规则要求必须通过的那一项（设计第十一节）。
 #
 # 只开 1 个 job：仓库是公开的，GitHub 托管的 macOS runner 免费，但免费档同时最多 5 台 macOS，
-# 是整个账号共用的，SrtFlow 的 CI 一跑就占满 5 台。整套自检本机 6 秒左右，一台足够。
+# 是整个账号共用的，SrtFlow 的 CI 一跑就占满 5 台。整套自检包含大表与隔离边界输入，一台串行跑完即可。
 name: checks
 
 on:

@@ -73,6 +73,21 @@ enum FormatParser {
             case "#": builder.append(.digit(.hash)); index += 1
             case "?": builder.append(.digit(.question)); index += 1
             case ".": builder.append(.decimalPoint); index += 1
+            case "/":
+                if builder.tokens.last?.isDigit == true, index + 1 < characters.count,
+                   "123456789".contains(characters[index + 1]) {
+                    var end = index + 2
+                    while end < characters.count, "0123456789".contains(characters[end]) { end += 1 }
+                    builder.append(.fractionSlash)
+                    builder.append(.fixedDenominator(String(characters[(index + 1)..<end])))
+                    index = end
+                    continue
+                } else if builder.tokens.last?.isDigit == true, index + 1 < characters.count, "0#?".contains(characters[index + 1]) {
+                    builder.append(.fractionSlash)
+                } else {
+                    builder.literal("/")
+                }
+                index += 1
             case ",": builder.append(.comma); index += 1
             case "%": builder.append(.percent); index += 1
             case "@": builder.append(.text); index += 1

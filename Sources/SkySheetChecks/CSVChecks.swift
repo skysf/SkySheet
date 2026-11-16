@@ -147,3 +147,70 @@ func csvChecks() {
         checkEqual(workbook.themeColors, Workbook.defaultThemeColors, "theme colors (sysClr uses lastClr)")
     }
 }
+
+@MainActor
+func csvRegressionChecks() {
+    boundedCheck("largeDateExport")
+    boundedCheck("csvTimeOverflow")
+    boundedCheck("csvWhitespace")
+    sharedDateInputChecks()
+}
+
+@MainActor
+func largeDateExportChecks() {
+    group("csv: largeDateExport") {
+        let number = Decimal(string: "1e20")!
+        checkEqual(DateSerial.isoText(number, system: .from1900), nil, "large date has no ISO representation")
+        var workbook = Workbook(sheets: [makeSheet("S", id: 1, ["A1": "日期", "B1": "备注", "A2": "1e20", "B2": "x"])])
+        workbook.restyle(CellRange(a1: "A2")!, sheet: 0, Workbook.CellStyleChange(numberFormat: "yyyy/m/d"))
+        let sheet = workbook.sheets[0]
+        let csv = try CSVWriter.write(sheet, styles: workbook.styles, dateSystem: .from1900,
+                                      format: CSVFormat(encoding: .utf8, hasByteOrderMark: false, delimiter: ",", lineEnding: "\n", endsWithLineBreak: true))
+        check(String(decoding: csv.data, as: UTF8.self).contains("100000000000000000000"), "save CSV preserves number")
+        let export = CSVWriter.analysisData(sheet, range: CellRange(a1: "A1:B2")!, styles: workbook.styles, dateSystem: .from1900)
+        check(String(decoding: export, as: UTF8.self).contains("100000000000000000000"), "export_sheet preserves number")
+        let query = try SQLQuery.run("SELECT \"日期\" FROM S", tables: QueryTables.tables(for: workbook))
+        checkEqual(query.rows[0][0], .real(1e20), "query preserves number")
+    }
+}
+
+@MainActor
+func csvTimeOverflowChecks() {
+    group("csv: csvTimeOverflow") {
+        let text = "2026-11-15 23:59:9223372036854775807"
+        let file = try makeTemporaryDirectory().appendingPathComponent("invalid-seconds.csv")
+        try Data((text + "\nx").utf8).write(to: file)
+        let csv = try CSVReader.read(contentsOf: file)
+        checkEqual(csv.workbook.sheets[0].cells[0, 0]?.value, .text(text), "CSV rejects invalid seconds")
+    }
+}
+
+@MainActor
+func csvWhitespaceChecks() {
+    group("CSV: whitespace-only fields stay text") {
+        for field in [" ", "   ", "\t", "　"] {
+            let csv = try CSVReader.read(Data(("a,b,c\n1,\"" + field + "\",3\n").utf8), sheetName: "S")
+            checkEqual(csv.workbook.sheets[0].cells[1, 1]?.value, .text(field), "preserve whitespace without indexing an empty split")
+        }
+    }
+}
+
+@MainActor
+func sharedDateInputChecks() {
+    group("CSV and input: shared date parser") {
+        for system in [DateSystem.from1900, .from1904] {
+            for (text, hasTime) in [("2026-11-15", false), ("2026/11/15 00:00", true), ("2026-11-15 23:59:59", true)] {
+                let parsed = DateInput.parse(text, system: system)!
+                checkEqual(parsed.1, hasTime, "time presence is preserved")
+                checkEqual(CellInput.parse(text, dateSystem: system), .number(parsed.0, format: .builtin(hasTime ? 22 : 14)), "cell input uses shared parser")
+                if system == .from1900 {
+                    let csv = try CSVReader.read(Data(("date\n" + text + "\n").utf8), sheetName: "S")
+                    checkEqual(csv.workbook.sheets[0].cells[1, 0]?.value, .number(parsed.0), "CSV uses shared parser")
+                }
+            }
+            for text in [" ", "2026/2/29", "2026-11-15 23:59:60", "2026-11-15 23:59:abc"] {
+                checkEqual(DateInput.parse(text, system: system)?.0, nil, "invalid date rejected")
+            }
+        }
+    }
+}

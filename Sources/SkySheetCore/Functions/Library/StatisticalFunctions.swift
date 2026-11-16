@@ -87,7 +87,7 @@ enum StatisticalFunctions {
             return nil
         }
         guard numbers.contains(target) else { throw CellError.na }
-        let ascending = try arguments.integer(2, default: 0) != 0
+        let ascending = try arguments.number(2, default: 0) != 0
         return .number(Decimal(numbers.filter { ascending ? $0 < target : $0 > target }.count + 1))
     }
 }

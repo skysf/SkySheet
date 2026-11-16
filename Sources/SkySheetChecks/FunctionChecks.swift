@@ -148,3 +148,19 @@ func functionChecks() {
         checkValue("LEFT(\"abc\",-1)", .error(.value))
     }
 }
+
+@MainActor
+func functionRegressionChecks() {
+    rankOrderChecks()
+}
+
+@MainActor
+func rankOrderChecks() {
+    group("function: rankOrder") {
+        for function in ["RANK", "RANK.EQ"] {
+            for order in ["0.5", "-0.5"] {
+                checkValue("\(function)(2,A1:A2,\(order))", ["A1": "1", "A2": "2"], num("2"))
+            }
+        }
+    }
+}

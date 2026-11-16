@@ -132,3 +132,135 @@ func formatChecks() {
         checkEqual(DecimalMath.parse("e5"), nil, "exponent without mantissa")
     }
 }
+
+@MainActor
+func formatRegressionChecks() {
+    boundedCheck("subsecond15")
+    fractionFormatChecks()
+    fractionBoundariesChecks()
+    fixedFractionChecks()
+    mixedFractionPlaceholderChecks()
+    boundedCheck("fractionOverflow")
+    boundedCheck("fractionPerformance")
+}
+
+@MainActor
+func subsecond15Checks() {
+    group("format: subsecond15") {
+        for name in ["subsecond15", "subsecond19", "subsecond100"] {
+            let digits = Int(name.dropFirst("subsecond".count))!
+            let code = "ss." + String(repeating: "0", count: digits)
+            checkEqual(ValueFormatter.format(num("0"), code: code).text, "########", "unsupported second precision is safe")
+            checkValue("TEXT(0,\"\(code)\")", .text("########"))
+        }
+    }
+}
+
+@MainActor
+func fractionFormatChecks() {
+    group("format: fractionFormat") {
+        for (code, input, expected) in [("# ?/?", "1.5", "1 1/2"), ("# ??/??", "1.125", "1  1/8 "),
+                                         ("# ?/?", "2", "2    "), ("# ?/?", "-1.5", "-1 1/2")] {
+            checkEqual(ValueFormatter.format(num(input), code: code).text, expected, "\(input) as \(code)")
+        }
+        checkEqual(BuiltinFormats.code(for: 12), "# ?/?", "builtin 12")
+        checkEqual(BuiltinFormats.code(for: 13), "# ??/??", "builtin 13")
+        let styles = StyleTable(cellFormats: [CellFormat(numberFormatID: 12), CellFormat(numberFormatID: 13)])
+        checkEqual(ValueFormatter.format(num("1.5"), code: styles.formatCode(forStyle: 0)).text, "1 1/2", "builtin 12 render")
+        checkEqual(ValueFormatter.format(num("1.125"), code: styles.formatCode(forStyle: 1)).text, "1  1/8 ", "builtin 13 render")
+    }
+}
+
+@MainActor
+func fractionBoundariesChecks() {
+    group("format: fractionBoundaries") {
+        checkEqual(ValueFormatter.format(num("0"), code: "ss." + String(repeating: "0", count: 14)).text,
+                   "00." + String(repeating: "0", count: 14), "largest safe second precision")
+        checkEqual(ValueFormatter.format(num("0.5"), code: "0." + String(repeating: "0", count: 100)).text.count, 102, "fixed format has no integer power trap")
+        for (number, code, expected) in [("1.33333333333333", "# ?/?", "1 1/3"), ("0.5", "# ?/?", " 1/2"),
+                                         ("-2", "# ?/?", "-2    "), ("2", "# ??/??", "2      "),
+                                         ("-1.125", "# ??/??", "-1  1/8 "), ("1.99", "# ?/?", "2    "),
+                                         ("1.234", "# ??/??", "1 11/47"), ("1.5", "# ?/?;(# ?/?)", "1 1/2")] {
+            checkEqual(ValueFormatter.format(num(number), code: code).text, expected, "fraction \(number) \(code)")
+        }
+        checkValue("TEXT(1.5,\"# ?/?\")", .text("1 1/2"))
+        for digits in [5, 100] {
+            checkEqual(ValueFormatter.format(num("1.5"), code: "# ?/" + String(repeating: "?", count: digits)).text,
+                       "########", "unsupported denominator precision is bounded")
+        }
+        checkEqual(ValueFormatter.format(num("1"), code: "0\"/\"0").text, "0/1", "quoted slash is literal")
+    }
+}
+
+@MainActor
+func fixedFractionChecks() {
+    group("format: fixed denominators and reduced fractions") {
+        for (code, value, expected) in [("# ?/2", "1.5", "1 1/2"), ("?/4", "1.5", "6/4"),
+                                         ("# ?/8", "2.75", "2 6/8"), ("# ??/16", "1.5", "1  8/16"),
+                                         ("# ?/10", "1.5", "1 5/10"), ("# ??/100", "1.5", "1 50/100"),
+                                         ("?/2", "1.5", "3/2"), ("# ?/2", "1.99", "2    "),
+                                         ("00/00", "1.5", "03/02"), ("# ???/???", "3.14159", "3  16/113"),
+                                         ("# ?/?", "0", "    "), ("# ?/?", "0.01", "    "),
+                                         ("# ??/??", "0.01", "  1/99"), ("# ???/???", "0.01", "   1/100"),
+                                         ("# ?/2", "0", "    "), ("# ?/2", "0.01", "    "),
+                                         ("# ??/100", "0.01", "  1/100"), ("# ??/100", "0", "       "),
+                                         ("0 ?/?", "0", "0    "), ("# ?/?;(# ?/?);\"zero\"", "0", "zero")] {
+            checkEqual(ValueFormatter.format(num(value), code: code).text, expected, "\(value) as \(code)")
+        }
+        // 独立的小分母穷举只用于自检，检验连分数是否真选了最近的既约分数。
+        for maximum in [9, 99] {
+            let code = maximum == 9 ? "?/?" : "??/??"
+            for sample in 1...20 {
+                let value = Double(sample) / 23
+                let rendered = ValueFormatter.format(.number(Decimal(value)), code: code).text
+                let parts = rendered.split(separator: "/").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }
+                checkEqual(parts.count, 2, "fraction rendered")
+                guard parts.count == 2 else { continue }
+                let distance = abs(parts[0] / parts[1] - value)
+                let closest = (1...maximum).map { abs((value * Double($0)).rounded() / Double($0) - value) }.min()!
+                check(distance <= closest + 1e-14, "nearest bounded rational")
+            }
+        }
+    }
+}
+
+@MainActor
+func fractionPerformanceChecks() {
+    group("format: 2000 four-digit fractions under one second") {
+        let start = DispatchTime.now().uptimeNanoseconds
+        var characters = 0
+        for index in 0..<2000 {
+            characters += ValueFormatter.format(.number(Decimal(index) + Decimal(string: "0.123456789")!), code: "# ????/????").text.count
+        }
+        let seconds = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
+        print(String(format: "performance: 2000 four-digit fractions in %.3f s", seconds))
+        check(characters > 0 && seconds < 1, "fraction formatting took \(seconds) s")
+    }
+}
+
+/// 百分比可能把有限 Decimal 缩放成 NaN；隔离进程要正常退出，并拒绝两种分母路径。
+@MainActor
+func fractionOverflowChecks() {
+    group("format: fraction scaling overflow") {
+        for value in ["1e127", "-1e127"] {
+            for code in ["# ?/?", "# ?/4", "?/?", "?/4"] {
+                checkEqual(ValueFormatter.format(num(value), code: code + String(repeating: "%", count: 20)).text,
+                           "########", "overflow is recoverable")
+            }
+        }
+        checkValue("TEXT(1e127,\"# ?/?%%%%%%%%%%%%%%%%%%%%\")", .text("########"))
+        checkEqual(ValueFormatter.format(num("1e127"), code: "# ?/?").text.contains("NaN"), false, "finite large mixed fraction")
+    }
+}
+
+@MainActor
+func mixedFractionPlaceholderChecks() {
+    group("format: mixed optional and mandatory fraction digits") {
+        for (value, code, expected) in [("1.5", "# #0/#0", "1 1/2"), ("0.5", "# #0/#0", " 1/2"),
+                                         ("-1.5", "# #0/#0", "-1 1/2"), ("1.5", "# 0#/0#", "1 01/02"),
+                                         ("1.5", "# ?0/?0", "1  1/2 "), ("1.5", "# #00/#00", "1 01/02"),
+                                         ("1.5", "# 00/00", "1 01/02"), ("1.5", "# #0/4", "1 2/4")] {
+            checkEqual(ValueFormatter.format(num(value), code: code).text, expected, "\(value) as \(code)")
+        }
+    }
+}

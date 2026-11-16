@@ -6,7 +6,7 @@ import Foundation
 public enum SyntheticWorkbook: String, CaseIterable, Sendable {
     /// 10 万行 × 20 列纯数据（没有公式）：日期、文字、各种数字格式，冻结首行首列。
     case data
-    /// 一万期等额本息还款计划表：5 万个公式，每行引用上一行，依赖链一万层深（设计 5.5 节那张）。
+    /// 一万期等额本息还款计划表：5 万个还款公式和 300 个条件统计公式，依赖链一万层深。
     case formulas
     /// 5,000 行 × 26 列：几千个合并单元格、各种填充 / 边框 / 字体、自动换行、往旁边溢出的长文字、改过的行高、
     /// 藏起来的行列，冻结两行一列。
@@ -88,6 +88,14 @@ public enum SyntheticWorkbook: String, CaseIterable, Sendable {
             put("D\(row)", Cell(formula: CellFormula(source: "$H$2"), styleIndex: 1))           // 每期还款
             put("E\(row)", Cell(formula: CellFormula(source: "D\(row)-C\(row)"), styleIndex: 1)) // 本金
             put("F\(row)", Cell(formula: CellFormula(source: "B\(row)-E\(row)"), styleIndex: 1)) // 期末余额
+        }
+        // 条件统计走不同的稀疏遍历路径；只加固定规模，避免把还款表测速变成平方级负载。
+        let extent = max(1, min(periods, 2000))
+        // 小表用于缓存正确性检查，也按比例缩小；否则 400 行自检会承受与一万行测速同样的条件负载。
+        for row in 1...max(1, min(periods / 100, 100)) {
+            put("I\(row)", Cell(formula: CellFormula(source: "COUNTIF($A$1:$A$\(extent),A\(row))")))
+            put("J\(row)", Cell(formula: CellFormula(source: "SUMIF($A$1:$A$\(extent),A\(row),$C$1:$C$\(extent))")))
+            put("K\(row)", Cell(formula: CellFormula(source: "SUMIFS($C$1:$C$\(extent),$A$1:$A$\(extent),A\(row),$C$1:$C$\(extent),\">0\")")))
         }
         return Workbook(sheets: [sheet, notes(id: 2)], styles: styles)
     }
