@@ -18,8 +18,6 @@ on:
         description: "App version, x.y.z (digits only)"
         required: true
         type: string
-  # 临时：workflow_dispatch 只认默认分支上的 workflow 文件，合并前只能靠这个在 PR 上真跑一次。核对完 artifact 就删。
-  pull_request:
 
 permissions:
   contents: read
@@ -35,8 +33,7 @@ jobs:
     timeout-minutes: 30
     env:
       # 输入只经 env 进 run:，脚本里不直接写 ${{ inputs.version }}：那样输入里的引号、$() 会被当成脚本执行。
-      # 临时：pull_request 触发时没有输入，用 0.0.0；删临时触发时一起删掉 || '0.0.0'。
-      VERSION: ${{ inputs.version || '0.0.0' }}
+      VERSION: ${{ inputs.version }}
     steps:
       # 先校验再做别的：版本号会进 Info.plist、文件名和 artifact 名。不回显收到的值，免得日志里出现别的东西。
       - name: Validate version
