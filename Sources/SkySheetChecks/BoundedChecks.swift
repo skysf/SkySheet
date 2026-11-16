@@ -25,6 +25,7 @@ func boundedCheckCase(_ name: String) {
     case "lookupShape": lookupShapeChecks()
     case "whitespaceInput": whitespaceInputChecks()
     case "csvWhitespace": csvWhitespaceChecks()
+    case "jsonNumberText": jsonNumberTextChecks()
     default: fail("unknown bounded check \(name)")
     }
 }

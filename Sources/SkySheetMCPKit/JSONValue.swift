@@ -42,6 +42,16 @@ public enum JSONValue: Hashable, Sendable {
         return Int(value)
     }
 
+    /// 数字当文字用时的写法：App 读字符串参数时照收数字（模型偶尔把叫 2024 的 sheet 写成数字 2024）。整数写成整数
+    /// （不带 .0），别的照 Swift 的写法（1.5）。不是数字是 nil。
+    /// 超出 Int 的整数（`1e100`）没有可用的写法，也是 nil，由调用方报参数错误：以前直接 `Int(value)`，一个合法的 JSON 数字
+    /// 就让整个 App 崩溃（2026-11-16 排查第 12 条）。
+    public var numberText: String? {
+        guard case .number(let value) = self else { return nil }
+        guard value.rounded() == value else { return String(value) }
+        return Int(exactly: value).map(String.init)
+    }
+
     public var boolValue: Bool? {
         if case .bool(let value) = self { return value }
         return nil

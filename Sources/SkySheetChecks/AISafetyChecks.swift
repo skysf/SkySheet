@@ -13,6 +13,7 @@ func aiSafetyChecks() {
     originalFormulaChecks()
     readOnlyQueryChecks()
     expansionLimitChecks()
+    boundedCheck("jsonNumberText")
 }
 
 // MARK: - 第 2 条：整轮撤销
@@ -239,3 +240,22 @@ private func expansionLimitChecks() {
     }
 }
 
+// MARK: - 第 12 条：字符串参数收到超大数字（子进程里跑：以前是直接崩溃）
+
+@MainActor
+func jsonNumberTextChecks() {
+    group("ai safety: jsonNumberText") {
+        for huge in [1e100, -1e100, 9_223_372_036_854_775_808.0, 1.7976931348623157e308] {
+            checkEqual(JSONValue.number(huge).numberText, nil, "\(huge) has no usable text: a parameter error, not a crash")
+        }
+        checkEqual(try JSONValue.decode(Data(#"{"sheet":1e100}"#.utf8))["sheet"]?.numberText, nil,
+                   "describe_sheet({\"sheet\":1e100}) as the App receives it")
+        // 以前能用的照旧。
+        checkEqual(JSONValue.number(2024).numberText, "2024", "a whole number reads as digits")
+        checkEqual(JSONValue.number(-0.0).numberText, "0", "minus zero")
+        checkEqual(JSONValue.number(1.5).numberText, "1.5", "a fraction")
+        checkEqual(JSONValue.number(1e18).numberText, "1000000000000000000", "a large whole number inside Int")
+        checkEqual(JSONValue.number(-9_223_372_036_854_775_808.0).numberText, "-9223372036854775808", "Int.min")
+        checkEqual(JSONValue.string("x").numberText, nil, "not a number")
+    }
+}
