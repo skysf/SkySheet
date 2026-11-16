@@ -14,7 +14,7 @@ let selected = requested.map { [$0] } ?? suites
 Task { @MainActor in
     for suite in selected {
         switch suite {
-        case "editing": sessionEditingChecks(); benchmarkModeChecks()
+        case "editing": sessionEditingChecks(); closeDecisionChecks(); dateSystemPasteChecks(); editingRenameChecks(); benchmarkModeChecks()
         case "copy-cost": sparseClipboardCostChecks()
         case "copy-limit": copyLimitChecks()
         case "theme": invalidThemeChecks()

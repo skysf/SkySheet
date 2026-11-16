@@ -16,6 +16,8 @@ struct CellEditing: Equatable {
     var address: CellAddress
     var text: String
     var origin: Origin
+    let originalText: String
+    let sheetNames: [Int: String]
 }
 
 /// 编辑（设计第 16 条）。改工作簿只有 `apply` 一个入口：改一份副本，整本重算，换上去，再登记撤销。
@@ -29,7 +31,7 @@ extension SheetSession {
 
     /// `change` 抛错时什么都不改。改完和原来一样（比如输入了原来的值）就不登记撤销。
     /// `author` 是谁改的：直接改到的 AI 的 sheet 记下「最后是谁改的」（设计 9.3 节第 5 条）；只是跟着重算变了值的不算。
-    func apply(_ actionName: String, author: AIAuthorship.Mark.Author = .user,
+    func apply(_ actionName: String, author: AIAuthorship.Mark.Author = .user, groupUndo: Bool = false,
                _ change: (inout Workbook) throws -> Void) rethrows {
         let before = Snapshot(workbook: workbook, sheetIndex: sheetIndex, selection: selection)
         var changed = workbook
@@ -39,7 +41,12 @@ extension SheetSession {
         Recalculator.recalculate(&changed, options: RecalcOptions(cache: recalcCache))
         Self.sign(&changed, sheets: edited, author: author)
         replaceWorkbook(changed)
-        registerUndo(restoring: before, actionName)
+        // 关窗要同步结束这一步；放在差异检查之后，避免空分组让干净文档出现保存确认。
+        if groupUndo {
+            AIUndoGrouping.step(undoManager) { registerUndo(restoring: before, actionName) }
+        } else {
+            registerUndo(restoring: before, actionName)
+        }
     }
 
     /// 内容被直接改到的 sheet（编号）。在重算之前比：没碰到的公式格子这时还是原来的值。
@@ -96,19 +103,29 @@ extension SheetSession {
     func beginEditing(_ origin: CellEditing.Origin, text: String? = nil) {
         let cursor = selection.cursor
         let address = sheet.merges.first { $0.contains(cursor) }?.start ?? cursor
-        editing = CellEditing(sheetID: sheet.id, address: address, text: text ?? rawText(at: address), origin: origin)
+        let original = rawText(at: address)
+        editing = CellEditing(sheetID: sheet.id, address: address, text: text ?? original, origin: origin,
+                              originalText: original, sheetNames: Dictionary(uniqueKeysWithValues: workbook.sheets.map { ($0.id, $0.name) }))
     }
 
     /// 提交编辑，然后光标挪 `rows` 行、`columns` 列（回车往下，Tab 往右）。文字没变就不算一次修改。
-    func commitEditing(rows: Int = 0, columns: Int = 0) {
+    func commitEditing(rows: Int = 0, columns: Int = 0, groupUndo: Bool = false) {
         guard let edit = editing else { return }
         editing = nil
         // AI 可在输入期间删表或让数组下标挪动；编号消失就丢弃，绝不能落到后继表。
         guard let index = workbook.sheets.firstIndex(where: { $0.id == edit.sheetID }) else { return }
-        let original = workbook.sheets[index].cells[edit.address].map { Self.rawText($0, styles: workbook.styles, dateSystem: workbook.dateSystem) } ?? ""
-        if edit.text != original {
-            apply(String(localized: "Typing")) { workbook in
-                workbook.enter(CellInput.parse(edit.text, dateSystem: workbook.dateSystem), at: edit.address, sheet: index)
+        // 没改字就保留后台已重写的格子；改过的公式按开始编辑时的表编号跟随改名。
+        if edit.text != edit.originalText {
+            var input = CellInput.parse(edit.text, dateSystem: workbook.dateSystem)
+            if case .formula(let formula) = input {
+                let renames = workbook.sheets.compactMap { sheet -> (from: String, to: String)? in
+                    guard let old = edit.sheetNames[sheet.id], old != sheet.name else { return nil }
+                    return (old, sheet.name)
+                }
+                input = .formula(FormulaRewriter.renameSheets(in: formula, renames: renames))
+            }
+            apply(String(localized: "Typing"), groupUndo: groupUndo) { workbook in
+                workbook.enter(input, at: edit.address, sheet: index)
             }
         }
         moveCursor(rows: rows, columns: columns)
@@ -160,7 +177,7 @@ extension SheetSession {
         case .error(let error): return error.code
         case .number(let number):
             let code = styles.formatCode(forStyle: cell.styleIndex)
-            guard ValueFormatter.isDateFormat(code) else { return ValueFormatter.general(number) }
+            guard ValueFormatter.isCalendarDateFormat(code, for: number) else { return ValueFormatter.general(number) }
             let dateCode = DecimalMath.isInteger(number) ? "yyyy/m/d" : "yyyy/m/d h:mm:ss"
             return ValueFormatter.format(cell.value, code: dateCode, dateSystem: dateSystem).text
         }
@@ -218,7 +235,8 @@ extension SheetSession {
             guard (0..<clip.rowCount).contains(entry.row), (0..<clip.columnCount).contains(entry.column) else { throw CopyLimit.exceeded }
             var value = entry.value
             if entry.formula == nil, clip.dateSystem != workbook.dateSystem,
-               let code = entry.numberFormat, ValueFormatter.isDateFormat(code), case .number(let number) = value {
+               let code = entry.numberFormat, case .number(let number) = value,
+               ValueFormatter.isCalendarDateFormat(code, for: number) {
                 value = .number(number + (clip.dateSystem == .from1900 ? -1462 : 1462))
             }
             entries[CellAddress(row: entry.row, column: entry.column)] = PasteCell(

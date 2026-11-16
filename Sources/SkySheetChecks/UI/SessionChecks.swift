@@ -85,17 +85,6 @@ func sessionEditingChecks() {
         try session.paste([["a", "b"], ["c", ""]], from: nil)
         checkEqual(session.sheet.cells[CellAddress(a1: "B2")!]?.value ?? .empty, .empty, "explicit empty field clears target")
     }
-    group("ui-22: close decision commits before the delegate observes state") {
-        let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))
-        let document = WorkbookDocument()
-        document.session = session
-        // 不接撤销管理器，所以测试文档不会弹保存框；真实 canClose 路径和委托回调仍完整执行。
-        session.beginEditing(.typing, text: "before close decision")
-        let delegate = CloseDecisionProbe()
-        document.canClose(withDelegate: delegate, shouldClose: #selector(CloseDecisionProbe.document(_:shouldClose:contextInfo:)), contextInfo: nil)
-        checkEqual(delegate.valueAtDecision, .text("before close decision"), "close delegate sees committed input")
-        check(delegate.editingEnded, "editing ends before close decision")
-    }
     group("ui-23: defined-name formula follows fillDown") {
         var sheet = Sheet(id: 1, name: "Main")
         sheet.cells[CellAddress(a1: "A1")!] = Cell(value: .number(100))
@@ -172,8 +161,8 @@ func sessionEditingChecks() {
             for row in 0..<4 {
                 let cell = target.sheet.cells[CellAddress(row: row, column: 0)]!
                 let sourceValue = row == 3 ? Decimal(string: "0.5")! : row == 1 ? Decimal(string: "61.5")! : Decimal(string: "45000.5")!
-                let expected = sourceValue + (row == 0 ? 0 : sourceSystem == .from1900 ? -1462 : 1462)
-                checkEqual(cell.value, .number(expected), "serial converted only for date/time formats")
+                let expected = sourceValue + (row == 0 || row == 3 ? 0 : sourceSystem == .from1900 ? -1462 : 1462)
+                checkEqual(cell.value, .number(expected), "serial converted only for calendar date/time formats")
                 if row > 0 {
                     let code = table.formatCode(forStyle: row)
                     checkEqual(ValueFormatter.format(cell.value, code: code, dateSystem: targetSystem).text, ValueFormatter.format(.number(sourceValue), code: code, dateSystem: sourceSystem).text, "displayed day/time survives cross-system paste")
@@ -264,7 +253,7 @@ func copyLimitChecks() {
 @MainActor
 func sizeLocaleChecks() {
     group("ui-10: localized size defaults round trip") {
-        for locale in ["en_US", "de_DE", "fr_FR"] {
+        for locale in ["en_US", "zh_CN", "de_DE", "fr_FR", "de_CH", "it_IT", "es_ES", "pt_BR", "ru_RU", "ar_SA", "hi_IN", "ja_JP"] {
             let input = SizeInput(locale: Locale(identifier: locale))
             for value in [0.0, 8.43, 15.0, 255.0, 409.0] {
                 checkEqual(input.value(input.string(value)), value, "\(locale) accepts its default \(value)")
@@ -275,6 +264,16 @@ func sizeLocaleChecks() {
             checkEqual(input.value(input.string(8.43) + "abc"), nil, "trailing garbage rejected")
             checkEqual(input.value(""), nil, "empty input rejected")
         }
+        for locale in ["de_DE", "it_IT", "es_ES", "pt_BR"] {
+            let input = SizeInput(locale: Locale(identifier: locale))
+            for text in ["1.000", "1.234", "+1.000", "-1.000", "1.000e2", "1.000.000"] {
+                checkEqual(input.value(text), nil, "\(locale) rejects ambiguous grouping \(text)")
+            }
+            checkEqual(input.value("1,000"), 1, "\(locale) accepts unambiguous local decimal")
+            checkEqual(input.value("1000"), 1000, "plain thousands reaches range validation unchanged")
+            checkEqual(input.value("8.1250"), 8.125, "unambiguous standard decimal remains supported")
+        }
+        checkEqual(SizeInput(locale: Locale(identifier: "en_US")).value("1.000"), 1, "period is unambiguous in US locale")
     }
 }
 
@@ -309,16 +308,5 @@ func sparseClipboardCostChecks() {
         print("copy cost: clip \(clipped - start), TSV \(texted - clipped) (\(text.utf8.count) bytes), JSON \(clock.now - texted), \(data.count) bytes, \(clip.entries.count) entries")
         checkEqual(clip.entries.count, 100000, "100000 records for million-cell rectangle")
         check(data.count < 15000000, "sparse JSON stays below 15 MB")
-    }
-}
-
-@MainActor
-private final class CloseDecisionProbe: NSObject {
-    var valueAtDecision: CellValue?
-    var editingEnded = false
-    @objc func document(_ document: NSDocument, shouldClose: Bool, contextInfo: UnsafeMutableRawPointer?) {
-        let session = (document as? WorkbookDocument)?.session
-        valueAtDecision = session?.sheet.cells[CellAddress(a1: "A1")!]?.value
-        editingEnded = session?.editing == nil
     }
 }

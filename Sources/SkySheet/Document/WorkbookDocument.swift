@@ -74,7 +74,8 @@ final class WorkbookDocument: NSDocument {
     // 必须在 NSDocument 判断是否有未保存修改之前提交；只在 save 或 close 里做会错过保存确认。
     override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?,
                            contextInfo: UnsafeMutableRawPointer?) {
-        session?.commitEditing()
+        // 实际修改才显式分组，让 NSDocument 同步脏状态；空组也会标脏，不能包住无变化的提交。
+        session?.commitEditing(groupUndo: true)
         super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
     }
 

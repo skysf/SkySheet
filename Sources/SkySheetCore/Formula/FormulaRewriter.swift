@@ -4,9 +4,15 @@ import Foundation
 public enum FormulaRewriter {
     /// sheet 改名后，指向旧名字的引用换成新名字（要加引号的自动加）。sheet 名不分大小写，和 Excel 一样。
     public static func renameSheet(in formula: String, from old: String, to new: String) -> String {
+        renameSheets(in: formula, renames: [(old, new)])
+    }
+
+    /// 按编辑开始时的表编号一次映射，避免多张表交换名字时把前一次改名的结果再次改掉。
+    public static func renameSheets(in formula: String, renames: [(from: String, to: String)]) -> String {
         rewriteReferences(in: formula) { reference, original in
-            guard let sheet = reference.sheet, sheet.caseInsensitiveCompare(old) == .orderedSame else { return nil }
-            return quotedSheetName(new) + "!" + String(original[original.index(after: original.lastIndex(of: "!")!)...])
+            guard let sheet = reference.sheet,
+                  let rename = renames.first(where: { sheet.caseInsensitiveCompare($0.from) == .orderedSame }) else { return nil }
+            return quotedSheetName(rename.to) + "!" + String(original[original.index(after: original.lastIndex(of: "!")!)...])
         }
     }
 

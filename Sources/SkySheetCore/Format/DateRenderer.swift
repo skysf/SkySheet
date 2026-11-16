@@ -6,9 +6,9 @@ enum DateRenderer {
     static let invalid = "########"
 
     static func render(_ value: Decimal, section: FormatSection, system: DateSystem) -> String {
-        // 1900 → 1904 的粘贴会把早期日期、纯时间换成 -1462...0。
+        // 1900 → 1904 的粘贴会把早期日期换成 -1462...0。
         // 按对应的 1900 序列显示，保留同一天与时刻；不能把正确换算的数又画成井号。
-        if system == .from1904, value < 0, value >= -1462 {
+        if section.isCalendarDate, system == .from1904, value < 0, value >= -1462 {
             return render(value + 1462, section: section, system: .from1900)
         }
         guard value >= 0 else { return invalid }

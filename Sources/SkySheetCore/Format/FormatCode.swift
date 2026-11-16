@@ -50,6 +50,19 @@ struct FormatSection: Sendable {
     var thousandsScale = 0
     /// 整数部分要不要千分位。
     var groupsThousands = false
+
+    /// 只有日历日期依赖纪元；累计时长即使混有日期字母，也不能凭纪元增加小时数。
+    var isCalendarDate: Bool {
+        var calendar = false
+        for token in tokens {
+            switch token {
+            case .date(.elapsedHours), .date(.elapsedMinutes), .date(.elapsedSeconds): return false
+            case .date(.year), .date(.month), .date(.day), .date(.chineseWeekday): calendar = true
+            default: break
+            }
+        }
+        return calendar
+    }
 }
 
 enum FormatToken: Sendable, Equatable {

@@ -3,4 +3,6 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 export SKYSHEET_UI_CHECKS=1
-exec swift run --jobs 2 --arch arm64 --scratch-path .build/ui-checks SkySheet "$@"
+# 两套构建串行、各限四个任务，避免共享机器在首次编译时耗尽内存。
+swift build -j 4 --arch arm64 --scratch-path .build/ui-checks --product SkySheet
+exec swift run --skip-build --arch arm64 --scratch-path .build/ui-checks SkySheet "$@"

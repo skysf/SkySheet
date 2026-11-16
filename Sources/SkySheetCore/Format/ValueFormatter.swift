@@ -43,9 +43,15 @@ public enum ValueFormatter {
         GeneralFormat.render(number, significantDigits: significantDigits)
     }
 
-    /// 这个格式是不是日期 / 时间格式（看第一段）。公式栏显示日期格子的值时要用。
+    /// 格式的粗分类（只看第一段）；有具体数值的日期系统换算应使用 isCalendarDateFormat。
     public static func isDateFormat(_ code: String) -> Bool {
         FormatCodeCache.shared.parsed(code).sections.first?.kind == .date
+    }
+
+    /// 日期系统只影响日历日期和日期时间；纯时间、累计时长都没有需要平移的纪元。
+    /// 和渲染共用分段选择，条件、负数和零不能借用第一段的类型。
+    public static func isCalendarDateFormat(_ code: String, for number: Decimal) -> Bool {
+        FormatCodeCache.shared.parsed(code).section(for: number).section.isCalendarDate
     }
 
     /// 这个格式（第一段）有几个 %：每个乘一次 100。存 csv 时百分比写成「5%」，读回来还是同一个数。

@@ -34,7 +34,7 @@ enum LayoutCommands {
             guard let value = input.value(text), (0...limit).contains(value) else {
                 let message = axis == .columns ? String(localized: "Enter a column width between 0 and 255.")
                                                : String(localized: "Enter a row height between 0 and 409.")
-                explain(message, in: window) {
+                explain(message + " " + String(localized: "Use a decimal number without thousands separators. If a period could be a thousands separator, use your local decimal separator instead."), in: window) {
                     askSize(axis, lines: lines, current: current, in: window, proposed: text, then: apply)
                 }
                 return
@@ -137,7 +137,10 @@ struct SizeInput {
 
     func value(_ text: String) -> Double? {
         var text = text.trimmingCharacters(in: .whitespaces)
-        // 点小数点是旧版接受的写法；先按标准数值读，再试本地区的小数符号。
+        // 德语的 1.000 同时像标准小数和本地千分位；拒绝歧义，不能悄悄缩成 1。
+        if formatter.groupingSeparator == ".",
+           text.range(of: #"^[+-]?[0-9]{1,3}(\.[0-9]{3})+([eE][+-]?[0-9]+)?$"#, options: .regularExpression) != nil { return nil }
+        // 无歧义的点小数点仍兼容旧版，其余交给本地区的小数符号。
         if let value = Double(text), value.isFinite { return value }
         if text.hasPrefix("+") { text.removeFirst() }
         var range = NSRange(location: 0, length: (text as NSString).length)
