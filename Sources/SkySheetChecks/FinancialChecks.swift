@@ -65,6 +65,7 @@ func financialRegressionChecks() {
     irrErrorsChecks()
     npvBooleansChecks()
     cumulativePrecisionChecks()
+    cumulativeSinglePeriodChecks()
     boundedCheck("cumulativeBound")
     boundedCheck("boundaryCumulative")
 }
@@ -116,6 +117,38 @@ func boundaryCumulativeChecks() {
         checkNumber(evaluate("CUMPRINC(0.01,1000000000000,1000,1,1000000000000,0)"), -1000, "principal telescopes to present value")
         let bounded = evaluate("CUMIPMT(0.0000000000001,1000000000000,1000,1,1000000000000,0)")
         check(bounded.number.map { $0 < 0 && $0 > -1000 } == true, "finite payment with huge period count is bounded")
+    }
+}
+
+/// 区间只有一期时，CUMIPMT 按定义就是这一期的 IPMT。第 1 期（期末付）两边都是 −现值 × 利率，必须逐位相等；
+/// 极小利率下利息比付款和本金小几十个数量级，用「付款总额 − 本金」会算成 0。其余各期 IPMT 走增长因子，
+/// 只在增长因子不大的常规贷款上按 1e-12 比较。
+@MainActor
+func cumulativeSinglePeriodChecks() {
+    group("financial: single-period CUMIPMT equals IPMT") {
+        for rate in ["0.0000000000000000000000001", "0.00000000000000001", "0.000000001", "0.0075", "0.1", "3"] {
+            for (periods, present) in [(500, "1000000000000000000000000000000"), (500, "1000"), (360, "125000"), (1, "1000")] {
+                let interest = "\(rate),1,\(periods),\(present),0,0"
+                checkEqual(evaluate("CUMIPMT(\(rate),\(periods),\(present),1,1,0)"), evaluate("IPMT(\(interest))"),
+                           "first period of CUMIPMT(\(rate),\(periods),\(present))")
+                checkEqual(evaluate("CUMIPMT(\(rate),\(periods),\(present),1,1,1)"), .number(0),
+                           "a payment at the start of period 1 carries no interest")
+            }
+        }
+        checkNumber(evaluate("CUMIPMT(0.0000000000000000000000001,500,1000000000000000000000000000000,1,1,0)"), -100000,
+                    tolerance: 0, "reviewer example: tiny rate keeps the interest")
+        for rate in ["0.0075", "5%/12", "0.01"] {
+            for periods in [12, 60, 360] {
+                for type in [0, 1] {
+                    for period in Set([1, 2, periods / 2, periods - 1, periods]) {
+                        let single = "CUMIPMT(\(rate),\(periods),125000,\(period),\(period),\(type))"
+                        let ipmt = evaluate("IPMT(\(rate),\(period),\(periods),125000,0,\(type))")
+                        guard case .number(let expected) = ipmt else { fail("IPMT failed for \(single): \(ipmt)"); continue }
+                        checkNumber(evaluate(single), DecimalMath.double(expected), tolerance: 1e-12, "\(single) equals IPMT")
+                    }
+                }
+            }
+        }
     }
 }
 

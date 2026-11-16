@@ -86,10 +86,12 @@ func totalRowCompatibilityChecks() {
             try checkTableSummary(Workbook(sheets: [makeSheet("S", id: 1, base.merging(["B5": "=" + source]) { $1 })]),
                                   column: 1, count: 3, sum: 600, total: 4)
         }
-        let twoHeaders = ["A1": "基本", "C1": "还款", "A2": "项目", "B2": "金额", "C2": "利率",
-                          "A3": "甲", "B3": "100", "C3": "0.03", "A4": "乙", "B4": "200", "C4": "0.04",
-                          "A5": "合计：", "B5": "=SUM(B3:B4)"]
-        try checkTableSummary(Workbook(sheets: [makeSheet("S", id: 1, twoHeaders)]), column: 1, count: 2, sum: 300, total: 4)
+        // 两行表头要有合并格盖住子标题（A1:B1 盖住项目、金额），下面的记录在子标题下有数字。
+        var twoHeaders = makeSheet("S", id: 1, ["A1": "基本", "C1": "还款", "A2": "项目", "B2": "金额", "C2": "利率",
+                                                "A3": "甲", "B3": "100", "C3": "0.03", "A4": "乙", "B4": "200", "C4": "0.04",
+                                                "A5": "合计：", "B5": "=SUM(B3:B4)"])
+        twoHeaders.merges = [CellRange(a1: "A1:B1")!]
+        try checkTableSummary(Workbook(sheets: [twoHeaders]), column: 1, count: 2, sum: 300, total: 4)
         let numbered = ["A1": "序号", "B1": "项目", "C1": "金额", "A2": "1", "B2": "甲", "C2": "100",
                         "A3": "2", "B3": "乙", "C3": "200", "B4": "合计", "C4": "=SUM(C1:C3)"]
         try checkTableSummary(Workbook(sheets: [makeSheet("S", id: 1, numbered)]), column: 2, count: 2, sum: 300, total: 3)
@@ -137,5 +139,40 @@ func textDataRowsChecks() {
         checkEqual(block.dataRows, 1...2, "both text records remain data")
         let sparse = makeSheet("S", id: 1, ["A1": "Name", "C1": "Color", "A2": "Alice", "C2": "Blue", "A3": "Bob", "C3": "Red"])
         checkEqual(TableBlocks.find(in: sparse)[0].dataRows, 1...2, "missing header column alone does not prove a second header")
+    }
+    // 第三位审查者的反例：表头缺格、横向合并、下一行全是文字，单看或合起来都只是一条普通记录。
+    // 合并格盖住全是文字的子标题、但紧接着的记录没有数字（数字只在更下面的合计行）也一样。
+    group("table blocks: all-text first record is not a second header") {
+        let record = ["A1": "Name", "C1": "Color", "A2": "Alice", "B2": "East", "C2": "Blue", "A3": "Bob", "B3": "West", "C3": "Red"]
+        let counted = record.merging(["A4": "Count", "C4": "=COUNTA(C2:C3)"]) { $1 }
+        for (name, cells, merges, rows) in [
+            ("sparse", record, [String](), 1...2),
+            ("merged", record, ["A1:B1"], 1...2),
+            ("merged gap", ["A1": "Name", "C1": "Color", "A2": "Alice", "C2": "Blue", "A3": "Bob", "C3": "Red"], ["A1:B1"], 1...2),
+            ("merged, number only in a later row", counted, ["A1:B1"], 1...3),
+        ] {
+            var workbook = Workbook(sheets: [makeSheet("S", id: 1, cells)])
+            workbook.sheets[0].merges = merges.map { CellRange(a1: $0)! }
+            Recalculator.recalculate(&workbook)
+            let block = TableBlocks.find(in: workbook.sheets[0])[0]
+            checkEqual(block.headerRow, 0, "\(name): single header row")
+            checkEqual(block.dataRows, rows, "\(name): Alice stays a record")
+            checkEqual(block.columns.map(\.name), ["Name", "B", "Color"], "\(name): column names from the real header")
+            let result = try SQLQuery.run("SELECT count(*), min(Name) FROM S", tables: QueryTables.tables(for: workbook))
+            checkEqual(result.rows[0], [.integer(Int64(rows.count)), .text("Alice")], "\(name): SQL keeps Alice")
+        }
+        // 强证据：合并格「Amount」盖住两个文字子标题，紧接着的记录在子标题下有数字。
+        var grouped = makeSheet("S", id: 1, ["A1": "Item", "B1": "Amount", "A2": "Name", "B2": "Plan", "C2": "Actual",
+                                             "A3": "Alice", "B3": "100", "C3": "120", "A4": "Bob", "B4": "200", "C4": "180"])
+        grouped.merges = [CellRange(a1: "B1:C1")!]
+        let block = TableBlocks.find(in: grouped)[0]
+        checkEqual(block.headerRow, 1, "group merge over subheaders with numbers below")
+        checkEqual(block.dataRows, 2...3, "both records after the two header rows")
+        checkEqual(block.columns.map(\.name), ["Name", "Plan", "Actual"], "column names from the second header row")
+        // 同样的版式，数字只在下一行空着的列里（Amount 写在首行、没有子标题）：和全是文字的记录分不开，按单行表头。
+        var ambiguous = makeSheet("S", id: 1, ["A1": "Person", "C1": "Amount", "A2": "Name", "B2": "Region",
+                                               "A3": "Alice", "B3": "East", "C3": "100", "A4": "Bob", "B4": "West", "C4": "200"])
+        ambiguous.merges = [CellRange(a1: "A1:B1")!]
+        checkEqual(TableBlocks.find(in: ambiguous)[0].headerRow, 0, "numbers outside the subheaders are not evidence")
     }
 }

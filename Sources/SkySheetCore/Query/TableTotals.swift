@@ -9,12 +9,20 @@ enum TableTotals {
         return text.filter { !$0.isWhitespace && $0 != ":" && $0 != "：" }.lowercased()
     }
 
-    static func confirmed(row: Int, firstDataRow: Int, firstHeaderRow: Int?, columns: [Int],
+    /// `tableTop` 是整块的第一行（含标题、表头），求和范围不能越出本块。
+    static func confirmed(row: Int, firstDataRow: Int, tableTop: Int, columns: [Int],
                           in sheet: Sheet, styles: StyleTable, dateSystem: DateSystem) -> Bool {
         if columns.contains(where: { column in
-            guard let source = sheet.cells[row, column]?.formula?.source else { return false }
-            return completeSum(source, column: column, firstDataRow: firstDataRow,
-                               firstHeaderRow: firstHeaderRow, row: row, sheet: sheet.name)
+            guard let source = sheet.cells[row, column]?.formula?.source,
+                  let start = completeSumStart(source, column: column, row: row, sheet: sheet.name),
+                  (tableTop...firstDataRow).contains(start) else { return false }
+            // SUM 忽略文字：范围往上多包的标题、表头只要没有数字，就不改变合计，照样是完整汇总。
+            return (start..<firstDataRow).allSatisfy { index in
+                switch sheet.cells[index, column]?.value ?? .empty {
+                case .empty, .text: return true
+                default: return false
+                }
+            }
         }) { return true }
         guard row - firstDataRow >= 2,
               columns.contains(where: { label(sheet.cells[row, $0]).map(labels.contains) == true }) else { return false }
@@ -39,13 +47,13 @@ enum TableTotals {
         }
     }
 
-    private static func completeSum(_ source: String, column: Int, firstDataRow: Int, firstHeaderRow: Int?,
-                                    row: Int, sheet: String) -> Bool {
+    /// 同表同列、连续不重叠、正好加到上一行的 SUM / SUBTOTAL(9 或 109)：返回范围的起始行，起点由调用方核对。
+    private static func completeSumStart(_ source: String, column: Int, row: Int, sheet: String) -> Int? {
         var arguments: [FormulaNode]
         if case .call(let name, let nodes) = try? FormulaParser.parse(source), name == "SUM" || name == "SUBTOTAL" {
             arguments = nodes
             if name == "SUBTOTAL" {
-                guard case .number(let code)? = arguments.first, code == 9 || code == 109 else { return false }
+                guard case .number(let code)? = arguments.first, code == 9 || code == 109 else { return nil }
                 arguments.removeFirst()
             }
         } else {
@@ -55,25 +63,25 @@ enum TableTotals {
                   match == source.startIndex..<source.endIndex,
                   let start = source.firstIndex(where: { $0 == "," || $0 == ";" }),
                   let end = source.lastIndex(of: ")"),
-                  let node = try? FormulaParser.parse(String(source[source.index(after: start)..<end])) else { return false }
+                  let node = try? FormulaParser.parse(String(source[source.index(after: start)..<end])) else { return nil }
             arguments = [node]
         }
-        guard !arguments.isEmpty else { return false }
+        guard !arguments.isEmpty else { return nil }
         var ranges: [CellRange] = []
         for node in arguments {
             guard case .reference(let reference) = node,
                   reference.sheet == nil || reference.sheet?.caseInsensitiveCompare(sheet) == .orderedSame,
-                  reference.range.start.column == column, reference.range.end.column == column else { return false }
+                  reference.range.start.column == column, reference.range.end.column == column else { return nil }
             ranges.append(reference.range)
         }
         ranges.sort { $0.start.row < $1.start.row }
-        guard let first = ranges.first, ((firstHeaderRow ?? firstDataRow)...firstDataRow).contains(first.start.row) else { return false }
+        guard let first = ranges.first else { return nil }
         var next = first.start.row
         for range in ranges {
-            guard range.start.row == next, range.end.row < row else { return false }
+            guard range.start.row == next, range.end.row < row else { return nil }
             next = range.end.row + 1
         }
-        return next == row
+        return next == row ? first.start.row : nil
     }
 
     /// 前缀只负责提示，绝不参与 confirmed 的标签证据。

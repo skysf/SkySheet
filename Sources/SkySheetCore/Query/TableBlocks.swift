@@ -64,24 +64,19 @@ public enum TableBlocks {
                 remaining = remaining.dropFirst()
             }
             var headerRow: Int?
-            var firstHeaderRow: Int?
             if remaining.count > 1, let top = remaining.first, looksLikeHeader(row: top, columns: columnsByRow[top] ?? [], sheet) {
                 headerRow = top
-                firstHeaderRow = top
                 remaining = remaining.dropFirst()
-                // 分组版式只是候选；第二行必须全是文字，数字或公式足以证明它可能是数据。
-                let merged = sheet.merges.contains { $0.start.row == top && $0.end.column > $0.start.column }
-                let grouped = (columnsByRow[top]?.count ?? 0) < last - first + 1 || merged
-                if grouped, remaining.count > 1, let next = remaining.first,
-                   merged || (columnsByRow[next]?.count ?? 0) > (columnsByRow[top]?.count ?? 0),
-                   isTextOnlyHeader(row: next, columns: columnsByRow[next] ?? [], sheet) {
+                // 认错第二行表头会静默吞掉首条记录，所以拿不准一律按单行表头。
+                if remaining.count > 1, let next = remaining.first, let record = remaining.dropFirst().first,
+                   isSubheaderRow(next, under: top, above: record, columns: columnsByRow[next] ?? [], sheet) {
                     headerRow = next
                     remaining = remaining.dropFirst()
                 }
             }
             var totalsRow: Int?
             if remaining.count > 1, let bottom = remaining.last,
-               TableTotals.confirmed(row: bottom, firstDataRow: remaining.first!, firstHeaderRow: firstHeaderRow,
+               TableTotals.confirmed(row: bottom, firstDataRow: remaining.first!, tableTop: rows[0],
                                      columns: columnsByRow[bottom] ?? [], in: sheet, styles: styles, dateSystem: dateSystem) {
                 totalsRow = bottom
                 remaining = remaining.dropLast()
@@ -107,12 +102,28 @@ public enum TableBlocks {
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
     }
 
-    /// 第二行表头不沿用首行的文字比例：普通记录的三个文字字段加一个金额也会达到 75%。
-    private static func isTextOnlyHeader(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
-        columns.count >= 2 && columns.allSatisfy { column in
-            guard let cell = sheet.cells[row, column], cell.formula == nil, case .text = cell.value else { return false }
-            return true
+    /// 第二行表头要强证据。首行缺格、横向合并、下一行全是文字，单看或合起来都和「表头 + 一条全是文字的记录」一样，
+    /// 不能作数。必须同时满足：首行带文字的横向合并格正好盖住下一行的几个子标题（合并格里的每一列下一行都有文字），
+    /// 下一行全是无公式的文字，并且紧接着那一行在某个子标题下面是数字，说明下一行和记录长得不一样。
+    /// 数字只看紧接着的那一行，不看更下面的合计行，也不看下一行空着的列：那一列的名字写在首行时，
+    /// 下一行空着同样可能只是普通记录缺了一格。
+    private static func isSubheaderRow(_ next: Int, under top: Int, above record: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        let groups = sheet.merges.filter { $0.start.row == top && $0.end.row == top && $0.end.column > $0.start.column }
+        guard !groups.isEmpty, columns.count >= 2, columns.allSatisfy({ isLabel(sheet.cells[next, $0]) }),
+              groups.allSatisfy({ group in
+                  isLabel(sheet.cells[top, group.start.column])
+                      && (group.start.column...group.end.column).allSatisfy { isLabel(sheet.cells[next, $0]) }
+              }) else { return false }
+        return columns.contains { column in
+            if case .number? = sheet.cells[record, column]?.value { return true }
+            return false
         }
+    }
+
+    /// 没有公式、不是空串的文字。
+    private static func isLabel(_ cell: Cell?) -> Bool {
+        guard let cell, cell.formula == nil, case .text(let text) = cell.value else { return false }
+        return !text.isEmpty
     }
 
     /// 表头：至少两格文字，文字占这一行有内容的格子的四分之三以上（表头旁边常有一两个零碎的数）。

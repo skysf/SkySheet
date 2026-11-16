@@ -167,11 +167,13 @@ enum FinancialFunctions {
               typeValue == 0 || typeValue == 1 else { throw CellError.num }
         let type = DecimalMath.double(typeValue)
         // 累计函数限定正利率、零终值，可直接用贴现形式，避免高增长溢出及增长因子相减。
+        // 本金和利息各自直接求和：高增长时本金是小数，极小利率时利息是小数，谁都不能由另一个相减得到。
         let payment = -present * (rate / (1 + rate * type)) / (-expm1(-periods * log1p(rate)))
         guard payment.isFinite else { throw CellError.num }
         let principal = Annuity.cumulativePrincipal(rate: rate, periods: periods, payment: payment, present: present,
                                                    first: first, last: last, type: type)
-        let interest = payment * Double(last - first + 1) - principal
+        let interest = Annuity.cumulativeInterest(rate: rate, periods: periods, present: present,
+                                                  first: first, last: last, type: type)
         guard principal.isFinite, interest.isFinite else { throw CellError.num }
         return (interest, principal)
     }
