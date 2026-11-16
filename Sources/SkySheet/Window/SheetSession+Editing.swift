@@ -43,6 +43,9 @@ extension SheetSession {
             refusedChange?(locked)
             return
         }
+        // 内容被改写过的格子，文件里的 `<f>` 记录作废，以后不会再对上（PR #17 第二轮审查第 2 条）。AI 的改动也从这里过；
+        // 撤销换回的是改之前的那一份，记录跟着内容一起回来。
+        changed.retireReplacedFormulas(since: workbook)
         let edited = Self.editedSheets(changed, comparedTo: workbook)
         Recalculator.recalculate(&changed, options: RecalcOptions(cache: recalcCache))
         Self.sign(&changed, sheets: edited, author: author)

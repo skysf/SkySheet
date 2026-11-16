@@ -5,7 +5,8 @@ import SkySheetCore
 /// 写出来的 `<f>` 属性对不对（以前模拟运算表的定义丢了，核对只比原文和缓存值，看不出来）。记录在 `Sheet.storedFormulas`
 /// 上，复制出来的 sheet 也带着，副本照样按它写（PR #17 第一轮审查第 2 条）。
 ///
-/// 没改过的公式（原文、数组区域都和读进来时一样）带上文件里原来的类型和全部属性（StoredFormula）；别的照常写
+/// 没改过的公式（StoredFormula.describes：记录没作废，原文、数组区域都和读进来时一样）带上文件里原来的类型和全部属性；
+/// 改写过的格子记录作废，内容后来又和读进来时一样也照改过的写（PR #17 第二轮审查第 2 条）。别的照常写
 /// `<f>原文</f>`（数组公式带 t、ref）。共享公式按组（si）看：
 /// - 整组没动：原样（主格带 ref、si 和原文，跟随者只写 `t="shared" si`）。
 /// - 动了几格，跟随者的公式算得出来：没动的照常一格一格写原文，和以前一样，组就拆开了。
@@ -16,10 +17,7 @@ import SkySheetCore
 enum FormulaElements {
     static func kept(in sheet: Sheet, stored: [CellAddress: StoredFormula]) throws(XLSXWriteError)
         -> [CellAddress: StoredFormula] {
-        func unchanged(_ address: CellAddress, _ record: StoredFormula) -> Bool {
-            guard let formula = sheet.cells[address]?.formula else { return false }
-            return ExactText(formula.source) == ExactText(record.source) && formula.arrayRange == record.arrayRange
-        }
+        func unchanged(_ address: CellAddress, _ record: StoredFormula) -> Bool { record.describes(sheet.cells[address]) }
         var kept: [CellAddress: StoredFormula] = [:]
         var groups: [String: [(address: CellAddress, record: StoredFormula)]] = [:]
         for (address, record) in stored {

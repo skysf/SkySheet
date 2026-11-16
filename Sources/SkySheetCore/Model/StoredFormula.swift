@@ -32,6 +32,11 @@ public struct StoredFormula: Hashable, Sendable {
     public let source: String
     public let arrayRange: CellRange?
     public let shared: Shared?
+    /// 读进来以后这一格的内容被改写过（输入、清空、粘贴、填充、AI 写入……，Workbook.retireReplacedFormulas）：记录作废，
+    /// 保存时不再照原样写回，内容后来又变得和读进来时一样也不算。以前只比原文：清空跟随者、再粘上另一组的跟随者，空原文
+    /// 对上了旧记录，存出来又跟着原来的主格（PR #17 第二轮审查第 2 条）。作废的记录留着不删，共享公式组少了哪一格才看得出来，
+    /// 照「动了几格」写。撤销、重做换回整本快照，记录跟着内容一起回来。
+    public var replaced = false
 
     public init(attributes: [String: String], source: String, arrayRange: CellRange?, shared: Shared?) {
         self.attributes = attributes
@@ -40,9 +45,16 @@ public struct StoredFormula: Hashable, Sendable {
         self.shared = shared
     }
 
-    /// 模拟运算表（`t="dataTable"`）占的区域（`ref`），不是模拟运算表是 nil。ref 读不出来时只算它自己这一格。
+    /// `cell` 还是读进来的那个公式：记录没作废，原文、数组区域都和读进来时一样。保存（FormulaElements）、改之前的拒绝
+    /// （Workbook.lockedFormulaChange）都按它看哪些格子没动过。
+    public func describes(_ cell: Cell?) -> Bool {
+        guard !replaced, let formula = cell?.formula else { return false }
+        return ExactText(formula.source) == ExactText(source) && formula.arrayRange == arrayRange
+    }
+
+    /// 模拟运算表（`t="dataTable"`）占的区域（`ref`），不是模拟运算表（或者记录作废了）是 nil。ref 读不出来时只算它自己这一格。
     public func dataTableRange(at address: CellAddress) -> CellRange? {
-        guard attributes["t"] == "dataTable" else { return nil }
+        guard !replaced, attributes["t"] == "dataTable" else { return nil }
         return attributes["ref"].flatMap { CellRange(a1: $0) } ?? CellRange(address)
     }
 }
