@@ -116,6 +116,25 @@ func formulaRecordChecks() {
         try paste(from: "B2", to: "K1", in: session)
         check(element(try savedSheet(session, document), "K1").contains("<f>Sheet1!Rate*$a$1</f>"), "the copy keeps it")
     }
+
+    group("ui-38: a follower pasted straight over another group's follower doesn't keep the old shared formula") {
+        // ui-34 不先清空：直接把 D2 粘到 B2，两边原文都是空的，只比原文看不出 B2 换过，存出来还跟着 B1。
+        let document = try XLSXReader.readDocument(try twoUnknownGroupsWorkbook())
+        let session = SheetSession(workbook: document.workbook)
+        try paste(from: "D2", to: "B2", in: session)
+        let xml = try savedSheet(session, document)
+        check(!element(xml, "B2").contains("si=\"0\""), "B2 isn't written as a follower of B1: \(element(xml, "B2"))")
+    }
+
+    group("ui-39: an empty formula pasted over a data table's first cell is refused") {
+        // 模拟运算表第一格的原文也是空的：粘上一个空原文，只比原文看不出改过（Excel 一样不让改）。
+        let document = try XLSXReader.readDocument(try dataTableLockWorkbook())
+        let session = SheetSession(workbook: document.workbook)
+        let before = session.workbook
+        try paste(from: "H2", to: "H2", in: session)
+        check(session.workbook == before, "pasting H2 over itself is refused like any change to the table")
+        check(element(try savedSheet(session, document), "H2").contains("t=\"dataTable\""), "the table is still saved")
+    }
 }
 
 /// 用界面的复制、粘贴（CellClip）把一格搬到另一格。
