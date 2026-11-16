@@ -166,9 +166,10 @@ enum FinancialFunctions {
         guard rate > 0, periods > 0, present > 0, first >= 1, last >= first, Double(last) <= periods,
               typeValue == 0 || typeValue == 1 else { throw CellError.num }
         let type = DecimalMath.double(typeValue)
-        let payment = Annuity.payment(rate: rate, periods: periods, present: present, future: 0, type: type)
+        // 累计函数限定正利率、零终值，可直接用贴现形式，避免高增长溢出及增长因子相减。
+        let payment = -present * (rate / (1 + rate * type)) / (-expm1(-periods * log1p(rate)))
         guard payment.isFinite else { throw CellError.num }
-        let principal = Annuity.cumulativePrincipal(rate: rate, payment: payment, present: present,
+        let principal = Annuity.cumulativePrincipal(rate: rate, periods: periods, payment: payment, present: present,
                                                    first: first, last: last, type: type)
         let interest = payment * Double(last - first + 1) - principal
         guard principal.isFinite, interest.isFinite else { throw CellError.num }

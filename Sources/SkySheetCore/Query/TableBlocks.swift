@@ -20,13 +20,13 @@ public struct TableBlock: Sendable, Equatable {
     public var headerRow: Int?
     /// 数据行（只有标题、表头时是 nil）。不含合计行。
     public var dataRows: ClosedRange<Int>?
-    /// 块的最后一行明确标了合计，或竖向加总上方数据：不算数据，免得查询重复累计。
+    /// 末行有完整竖向求和，或精确标签与显示精度下的和吻合：不算数据，免得查询重复累计。
     public var totalsRow: Int?
     /// 疑似合计仍参与计算，但必须向 AI 披露，不能静默把推断当事实。
     public var suspectedTotalsRow: Int? = nil
     public var note: String? {
         if totalsRow != nil { return "The totals row is left out of the column stats and of the SQL table; read it with read_range." }
-        return suspectedTotalsRow.map { "Row \($0 + 1) looks like a totals row and was not excluded from the column stats or SQL table; inspect it before aggregating." }
+        return suspectedTotalsRow.map { "Row \($0 + 1) might be a total row; it is kept as data." }
     }
     public var columns: [Column]
 }
@@ -38,7 +38,7 @@ public enum TableBlocks {
     }
 
     /// 认出一张 sheet 里的表格块。只有一格的零碎内容不算块（describe_sheet 另外列出来）。
-    public static func find(in sheet: Sheet) -> [TableBlock] {
+    public static func find(in sheet: Sheet, styles: StyleTable = StyleTable(), dateSystem: DateSystem = .from1900) -> [TableBlock] {
         var columnsByRow: [Int: [Int]] = [:]
         sheet.cells.forEach { address, cell in
             if hasContent(cell) { columnsByRow[address.row, default: []].append(address.column) }
@@ -64,28 +64,30 @@ public enum TableBlocks {
                 remaining = remaining.dropFirst()
             }
             var headerRow: Int?
+            var firstHeaderRow: Int?
             if remaining.count > 1, let top = remaining.first, looksLikeHeader(row: top, columns: columnsByRow[top] ?? [], sheet) {
                 headerRow = top
+                firstHeaderRow = top
                 remaining = remaining.dropFirst()
-                // 只有分组行少列或横向合并的证据才吃第二行表头，不能把全是文字的普通记录吞掉。
+                // 分组版式只是候选；第二行必须全是文字，数字或公式足以证明它可能是数据。
                 let merged = sheet.merges.contains { $0.start.row == top && $0.end.column > $0.start.column }
                 let grouped = (columnsByRow[top]?.count ?? 0) < last - first + 1 || merged
                 if grouped, remaining.count > 1, let next = remaining.first,
                    merged || (columnsByRow[next]?.count ?? 0) > (columnsByRow[top]?.count ?? 0),
-                   looksLikeHeader(row: next, columns: columnsByRow[next] ?? [], sheet) {
+                   isTextOnlyHeader(row: next, columns: columnsByRow[next] ?? [], sheet) {
                     headerRow = next
                     remaining = remaining.dropFirst()
                 }
             }
             var totalsRow: Int?
             if remaining.count > 1, let bottom = remaining.last,
-               isTotals(row: bottom, firstDataRow: remaining.first!,
-                        columns: columnsByRow[bottom] ?? [], sheet) {
+               TableTotals.confirmed(row: bottom, firstDataRow: remaining.first!, firstHeaderRow: firstHeaderRow,
+                                     columns: columnsByRow[bottom] ?? [], in: sheet, styles: styles, dateSystem: dateSystem) {
                 totalsRow = bottom
                 remaining = remaining.dropLast()
             }
             let suspected = totalsRow == nil ? remaining.last.flatMap { row in
-                looksLikeTotals(row: row, columns: columnsByRow[row] ?? [], sheet) ? row : nil
+                TableTotals.suspected(row: row, columns: columnsByRow[row] ?? [], in: sheet) ? row : nil
             } : nil
             let name = blocks.isEmpty ? sheet.name : "\(sheet.name)_\(blocks.count + 1)"
             blocks.append(TableBlock(
@@ -105,49 +107,11 @@ public enum TableBlocks {
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
     }
 
-    /// 标签可以出现在序号后面；去掉排版空白和冒号后识别前缀，兼容 Excel / WPS 的汇总行。
-    private static func isTotals(row: Int, firstDataRow: Int, columns: [Int], _ sheet: Sheet) -> Bool {
-        for column in columns {
-            guard let cell = sheet.cells[row, column] else { continue }
-            if cell.formula == nil, case .text(let text) = cell.value {
-                let label = text.filter { !$0.isWhitespace }.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ":："))
-                if ["汇总", "共计", "合计", "总计", "小计", "total", "sum", "subtotal", "grandtotal"].contains(where: label.hasPrefix) {
-                    return true
-                }
-            }
-            guard let source = cell.formula?.source else { continue }
-            // 结构化引用不在公式解析器的支持范围里；SUBTOTAL 的求和编号本身已能证明汇总意图。
-            if source.range(of: #"^\s*=?\s*SUBTOTAL\s*\(\s*(9|109)\s*[,;]"#, options: [.regularExpression, .caseInsensitive]) != nil {
-                return true
-            }
-            guard case .call("SUM", let arguments) = try? FormulaParser.parse(source), !arguments.isEmpty else { continue }
-            if arguments.allSatisfy({ node in
-                guard case .reference(let reference) = node,
-                      reference.sheet == nil || reference.sheet?.caseInsensitiveCompare(sheet.name) == .orderedSame else { return false }
-                let range = reference.range
-                return range.start.column == column && range.end.column == column
-                    && range.start.row <= firstDataRow && range.end.row == row - 1
-            }) { return true }
-        }
-        return false
-    }
-
-    /// 有竖向汇总的迹象但范围不完整、跨表或公式不支持时，保留数据并给模型一个可核实的提示。
-    private static func looksLikeTotals(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
-        columns.contains { column in
-            guard let source = sheet.cells[row, column]?.formula?.source,
-                  source.range(of: #"\b(SUM|SUBTOTAL)\s*\("#, options: [.regularExpression, .caseInsensitive]) != nil else { return false }
-            guard let node = try? FormulaParser.parse(source) else { return true }
-            func above(_ node: FormulaNode) -> Bool {
-                switch node {
-                case .reference(let reference): return reference.range.end.row < row
-                case .call(_, let arguments): return arguments.contains(where: above)
-                case .negate(let node), .unaryPlus(let node), .percent(let node): return above(node)
-                case .binary(_, let left, let right), .dynamicRange(let left, let right): return above(left) || above(right)
-                default: return false
-                }
-            }
-            return above(node)
+    /// 第二行表头不沿用首行的文字比例：普通记录的三个文字字段加一个金额也会达到 75%。
+    private static func isTextOnlyHeader(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        columns.count >= 2 && columns.allSatisfy { column in
+            guard let cell = sheet.cells[row, column], cell.formula == nil, case .text = cell.value else { return false }
+            return true
         }
     }
 

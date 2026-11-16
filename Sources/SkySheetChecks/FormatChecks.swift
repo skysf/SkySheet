@@ -139,6 +139,8 @@ func formatRegressionChecks() {
     fractionFormatChecks()
     fractionBoundariesChecks()
     fixedFractionChecks()
+    mixedFractionPlaceholderChecks()
+    boundedCheck("fractionOverflow")
     boundedCheck("fractionPerformance")
 }
 
@@ -233,5 +235,32 @@ func fractionPerformanceChecks() {
         let seconds = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e9
         print(String(format: "performance: 2000 four-digit fractions in %.3f s", seconds))
         check(characters > 0 && seconds < 1, "fraction formatting took \(seconds) s")
+    }
+}
+
+/// 百分比可能把有限 Decimal 缩放成 NaN；隔离进程要正常退出，并拒绝两种分母路径。
+@MainActor
+func fractionOverflowChecks() {
+    group("format: fraction scaling overflow") {
+        for value in ["1e127", "-1e127"] {
+            for code in ["# ?/?", "# ?/4", "?/?", "?/4"] {
+                checkEqual(ValueFormatter.format(num(value), code: code + String(repeating: "%", count: 20)).text,
+                           "########", "overflow is recoverable")
+            }
+        }
+        checkValue("TEXT(1e127,\"# ?/?%%%%%%%%%%%%%%%%%%%%\")", .text("########"))
+        checkEqual(ValueFormatter.format(num("1e127"), code: "# ?/?").text.contains("NaN"), false, "finite large mixed fraction")
+    }
+}
+
+@MainActor
+func mixedFractionPlaceholderChecks() {
+    group("format: mixed optional and mandatory fraction digits") {
+        for (value, code, expected) in [("1.5", "# #0/#0", "1 1/2"), ("0.5", "# #0/#0", " 1/2"),
+                                         ("-1.5", "# #0/#0", "-1 1/2"), ("1.5", "# 0#/0#", "1 01/02"),
+                                         ("1.5", "# ?0/?0", "1  1/2 "), ("1.5", "# #00/#00", "1 01/02"),
+                                         ("1.5", "# 00/00", "1 01/02"), ("1.5", "# #0/4", "1 2/4")] {
+            checkEqual(ValueFormatter.format(num(value), code: code).text, expected, "\(value) as \(code)")
+        }
     }
 }

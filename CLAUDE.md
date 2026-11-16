@@ -12,7 +12,7 @@
 ## 常用命令
 
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
-- 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，6 秒左右）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
+- 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，耗时随合成表负载与机器变化）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
 - 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
 - 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5]`，

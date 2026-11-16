@@ -9,6 +9,7 @@ func tableBlockRegressionChecks() {
     boundaryTotalsChecks()
     totalRowCompatibilityChecks()
     textDataRowsChecks()
+    tableLayoutChecks()
 }
 
 @MainActor
@@ -73,9 +74,9 @@ func totalRowCompatibilityChecks() {
             cells["B5"] = "=SUM(B1:B4)"
             try checkTableSummary(Workbook(sheets: [makeSheet("S", id: 1, cells)]), column: 1, count: 3, sum: 600, total: 4)
         }
-        // 结构化引用不支持重算，仿照文件读入提供缓存值；即使没标签也能凭 SUBTOTAL 编号认出。
+        // 结构化引用缺少区域元数据；只在精确标签与缓存的数字和吻合时确认。
         for code in [9, 109] {
-            for label in ["汇总", "item"] {
+            for label in ["汇总", "Total"] {
                 var sheet = makeSheet("S", id: 1, base.merging(["A5": label]) { $1 })
                 sheet.cells[4, 1] = Cell(value: .number(600), formula: CellFormula(source: "SUBTOTAL(\(code),表1[金额])", cachedValue: .number(600)))
                 try checkTableSummary(Workbook(sheets: [sheet]), column: 1, count: 3, sum: 600, total: 4)
@@ -121,7 +122,7 @@ private func checkTableSummary(_ original: Workbook, column: Int, count: Int, su
     checkEqual(result.rows[0], [.integer(Int64(count)), .real(Double(sum))], "SQL count and sum")
     if total == nil {
         checkEqual(block.suspectedTotalsRow, block.range.end.row, "uncertain total flagged")
-        check(block.note?.contains("Row \(block.range.end.row + 1) looks like a totals row and was not excluded") == true, "English describe warning")
+        check(block.note?.contains("Row \(block.range.end.row + 1) might be a total row; it is kept as data.") == true, "English describe warning")
     } else {
         checkEqual(block.suspectedTotalsRow, nil, "confirmed total has no warning")
     }

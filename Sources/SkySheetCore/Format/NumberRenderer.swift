@@ -6,6 +6,8 @@ enum NumberRenderer {
         var magnitude = abs(value)
         for _ in 0..<section.percentCount { magnitude *= 100 }
         for _ in 0..<section.thousandsScale { magnitude /= 1000 }
+        // 源数有限不代表缩放后仍有限；所有数字排版共用这道边界，避免 NaN 进入整数转换。
+        guard !magnitude.isNaN else { return DateRenderer.invalid }
         let body: String
         if let slash = section.tokens.firstIndex(of: .fractionSlash) {
             body = FractionRenderer.render(magnitude, tokens: section.tokens, slash: slash)

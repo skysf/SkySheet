@@ -19,6 +19,7 @@ func boundedCheckCase(_ name: String) {
     case "csvTimeOverflow": csvTimeOverflowChecks()
     case "cumulativeBound": cumulativeBoundChecks()
     case "boundaryCumulative": boundaryCumulativeChecks()
+    case "fractionOverflow": fractionOverflowChecks()
     case "fractionPerformance": fractionPerformanceChecks()
     case "criteriaShape": criteriaShapeChecks()
     case "lookupShape": lookupShapeChecks()

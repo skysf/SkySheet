@@ -7,16 +7,17 @@ import Foundation
 ///     present·(1+r)^n + payment·(1+r·type)·((1+r)^n − 1)/r + future = 0
 /// 迭代和指数运算用 Double，和 Excel 一样（设计 5.4 节）。
 enum Annuity {
-    /// 每期本金按 (1+r) 递增；期初付的第一期单独处理。log1p / expm1 避免小利率时相减丢精度。
-    static func cumulativePrincipal(rate: Double, payment: Double, present: Double,
+    /// 把本金等比数列除以总增长因子，指数始终非正；避免 payment + present·rate 的消减误差被放大。
+    static func cumulativePrincipal(rate: Double, periods: Double, payment: Double, present: Double,
                                     first: Int, last: Int, type: Double) -> Double {
         let start = type == 1 ? max(2, first) : first
         var result = type == 1 && first == 1 ? payment : 0
         if start <= last {
-            let initial = type == 1 ? payment * (1 + rate) + present * rate : payment + present * rate
-            let exponent = Double(start) - (type == 1 ? 2 : 1)
+            let logarithm = log1p(rate)
+            let exponent = Double(last) - periods - type
             let count = Double(last - start + 1)
-            result += initial * exp(exponent * log1p(rate)) * expm1(count * log1p(rate)) / rate
+            result -= present * exp(exponent * logarithm) * (-expm1(-count * logarithm))
+                / (-expm1(-periods * logarithm))
         }
         return result
     }

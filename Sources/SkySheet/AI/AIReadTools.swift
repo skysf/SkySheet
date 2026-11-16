@@ -16,7 +16,7 @@ enum AIReadTools {
         let index = try context.sheetIndex(try arguments.requiredString("sheet"))
         let workbook = context.workbook
         let sheet = workbook.sheets[index]
-        let blocks = TableBlocks.find(in: sheet)
+        let blocks = TableBlocks.find(in: sheet, styles: workbook.styles, dateSystem: workbook.dateSystem)
 
         var formulas = 0
         var notRecalculated: [JSONValue] = []

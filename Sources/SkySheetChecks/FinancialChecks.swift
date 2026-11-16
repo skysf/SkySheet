@@ -64,6 +64,7 @@ func financialChecks() {
 func financialRegressionChecks() {
     irrErrorsChecks()
     npvBooleansChecks()
+    cumulativePrecisionChecks()
     boundedCheck("cumulativeBound")
     boundedCheck("boundaryCumulative")
 }
@@ -89,7 +90,8 @@ func npvBooleansChecks() {
 func cumulativeBoundChecks() {
     group("financial: cumulativeBound") {
         for function in ["CUMIPMT", "CUMPRINC"] {
-            checkValue("\(function)(0.01,1000000000000,1000,1,1000000000000,0)", .error(.num))
+            checkNumber(evaluate("\(function)(0.01,1000000000000,1000,1,1000000000000,0)"),
+                        function == "CUMPRINC" ? -1000 : -9999999999000, "discounted huge annuity stays bounded")
         }
     }
 }
@@ -111,8 +113,49 @@ func boundaryCumulativeChecks() {
                 checkNumber(evaluate("CUMPRINC(\(arguments))"), principal, tolerance: 1e-11, "cumulative principal matches periods")
             }
         }
-        checkValue("CUMPRINC(0.01,1000000000000,1000,1,1000000000000,0)", .error(.num))
+        checkNumber(evaluate("CUMPRINC(0.01,1000000000000,1000,1,1000000000000,0)"), -1000, "principal telescopes to present value")
         let bounded = evaluate("CUMIPMT(0.0000000000001,1000000000000,1000,1,1000000000000,0)")
         check(bounded.number.map { $0 < 0 && $0 > -1000 } == true, "finite payment with huge period count is bounded")
+    }
+}
+
+/// 全期本金必须还清现值；这些期望可直接由现金流守恒推出，不能只检查结果有限。
+@MainActor
+func cumulativePrecisionChecks() {
+    group("financial: discounted cumulative precision") {
+        for rate in ["0.05", "0.1", "0.000001"] {
+            for periods in [360, 500, 1000, 5000] {
+                for type in [0, 1] {
+                    checkNumber(evaluate("CUMPRINC(\(rate),\(periods),1000,1,\(periods),\(type))"), -1000,
+                                tolerance: 1e-12, "whole term principal")
+                }
+            }
+        }
+        checkNumber(evaluate("CUMIPMT(0.1,500,1000,1,500,0)"), -49000, "high growth interest")
+        // 90 位 Decimal 独立期望：常规区间逐期摊还，万亿期用现金流守恒；覆盖极小本金、尾段、期初付和非整期。
+        checkNumber(evaluate("CUMPRINC(0.1,500,1000,1,10,0)"), -3.2068272403476635e-18,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMIPMT(0.1,500,1000,1,10,0)"), -1000,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMPRINC(0.1,500,1000,450,500,0)"), -992.2558624731812,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMIPMT(0.1,500,1000,450,500,0)"), -4107.744137526819,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMPRINC(0.1,500,1000,1,500,1)"), -1000,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMIPMT(0.1,500,1000,1,500,1)"), -44454.545454545456,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMPRINC(0.1,500,1000,450,500,1)"), -902.05078406652842,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMIPMT(0.1,500,1000,450,500,1)"), -3734.3128522971078,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMPRINC(0.05,360.5,1000,1,360,0)"), -975.90007239483464,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMIPMT(0.05,360.5,1000,1,360,0)"), -17024.100341157238,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMPRINC(0.0000000000001,1000000000000,1000,1,1000000000000,0)"), -1000,
+                    tolerance: 1e-11, "high precision amortization oracle")
+        checkNumber(evaluate("CUMIPMT(0.0000000000001,1000000000000,1000,1,1000000000000,0)"), -50.833194477554919,
+                    tolerance: 1e-11, "high precision amortization oracle")
     }
 }
