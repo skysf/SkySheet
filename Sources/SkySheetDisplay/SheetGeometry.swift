@@ -58,6 +58,8 @@ public struct SheetGeometry: Sendable {
     public private(set) var columnCount: Int
     /// 算这份几何时表里用到的范围（`sheet.cells.usedRange`）：下一份几何格子没变就接着用，不用再数一遍。
     public let usedRange: CellRange?
+    private let usedRowCount: Int
+    private let usedColumnCount: Int
     /// 排两个方向用到的设置：下一份几何这个方向的设置一样，就接着用这里排好的（拖边线时每动一下都要重建几何，
     /// 十万行的表数一遍格子、排一遍行高要几十毫秒，2026-11-14）。
     private let columnInputs: ColumnInputs
@@ -139,6 +141,8 @@ public struct SheetGeometry: Sendable {
         rowCount = min(max(lastRow + 1 + 30, minimumRows), CellAddress.maxRows)
         let lastColumn = max(usedRange?.end.column ?? 0, sheet.frozen?.columns ?? 0)
         columnCount = min(max(lastColumn + 1 + 8, minimumColumns), CellAddress.maxColumns)
+        usedRowCount = rowCount
+        usedColumnCount = columnCount
     }
 
     /// Excel 的列宽单位（字符数，含边距）换成像素。`digitWidth` 是默认字体里数字的最大宽度。
@@ -171,13 +175,13 @@ public struct SheetGeometry: Sendable {
     public var totalWidth: Double { columns.offset(columnCount) }
     public var totalHeight: Double { rows.offset(rowCount) }
 
-    /// 空白区域也可以导航；只扩展范围，不重新数格子或排行列，方向键在现有范围里时没有重建成本。
+    /// 导航范围由用到范围和当前活动格决定；回到表内就缩回，只改计数，不重新统计或排行列。
     @discardableResult
     public mutating func include(_ address: CellAddress) -> Bool {
         let oldRows = rowCount
         let oldColumns = columnCount
-        if address.row >= rowCount { rowCount = min(address.row + 31, CellAddress.maxRows) }
-        if address.column >= columnCount { columnCount = min(address.column + 9, CellAddress.maxColumns) }
+        rowCount = min(max(usedRowCount, address.row + 31), CellAddress.maxRows)
+        columnCount = min(max(usedColumnCount, address.column + 9), CellAddress.maxColumns)
         return rowCount != oldRows || columnCount != oldColumns
     }
 

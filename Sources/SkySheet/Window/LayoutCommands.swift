@@ -45,7 +45,7 @@ enum LayoutCommands {
 
     static func explainCopyLimit(in window: NSWindow?) {
         guard let window else { return }
-        explain(String(localized: "The selection is too large to copy. Select no more than 1,000,000 cells and try again."), in: window)
+        explain(String(localized: "The selection is too large to copy. Select no more than \(CopyLimit.cells.formatted()) cells and try again."), in: window)
     }
 
     /// 合并会丢掉左上角以外的内容：先问一下。
@@ -136,7 +136,10 @@ struct SizeInput {
     }
 
     func value(_ text: String) -> Double? {
-        let text = text.trimmingCharacters(in: .whitespaces)
+        var text = text.trimmingCharacters(in: .whitespaces)
+        // 点小数点是旧版接受的写法；先按标准数值读，再试本地区的小数符号。
+        if let value = Double(text), value.isFinite { return value }
+        if text.hasPrefix("+") { text.removeFirst() }
         var range = NSRange(location: 0, length: (text as NSString).length)
         var result: AnyObject?
         do { try formatter.getObjectValue(&result, for: text, range: &range) }

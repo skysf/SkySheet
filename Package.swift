@@ -1,5 +1,11 @@
 // swift-tools-version: 6.0
 import PackageDescription
+import Foundation
+
+// 自检换入口、共用生产源文件，由 SPM 正常链接；不依赖任何构建目录里的对象文件布局。
+let uiChecks = ProcessInfo.processInfo.environment["SKYSHEET_UI_CHECKS"] == "1"
+let otherChecks = (try? FileManager.default.contentsOfDirectory(atPath: "Sources/SkySheetChecks"))?
+    .filter { $0 != "UI" && $0 != "Harness.swift" }.map { "SkySheetChecks/" + $0 } ?? []
 
 // SkySheet：给 AI 用的轻量 macOS 表格。模块怎么分、为什么这么分见设计第三节
 // （docs/plans/2026-10-08-skysheet-design.md）。
@@ -28,15 +34,19 @@ let package = Package(
         // App：文档、窗口、表格视图（AppKit + SwiftUI）、AI 层。打包见 scripts/build-app.sh。
         .executableTarget(
             name: "SkySheet",
-            dependencies: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit"]
+            dependencies: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit", "SkyZip"],
+            path: uiChecks ? "Sources" : "Sources/SkySheet",
+            exclude: uiChecks ? ["SkySheet/App/main.swift", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit", "SkyZip", "SkySheetMCP"] + otherChecks : [],
+            sources: uiChecks ? ["SkySheet", "SkySheetChecks/UI", "SkySheetChecks/Harness.swift"] : nil
         ),
         // 自检。本机只有命令行工具，没有 XCTest，也没有 Swift Testing（设计第十二节），
         // 所以是一个可执行程序：全过退出码 0。scripts/check-all.sh 调它，CI 也跑同一个。
+    ] + (uiChecks ? [] : [
         .executableTarget(
             name: "SkySheetChecks",
             dependencies: ["SkyZip", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit"],
-            // UI 检查由 check-ui.sh 直接链接 debug App 对象：不为测试搬动生产模块，也不启动 App 的 main。
+            // AppKit 自检使用另一个入口；主自检不需要 AppKit。
             exclude: ["UI"]
         ),
-    ]
+    ])
 )

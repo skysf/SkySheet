@@ -3,7 +3,6 @@ import SkySheetCore
 import SkySheetDisplay
 import SkySheetFiles
 import SkyZip
-@testable import SkySheet
 
 // 用最小 xlsx 走真实读取入口，不能只测已经构造好的安全模型。
 func colorWorkbook(fontColor: String = "", format: String = "0") throws -> Workbook {

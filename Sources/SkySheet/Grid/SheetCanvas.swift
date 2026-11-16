@@ -49,9 +49,7 @@ final class SheetCanvas {
             usedRange = sheet.cells.usedRange
         }
         geometry = SheetGeometry(sheet: sheet, baseFontSize: session.styles.baseFontSize, digitWidth: digitWidth,
-                                 zoom: session.zoom, usedRange: usedRange, reusing: reusable?.geometry,
-                                 minimumRows: max(100, reusable?.geometry.rowCount ?? 0),
-                                 minimumColumns: max(26, reusable?.geometry.columnCount ?? 0))
+                                 zoom: session.zoom, usedRange: usedRange, reusing: reusable?.geometry)
         mergeIndex = if let reusable, reusable.sheet.merges == sheet.merges { reusable.mergeIndex }
                      else { MergeIndex(sheet.merges) }
         contents = if let reusable, reusable.styles == styles, reusable.dateSystem == dateSystem { reusable.contents }

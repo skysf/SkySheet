@@ -114,8 +114,8 @@ extension SpreadsheetView {
         guard session.selectedCells != nil else { return false }
         do {
             let clip = try session.clipOfSelection()
-            let lines = clip.rows.enumerated().map { row, entries in
-                entries.enumerated().map { column, _ -> String in
+            let lines = (0..<clip.rowCount).map { row in
+                (0..<clip.columnCount).map { column -> String in
                     let address = CellAddress(row: clip.originRow + row, column: clip.originColumn + column)
                     guard let cell = session.sheet.cells[address] else { return "" }
                     let style = session.styles.style(cell.styleIndex)
@@ -142,12 +142,14 @@ extension SpreadsheetView {
 
     @objc func paste(_ sender: Any?) {
         let pasteboard = NSPasteboard.general
-        if let data = pasteboard.data(forType: NSPasteboard.PasteboardType(CellClip.pasteboardType)),
-           let clip = try? JSONDecoder().decode(CellClip.self, from: data) {
-            session.paste(clip)
-        } else if let text = pasteboard.string(forType: .string) {
-            session.paste(CSVReader.rows(in: text, delimiter: "\t"), from: nil)
-        }
+        do {
+            if let data = pasteboard.data(forType: NSPasteboard.PasteboardType(CellClip.pasteboardType)),
+               let clip = try? JSONDecoder().decode(CellClip.self, from: data) {
+                try session.paste(clip)
+            } else if let text = pasteboard.string(forType: .string) {
+                try session.paste(CSVReader.rows(in: text, delimiter: "\t"), from: nil)
+            }
+        } catch { LayoutCommands.explainCopyLimit(in: window) }
     }
 
     /// 菜单里的「Delete」：和 Delete 键一样。

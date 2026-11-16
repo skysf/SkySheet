@@ -3,31 +3,42 @@ import SkySheetCore
 
 /// 内部复制不能先显示再猜类型：长数字、时间和错误都会变。Decimal 编成十进制原文，避免 JSON 数字经过 Double 丢精度。
 struct CellClip: Codable, Equatable {
-    // 旧格式只有文字，不能当成带类型的新格式读；旧 App 仍能使用同一份系统文字。
-    static let pasteboardType = "ai.skylu.skysheet.cells.v2"
+    // 结构改变就换类型标识，防止旧版本误读；旧 App 仍可使用同一份系统文字。
+    static let pasteboardType = "ai.skylu.skysheet.cells.v3"
     var originRow: Int
     var originColumn: Int
-    var rows: [[Entry]]
+    var rowCount: Int
+    var columnCount: Int
+    var entries: [Entry]
     private var date1904: Bool
     var dateSystem: DateSystem { date1904 ? .from1904 : .from1900 }
 
-    init(origin: CellAddress, rows: [[Entry]], dateSystem: DateSystem) {
+    init(origin: CellAddress, rowCount: Int, columnCount: Int, entries: [Entry], dateSystem: DateSystem) {
         originRow = origin.row
         originColumn = origin.column
-        self.rows = rows
+        self.rowCount = rowCount
+        self.columnCount = columnCount
+        self.entries = entries
         date1904 = dateSystem == .from1904
     }
 
     struct Entry: Codable, Equatable {
         var value: CellValue
         var formula: String?
+        var row: Int
+        var column: Int
+        var numberFormat: String?
 
-        init(_ cell: Cell) {
-            value = cell.value
+        init(_ cell: Cell, row: Int, column: Int, numberFormat: String) {
+            // 新公式不能借用源格的文件缓存；平移后它已经是另一个计算。
+            value = cell.formula == nil ? cell.value : .empty
             formula = cell.formula?.source
+            self.row = row
+            self.column = column
+            self.numberFormat = numberFormat == "General" ? nil : numberFormat
         }
 
-        private enum CodingKeys: String, CodingKey { case value, formula }
+        private enum CodingKeys: String, CodingKey { case value, formula, row, column, numberFormat }
         private enum Value: Codable {
             case empty, number(String), text(String), bool(Bool), error(String), circular, otherError(String)
 
@@ -64,23 +75,33 @@ struct CellClip: Codable, Equatable {
             let fields = try decoder.container(keyedBy: CodingKeys.self)
             value = try fields.decode(Value.self, forKey: .value).decoded()
             formula = try fields.decodeIfPresent(String.self, forKey: .formula)
+            row = try fields.decode(Int.self, forKey: .row)
+            column = try fields.decode(Int.self, forKey: .column)
+            numberFormat = try fields.decodeIfPresent(String.self, forKey: .numberFormat)
         }
 
         func encode(to encoder: any Encoder) throws {
             var fields = encoder.container(keyedBy: CodingKeys.self)
             try fields.encode(Value(value), forKey: .value)
             try fields.encodeIfPresent(formula, forKey: .formula)
+            try fields.encode(row, forKey: .row)
+            try fields.encode(column, forKey: .column)
+            try fields.encodeIfPresent(numberFormat, forKey: .numberFormat)
         }
     }
 }
 
-/// 两份复制数据都要密集展开矩形，必须在分配任何数组之前共用这一上限。
+/// TSV 及单格填满选区仍会展开矩形；复制和粘贴在展开之前共用上限。
 enum CopyLimit: Error {
     static let cells = 1_000_000
     case exceeded
 
     static func check(_ range: CellRange) throws {
         // 用除法比较面积，连非法的极大尺寸也不会在乘法里溢出。
-        guard range.rowCount <= cells / range.columnCount else { throw Self.exceeded }
+        try check(rows: range.rowCount, columns: range.columnCount)
+    }
+
+    static func check(rows: Int, columns: Int) throws {
+        guard rows > 0, columns > 0, rows <= cells / columns else { throw Self.exceeded }
     }
 }

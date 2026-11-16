@@ -95,6 +95,9 @@ func formatChecks() {
         shows("d-mmm-yy", number("45758"), "11-Apr-25")
         shows("上午/下午h\"时\"mm\"分\"", number("0.25"), "上午6时00分")
         shows("yyyy/m/d", number("-1"), "########")
+        checkEqual(ValueFormatter.format(number("-1461.5"), code: "h:mm", dateSystem: .from1904).text, "12:00", "converted pure time remains visible")
+        checkEqual(ValueFormatter.format(number("-1460.5"), code: "yyyy/m/d h:mm", dateSystem: .from1904).text, "1900/1/1 12:00", "converted early date remains visible")
+        checkEqual(ValueFormatter.format(number("-1463"), code: "yyyy/m/d", dateSystem: .from1904).text, "########", "outside source date range remains invalid")
     }
 
     group("format: text and other values") {

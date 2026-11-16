@@ -139,7 +139,7 @@ final class Benchmark {
             clip.scroll(to: CGPoint(x: Swift.min(Swift.max(point.x, 0), limit.x), y: Swift.min(Swift.max(point.y, 0), limit.y)))
             spreadsheet.scrollView.reflectScrolledClipView(clip)
         }
-        let cycling = request.only == "scroll" && request.frames > 20
+        let cycling = request.cycleScroll && request.only == "scroll" && request.frames > 20
         let downReset: ((Int) -> Void)? = cycling ? { index in
             if index % 20 == 0 { scroll(to: .zero) }
         } : nil
@@ -204,12 +204,12 @@ final class Benchmark {
         let original = session.rawText(at: target)
         // 打字那几帧不算：从按回车（提交）量起，到重算、重画完。
         await measure("edit a cell + commit", frames: limited(12), prepare: { [session] index in
-            session?.editing = CellEditing(address: target, text: String(100 + index), origin: .typing)
+            session?.beginEditing(.typing, text: String(100 + index))
         }) { _ in
             session.commitEditing()
         }
         await idle {
-            session.editing = CellEditing(address: target, text: original, origin: .typing)
+            session.beginEditing(.typing, text: original)
             session.commitEditing()
         }
     }
@@ -272,7 +272,7 @@ final class Benchmark {
     private func measure(_ name: String, frames: Int? = nil, prepare: ((Int) -> Void)? = nil,
                          _ action: (Int) -> Void) async {
         // 长导航测量先预热，再反复走同一段；否则短样本被冷缓存和机器频率波动左右，长样本又会到边后空转。
-        if request.frames > 20, request.only == "arrows" || request.only == "scroll" {
+        if request.frames > 20, request.only == "arrows" || (request.only == "scroll" && request.cycleScroll) {
             for index in 0..<20 {
                 if let prepare { await idle { prepare(index) } }
                 await idle { action(index) }

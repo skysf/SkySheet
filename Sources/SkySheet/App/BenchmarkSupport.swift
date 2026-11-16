@@ -8,7 +8,8 @@ import SkySheetFiles
 ///  [--benchmark-file 存合成表的路径.xlsx] [--benchmark-json 结果.json]`
 /// `--benchmark-scale` 把合成的表按比例缩小（0.2 就是 2 万行），调试时跑得快；`--sheet-index` 按第几张（从 1 数）选表，
 /// 不用在命令行里写 sheet 名。`--benchmark-only verify` 不计时，核对局部重画和整块重画画出来的一不一样（BenchmarkVerify），
-/// arrows / scroll 超过 20 帧时先预热 20 帧，再循环走有效区域；不能拿原版越过画布后不画的空转当作更快。
+/// arrows 超过 20 帧时先预热 20 帧，再循环走有效区域；scroll 保持历史默认行为。
+/// `--benchmark-cycle-scroll` 才启用滚动的预热与 20 帧循环，新旧模式不能混着比较。
 /// 对不上的打印 MISMATCH、以 1 退出。`--benchmark-file`、`--benchmark-json` 只写新文件：已经有东西就拒绝、以 1 退出（NewFile）。
 ///
 /// 把作者说卡的六类动作（打开、滚动、移动选区、改格子、拖列宽行高、换 sheet 和缩放）各做若干帧，打印每类的中位数、
@@ -39,6 +40,7 @@ struct BenchmarkRequest {
     let json: URL?
     /// 只量某一类（scroll、select、edit、resize、switch），配合很多帧给 `sample` 采样用。
     let only: String?
+    let cycleScroll: Bool
 
     init?(arguments: [String]) {
         func option(_ name: String) -> String? {
@@ -60,6 +62,7 @@ struct BenchmarkRequest {
         keepFile = option("--benchmark-file").map { URL(fileURLWithPath: $0) }
         json = option("--benchmark-json").map { URL(fileURLWithPath: $0) }
         only = option("--benchmark-only")
+        cycleScroll = arguments.contains("--benchmark-cycle-scroll")
     }
 }
 

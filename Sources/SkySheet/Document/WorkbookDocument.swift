@@ -71,7 +71,15 @@ final class WorkbookDocument: NSDocument {
         return lock
     }
 
+    // 必须在 NSDocument 判断是否有未保存修改之前提交；只在 save 或 close 里做会错过保存确认。
+    override func canClose(withDelegate delegate: Any, shouldClose shouldCloseSelector: Selector?,
+                           contextInfo: UnsafeMutableRawPointer?) {
+        session?.commitEditing()
+        super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
+    }
+
     override func close() {
+        session?.commitEditing()
         RecoveryCoordinator.shared.forget(self)
         super.close()
     }

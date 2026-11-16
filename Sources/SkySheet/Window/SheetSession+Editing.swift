@@ -12,6 +12,7 @@ struct CellEditing: Equatable {
         case formulaBar
     }
 
+    var sheetID: Int
     var address: CellAddress
     var text: String
     var origin: Origin
@@ -95,15 +96,17 @@ extension SheetSession {
     func beginEditing(_ origin: CellEditing.Origin, text: String? = nil) {
         let cursor = selection.cursor
         let address = sheet.merges.first { $0.contains(cursor) }?.start ?? cursor
-        editing = CellEditing(address: address, text: text ?? rawText(at: address), origin: origin)
+        editing = CellEditing(sheetID: sheet.id, address: address, text: text ?? rawText(at: address), origin: origin)
     }
 
     /// 提交编辑，然后光标挪 `rows` 行、`columns` 列（回车往下，Tab 往右）。文字没变就不算一次修改。
     func commitEditing(rows: Int = 0, columns: Int = 0) {
         guard let edit = editing else { return }
         editing = nil
-        if edit.text != rawText(at: edit.address) {
-            let index = sheetIndex
+        // AI 可在输入期间删表或让数组下标挪动；编号消失就丢弃，绝不能落到后继表。
+        guard let index = workbook.sheets.firstIndex(where: { $0.id == edit.sheetID }) else { return }
+        let original = workbook.sheets[index].cells[edit.address].map { Self.rawText($0, styles: workbook.styles, dateSystem: workbook.dateSystem) } ?? ""
+        if edit.text != original {
             apply(String(localized: "Typing")) { workbook in
                 workbook.enter(CellInput.parse(edit.text, dateSystem: workbook.dateSystem), at: edit.address, sheet: index)
             }
@@ -182,74 +185,112 @@ extension SheetSession {
     func clipOfSelection() throws -> CellClip {
         commitEditing()
         let range = try checkedCopyRange()
-        let rows = (range.start.row...range.end.row).map { row in
-            (range.start.column...range.end.column).map {
-                CellClip.Entry(sheet.cells[CellAddress(row: row, column: $0)] ?? Cell())
+        let formats = workbook.styles
+        let entries = sheet.cells.entries(in: range).compactMap { address, cell -> CellClip.Entry? in
+            guard cell.value != .empty || cell.formula != nil else { return nil }
+            return CellClip.Entry(cell, row: address.row - range.start.row, column: address.column - range.start.column,
+                                  numberFormat: formats.formatCode(forStyle: cell.styleIndex))
+        }
+        return CellClip(origin: range.start, rowCount: range.rowCount, columnCount: range.columnCount,
+                        entries: entries, dateSystem: workbook.dateSystem)
+    }
+
+    /// 从 SkySheet 来的稀疏矩形也会清掉对应的空位；数字格式只给常规格，和打字的规则相同。
+    func paste(_ rows: [[String]], from origin: CellAddress?, actionName: String = String(localized: "Paste")) throws {
+        guard !rows.isEmpty, let width = rows.map(\.count).max(), width > 0 else { return }
+        try CopyLimit.check(rows: rows.count, columns: width)
+        var entries: [CellAddress: PasteCell] = [:]
+        for (row, fields) in rows.enumerated() {
+            for (column, text) in fields.enumerated() {
+                entries[CellAddress(row: row, column: column)] = PasteCell(input: CellInput.parse(text, dateSystem: workbook.dateSystem))
             }
         }
-        return CellClip(origin: range.start, rows: rows, dateSystem: workbook.dateSystem)
+        try paste(rows: rows.count, columns: width, entries: entries, from: origin, actionName: actionName, clearMissing: false)
     }
 
-    /// 粘贴一块：从选区左上角开始。只有一格、选区却是一块时，把整块填满（和 Excel 一样）。
-    /// 从 SkySheet 复制来的公式按位置差平移引用；别处来的文字按输入的规矩解析。
-    func paste(_ rows: [[String]], from origin: CellAddress?, actionName: String = String(localized: "Paste")) {
-        paste(rows.map { $0.map { PasteCell(input: CellInput.parse($0, dateSystem: workbook.dateSystem)) } },
-              from: origin, actionName: actionName)
-    }
-
-    func paste(_ clip: CellClip, actionName: String = String(localized: "Paste")) {
-        paste(clip.rows.map { row in row.map { entry in
-            PasteCell(input: entry.formula.map(CellInput.formula) ?? .value(entry.value),
-                      cachedValue: entry.formula == nil ? nil : entry.value)
-        } }, from: CellAddress(row: clip.originRow, column: clip.originColumn), actionName: actionName)
+    func paste(_ clip: CellClip, actionName: String = String(localized: "Paste")) throws {
+        try CopyLimit.check(rows: clip.rowCount, columns: clip.columnCount)
+        guard clip.originRow >= 0, clip.originColumn >= 0,
+              clip.rowCount <= CellAddress.maxRows - clip.originRow,
+              clip.columnCount <= CellAddress.maxColumns - clip.originColumn else { throw CopyLimit.exceeded }
+        var entries: [CellAddress: PasteCell] = [:]
+        for entry in clip.entries {
+            guard (0..<clip.rowCount).contains(entry.row), (0..<clip.columnCount).contains(entry.column) else { throw CopyLimit.exceeded }
+            var value = entry.value
+            if entry.formula == nil, clip.dateSystem != workbook.dateSystem,
+               let code = entry.numberFormat, ValueFormatter.isDateFormat(code), case .number(let number) = value {
+                value = .number(number + (clip.dateSystem == .from1900 ? -1462 : 1462))
+            }
+            entries[CellAddress(row: entry.row, column: entry.column)] = PasteCell(
+                input: entry.formula.map(CellInput.formula) ?? .value(value), numberFormat: entry.numberFormat)
+        }
+        try paste(rows: clip.rowCount, columns: clip.columnCount, entries: entries,
+                  from: CellAddress(row: clip.originRow, column: clip.originColumn), actionName: actionName)
     }
 
     private struct PasteCell {
         var input: CellInput
-        var cachedValue: CellValue? = nil
+        var numberFormat: String? = nil
     }
 
-    private func paste(_ rows: [[PasteCell]], from origin: CellAddress?, actionName: String) {
+    private func paste(rows: Int, columns: Int, entries: [CellAddress: PasteCell], from origin: CellAddress?, actionName: String,
+                       clearMissing: Bool = true) throws {
         commitEditing()
-        guard !rows.isEmpty else { return }
-        // 整列整行：贴到它的左上角；一格填满整列时只填到用到的地方为止。
         let target = selection.kind == .cells ? selection.range : (selectedCells ?? CellRange(selection.range.start))
-        let fills = rows.count == 1 && rows[0].count == 1 && (target.rowCount > 1 || target.columnCount > 1)
-        var placements: [(address: CellAddress, cell: PasteCell, source: CellAddress?)] = []
-        if fills {
-            for row in target.start.row...target.end.row {
-                for column in target.start.column...target.end.column {
-                    placements.append((CellAddress(row: row, column: column), rows[0][0], origin))
-                }
-            }
-        } else {
-            for (rowOffset, fields) in rows.enumerated() {
-                for (columnOffset, cell) in fields.enumerated() {
-                    let address = CellAddress(row: target.start.row + rowOffset, column: target.start.column + columnOffset)
-                    guard address.row < CellAddress.maxRows, address.column < CellAddress.maxColumns else { continue }
-                    let source = origin.map { CellAddress(row: $0.row + rowOffset, column: $0.column + columnOffset) }
-                    placements.append((address, cell, source))
-                }
-            }
-        }
+        let fills = rows == 1 && columns == 1 && (target.rowCount > 1 || target.columnCount > 1)
+        if fills { try CopyLimit.check(target) }
+        let end = fills ? target.end : CellAddress(row: min(target.start.row + rows - 1, CellAddress.maxRows - 1),
+                                                 column: min(target.start.column + columns - 1, CellAddress.maxColumns - 1))
+        let destination = CellRange(target.start, end)
         let index = sheetIndex
+        var pastedEnd = end
         apply(actionName) { workbook in
-            for placement in placements {
-                var input = placement.cell.input
-                if case .formula(let formula) = input, let source = placement.source {
-                    input = .formula(ReferenceShift.shift(formula, rows: placement.address.row - source.row,
-                                                         columns: placement.address.column - source.column))
+            func enter(_ cell: PasteCell, at address: CellAddress, source: CellAddress?) {
+                var input = cell.input
+                if case .formula(let formula) = input, let source {
+                    input = .formula(ReferenceShift.shift(formula, rows: address.row - source.row,
+                                                         columns: address.column - source.column))
                 }
-                workbook.enter(input, at: placement.address, sheet: index)
-                if let cached = placement.cell.cachedValue {
-                    let address = workbook.sheets[index].merges.first { $0.contains(placement.address) }?.start ?? placement.address
-                    workbook.sheets[index].cells[address]?.formula?.cachedValue = cached
+                workbook.enter(input, at: address, sheet: index)
+                let anchor = workbook.sheets[index].merges.first { $0.contains(address) }?.start ?? address
+                if let code = cell.numberFormat, var pasted = workbook.sheets[index].cells[anchor],
+                   workbook.styles.numberFormatID(forStyle: pasted.styleIndex) == 0 {
+                    pasted.styleIndex = workbook.styleIndex(basedOn: pasted.styleIndex, numberFormat: .custom(code))
+                    workbook.sheets[index].cells[anchor] = pasted
+                }
+            }
+            if fills {
+                let cell = entries[CellAddress(row: 0, column: 0)] ?? PasteCell(input: .clear)
+                for row in destination.start.row...destination.end.row {
+                    for column in destination.start.column...destination.end.column {
+                        enter(cell, at: CellAddress(row: row, column: column), source: origin)
+                    }
+                }
+            } else if clearMissing {
+                // 稀疏的是剪贴板存储，粘贴仍按行列顺序走空位；多个目标落在同一合并格时也保持旧语义。
+                // 上限已检查，逐格处理但不建立密集数组，内存不会随矩形多出一份 placements。
+                for row in destination.start.row...destination.end.row {
+                    for column in destination.start.column...destination.end.column {
+                        let offset = CellAddress(row: row - target.start.row, column: column - target.start.column)
+                        let cell = entries[offset] ?? PasteCell(input: .clear)
+                        let source = origin.map { CellAddress(row: $0.row + offset.row, column: $0.column + offset.column) }
+                        enter(cell, at: CellAddress(row: row, column: column), source: source)
+                    }
+                }
+            } else {
+                // 外部 TSV 的短行没有那些字段，不等于显式空格；只改实际提供的字段，并保持行列顺序。
+                for (offset, cell) in entries.sorted(by: { $0.key < $1.key }) {
+                    let address = CellAddress(row: target.start.row + offset.row, column: target.start.column + offset.column)
+                    guard destination.contains(address) else { continue }
+                    let source = origin.map { CellAddress(row: $0.row + offset.row, column: $0.column + offset.column) }
+                    enter(cell, at: address, source: source)
+                    pastedEnd = address
                 }
             }
         }
-        if !fills, let last = placements.last {
+        if !fills {
             select(target.start)
-            select(last.address, extend: true)
+            select(pastedEnd, extend: true)
         }
     }
 

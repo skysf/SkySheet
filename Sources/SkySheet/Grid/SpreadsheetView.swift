@@ -20,7 +20,7 @@ final class SpreadsheetView: NSView {
     let session: SheetSession
     private(set) var canvas: SheetCanvas?
 
-    let scrollView = NSScrollView()
+    let scrollView: NSScrollView
     let mainPane = MainPaneView(role: .main)
     private let cornerPane = PaneView(role: .corner)
     private let frozenRowsPane = PaneView(role: .frozenRows)
@@ -45,8 +45,9 @@ final class SpreadsheetView: NSView {
     /// 上一次画上去的选区：选区再变时，只重画它和新选区经过的那几行（invalidateSelection）。
     private var drawnSelection: Selection?
 
-    init(session: SheetSession) {
+    init(session: SheetSession, scrollView: NSScrollView = NSScrollView()) {
         self.session = session
+        self.scrollView = scrollView
         super.init(frame: .zero)
         clipsToBounds = true
         cornerBox.clipsToBounds = true

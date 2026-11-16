@@ -170,7 +170,7 @@ extension Benchmark {
         for text in ["12345.678", "A rather long piece of text that spills over", "-0.5", ""] {
             steps.append(("edit \(edited.a1) to \(text)", {
                 session.select(edited)
-                session.editing = CellEditing(address: edited, text: text, origin: .typing)
+                session.beginEditing(.typing, text: text)
                 session.commitEditing()
             }))
         }
@@ -181,7 +181,7 @@ extension Benchmark {
             steps.append(("switch back", { session.showSheet(here) }))
             steps.append(("edit after switching back", {
                 session.select(edited)
-                session.editing = CellEditing(address: edited, text: "777", origin: .typing)
+                session.beginEditing(.typing, text: "777")
                 session.commitEditing()
             }))
             steps.append(("switch away again", { session.showSheet(other) }))

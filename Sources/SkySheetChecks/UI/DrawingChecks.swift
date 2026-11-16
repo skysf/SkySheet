@@ -1,7 +1,7 @@
 import AppKit
 import SkySheetCore
 import SkySheetDisplay
-@testable import SkySheet
+import SkySheetFiles
 
 @MainActor
 func renderRegion(_ canvas: SheetCanvas, rows: Range<Int>, columns: Range<Int>, clip: CGRect) -> NSBitmapImageRep {
@@ -92,7 +92,7 @@ func cursorExtentChecks() async {
     view.scrollView.scrollerStyle = .legacy
     window.layoutIfNeeded()
     view.layoutSubtreeIfNeeded()
-    for a1 in ["AA1", "A101", "AZ201", "B2"] {
+    for a1 in ["AA1", "A101", "AZ201", "AZ5001", "B2"] {
         session.select(CellAddress(a1: a1)!)
         // 观察回调和后台窗口的首次布局都异步排队；CI 不保证 10 ms 内完成，等实际结果而非固定延时。
         // 不在自检里调用 scrollToCursor，旧版没有扩画布仍会超时失败，不能靠测试补上生产行为。
@@ -117,5 +117,71 @@ func cursorExtentChecks() async {
         let rect = canvas.rect(of: CellRange(cursor)).offsetBy(dx: -canvas.frozenWidth, dy: -canvas.frozenHeight)
         check(view.mainPane.visibleRect.contains(rect), "\(a1) is visible after observation and layout; cell=\(rect), visible=\(view.mainPane.visibleRect), view=\(view.bounds), scroll=\(view.scrollView.contentView.bounds)")
     }
+    checkEqual(view.canvas?.geometry.rowCount, 100, "returning cursor restores used row extent in the view")
+    checkEqual(view.canvas?.geometry.columnCount, 26, "returning cursor restores used column extent in the view")
+    if let directory = ProcessInfo.processInfo.environment["SKYSHEET_UI_NAV_SNAPSHOT"],
+       let bitmap = OffscreenWindow.render(window), let png = bitmap.representation(using: .png, properties: [:]) {
+        do { try NewFile.write(png, to: URL(fileURLWithPath: directory).appendingPathComponent("return-to-used.png")) }
+        catch { fail("navigation snapshot failed: \(error)") }
+    }
     check(!window.isVisible, "UI checks never order a window on screen")
+}
+
+@MainActor
+func canvasShrinkChecks() {
+    group("ui-17: canvas returns to used extent") {
+        let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))
+        let canvas = SheetCanvas(session: session, fonts: FontBook())
+        let rows = canvas.geometry.rowCount, columns = canvas.geometry.columnCount
+        canvas.includeCursor(CellAddress(a1: "AZ5001")!)
+        check(canvas.geometry.rowCount > 5000, "navigation grows canvas")
+        canvas.includeCursor(CellAddress(a1: "B2")!)
+        checkEqual(canvas.geometry.rowCount, rows, "return shrinks rows")
+        checkEqual(canvas.geometry.columnCount, columns, "return shrinks columns")
+        let rebuilt = SheetCanvas(session: session, fonts: canvas.fonts, previous: canvas)
+        checkEqual(rebuilt.geometry.rowCount, rows, "rebuild never inherits navigation high-water mark")
+    }
+}
+
+// 当前系统会在部分尺寸变化时自行 tile；仅等可见结果会漏掉别的系统延后布局的回归。
+// 同步调用是生产代码对 AppKit 的保证：替身统计原生 tile，仍由 super 执行实际铺排。
+@MainActor
+private final class TilingProbeScrollView: NSScrollView {
+    var tiles = 0
+    override var frame: NSRect {
+        get { super.frame }
+        set { if newValue != super.frame { super.frame = newValue } }
+    }
+    override func tile() {
+        tiles += 1
+        super.tile()
+    }
+}
+
+@MainActor
+func synchronousScrollerChecks() {
+    group("ui-13: first scrollers settle before cursor placement") {
+        let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))
+        let scroller = TilingProbeScrollView()
+        let view = SpreadsheetView(session: session, scrollView: scroller)
+        view.scrollView.scrollerStyle = .legacy
+        view.frame = CGRect(x: 0, y: 0, width: 2200, height: 2600)
+        view.layoutSubtreeIfNeeded()
+        view.layout()
+        check(view.scrollView.verticalScroller?.isHidden != false, "initial document fits without a vertical scroller")
+        // 不给 run loop 或测试自己的反复 layout 修补机会；直接核对生产 layout 完成后的同步结果。
+        let cursor = CellAddress(a1: "AZ201")!
+        session.select(cursor)
+        view.canvas!.includeCursor(cursor)
+        view.layout()
+        view.scrollToCursor()
+        scroller.tiles = 0
+        view.layout()
+        check(scroller.tiles > 0, "layout synchronizes native scrollers before returning, even when frames are unchanged")
+        let placed = view.scrollOffset
+        view.scrollView.tile()
+        let rect = view.canvas!.rect(of: CellRange(cursor))
+        check(view.scrollView.contentView.bounds.contains(rect), "cursor remains visible when final scroller layout is observed")
+        checkEqual(view.scrollOffset, placed, "cursor placement already used final clip size")
+    }
 }
