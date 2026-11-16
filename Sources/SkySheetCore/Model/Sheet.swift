@@ -20,6 +20,10 @@ public struct Sheet: Hashable, Sendable {
     /// 原文件里用了富文本共用字符串的格子 → 那一条在共用字符串表里的编号（设计 7.2 节）。保存时文字没变就接着用那一条，
     /// 一个格子里几种字体的样子不丢。记在 sheet 上而不是原包里：插删行列时它跟着格子挪，复制 sheet 时跟着复制。
     public var richTextSources: [CellAddress: Int]
+    /// 文件里带属性的 `<f>`（StoredFormula，设计 7.2 节）：没改过的公式保存时照原样写回类型和全部属性。记在 sheet 上：
+    /// 复制 sheet 时跟着复制，副本里的共享公式组、模拟运算表照原样写。插删行列以后对不上了，整个清空（有模拟运算表、
+    /// 有算不出来的共享公式的表本来就不让插删）。
+    public var storedFormulas: [CellAddress: StoredFormula]
 
     public init(id: Int, name: String, role: SheetRole = .original) {
         self.id = id
@@ -35,6 +39,7 @@ public struct Sheet: Hashable, Sendable {
         defaultColumnWidth = nil
         defaultRowHeight = nil
         richTextSources = [:]
+        storedFormulas = [:]
     }
 }
 
@@ -62,6 +67,7 @@ extension Sheet {
         cells == other.cells && columns == other.columns && rowFormats == other.rowFormats && frozen == other.frozen
             && merges == other.merges && tabColor == other.tabColor && defaultColumnWidth == other.defaultColumnWidth
             && defaultRowHeight == other.defaultRowHeight && richTextSources == other.richTextSources
+            && storedFormulas == other.storedFormulas
     }
 }
 

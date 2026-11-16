@@ -151,7 +151,8 @@ enum WorksheetWriter {
 
     /// 一个格子。公式写成 Excel 的标准写法（不带 "="、新函数加 _xlfn.），后面跟着算出来的值（别的软件打开时先显示它）。
     /// 循环引用的格子不写值（设计 5.5 节）。`stored` 不是 nil 的公式没改过：`<f>` 带上原来的类型和全部属性，
-    /// 共享公式的跟随者照旧不写原文。
+    /// 共享公式的跟随者照旧不写原文。公式原文是空的、又没有原来的 `<f>` 可以照写的（比如从算不出来的跟随者复制过来的），
+    /// 只写值：空的 `<f></f>` Excel 要修复，公式也就丢了（PR #17 第一轮审查第 2 条）。
     private static func cellXML(_ cell: Cell, at address: CellAddress, _ p: String, _ richIndex: Int?,
                                 _ strings: inout SharedStringTable, _ stored: StoredFormula?) -> String {
         var attributes = "r=\"\(address.a1)\""
@@ -160,7 +161,7 @@ enum WorksheetWriter {
         var inner = ""
         func value(_ text: String) { inner += "<\(p)v>\(text)</\(p)v>" }
 
-        if let formula = cell.formula {
+        if let formula = cell.formula, stored != nil || !formula.source.isEmpty {
             let source = XMLText.formula(FormulaRewriter.storageForm(formula.source))
             if let stored {
                 let text = stored.shared?.follower == true ? "" : source

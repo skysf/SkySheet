@@ -177,7 +177,7 @@ final class WorksheetPart: XMLScanHandler {
             storedFormulas[address] = StoredFormula(
                 attributes: attributes, source: formula.source, arrayRange: formula.arrayRange,
                 shared: .init(group: index, master: master, follower: follower,
-                              unknown: follower && master != nil && exact[index] != true))
+                              unknown: follower && exact[index] != true))
         }
     }
 

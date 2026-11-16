@@ -28,9 +28,9 @@ public enum SaveVerifier {
             }
             // 没改过的 sheet 是原字节照抄的，上面已经逐字节比过。
             if result.regeneratedSheets.contains(memory.id) {
-                // 哪些公式该照原样写回 `<f>`，按原包重新算一遍（不拿写的那一边算好的）。
-                let kept = try FormulaElements.kept(in: memory, stored: source?.formulas[memory.id] ?? [:])
-                try compare(memory, reread, kept: kept, written: document.source.formulas[reread.id] ?? [:])
+                // 哪些公式该照原样写回 `<f>`，按内存里这张表的记录重新算一遍（不拿写的那一边算好的）。
+                let kept = try FormulaElements.kept(in: memory, stored: memory.storedFormulas)
+                try compare(memory, reread, kept: kept, written: reread.storedFormulas)
             }
         }
         // 哪些是 AI 的 sheet、谁写的：按写进文件的样子比（时间只记到秒）。
@@ -72,9 +72,19 @@ public enum SaveVerifier {
         }
         var expected: [CellAddress: CellImage] = [:]
         memory.cells.forEach { address, cell in
-            guard cell != Cell() else { return }
-            let attributes = cell.formula.map { kept[address]?.attributes ?? FormulaElements.plainAttributes($0) } ?? [:]
-            expected[address] = CellImage(cell, formulaAttributes: attributes)
+            var image = cell
+            var attributes: [String: String] = [:]
+            if let formula = cell.formula {
+                if let stored = kept[address] {
+                    attributes = stored.attributes
+                } else if formula.source.isEmpty {
+                    image.formula = nil   // 原文是空的、没有原来的 <f> 可照写：只写值（WorksheetWriter）
+                } else {
+                    attributes = FormulaElements.plainAttributes(formula)
+                }
+            }
+            guard image != Cell() else { return }
+            expected[address] = CellImage(image, formulaAttributes: attributes)
         }
         var actual: [CellAddress: CellImage] = [:]
         saved.cells.forEach { address, cell in

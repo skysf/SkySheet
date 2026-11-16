@@ -32,7 +32,8 @@ public struct XLSXSource: Sendable {
     /// docProps/custom.xml（有的话）和里面 SkySheet.AI.* 那几条：哪些是 AI 的 sheet、谁写的（设计 9.3 节）。
     let customPropertiesPart: String?
     let aiProperties: [String: String]
-    /// sheetId → 格子 → 原来的 `<f>` 带着的属性（StoredFormula）。保存时没改过的公式照原样写回。
+    /// sheetId → 格子 → 原来的 `<f>` 带着的属性（StoredFormula）：插删保护看原来的表上有没有模拟运算表。
+    /// 写文件按 `Sheet.storedFormulas`（跟着复制 sheet 走）。
     let formulas: [Int: [CellAddress: StoredFormula]]
 }
 
@@ -87,7 +88,9 @@ public enum XLSXReader {
             let reader = WorksheetPart(sheet: sheet, sharedStrings: strings.strings, richIndices: strings.richIndices,
                                        dateSystem: workbookPart.dateSystem)
             try XMLScanner.scan(try package.data(relationship.target), part: relationship.target, handler: reader)
-            sheets.append(reader.sheet)
+            var read = reader.sheet
+            read.storedFormulas = reader.storedFormulas
+            sheets.append(read)
             if !reader.storedFormulas.isEmpty { formulas[entry.sheetID] = reader.storedFormulas }
             sheetParts[entry.sheetID] = XLSXSource.SheetPart(path: relationship.target, relationshipID: entry.relationshipID,
                                                              name: entry.name)

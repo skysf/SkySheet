@@ -22,51 +22,102 @@ public enum ReferenceShift {
         return result
     }
 
-    /// `shift` 对这个公式算得准不准。能切词的都准。切不了词的（结构化引用 `Table1[Amount]`、`[@Qty]`，外部引用
-    /// `[1]Sheet1!A1`）`shift` 原样返回：方括号以外没有会跟着平移的引用时（`SUM(Table1[Amount])*$B$1`），原文就是
-    /// 平移后的样子，也准；方括号以外还有 A1 这种相对引用就不准。只判断，不替它平移（读文件第 2 条，2026-11-16：
-    /// 共享公式的主格切不了词时，跟随者不能拿原样返回的那份当自己的公式）。
+    /// `shift` 对这个公式算得准不准。能切词的都准。切不了词的 `shift` 原样返回：把和平移无关、词法又读不了的几样盖掉
+    /// （maskingUnreadable）以后，没有会跟着平移的引用（`SUM(Table1[Amount])*$B$1`、`Sheet1!Rate*2`、`$A$1#`），原文就是
+    /// 平移后的样子，也准；还有 A1 这种相对引用（`A1+SUM(Table1[Amount])`），或者盖掉以后仍切不了词，就不准。
+    /// 只判断，不替它平移（读文件第 2 条，2026-11-16：共享公式的主格切不了词时，跟随者不能拿原样返回的那份当自己的公式；
+    /// PR #17 第一轮审查第 2 条：带 sheet 名的定义名称、绝对引用的溢出区这类，main 给的原文本来就对，不能留空）。
     public static func isExact(_ formula: String) -> Bool {
         if (try? FormulaLexer.tokenize(formula)) != nil { return true }
-        guard let masked = maskingBrackets(formula), (try? FormulaLexer.tokenize(masked)) != nil else { return false }
+        guard let masked = maskingUnreadable(formula), (try? FormulaLexer.tokenize(masked)) != nil else { return false }
         return ExactText(shift(masked, rows: 1, columns: 1)) == ExactText(masked)
     }
 
-    /// 方括号整段（连同里面套着的方括号）换成一个数字：结构化引用、外部引用的那一截。引号里的字、引号括起来的 sheet 名
-    /// 原样；方括号里 ' 转义下一个字符（Excel 的写法，`Table1['[x']]`）。括号、引号不配对返回 nil。
-    static func maskingBrackets(_ formula: String) -> String? {
+    /// 切不了词的公式里，和平移无关、词法又读不了的几样换成空白，剩下的才能切词：方括号整段（结构化引用 `Table1[Amount]`、
+    /// `[@Qty]`，外部引用的 `[1]`，换成一个数字）、sheet 名前缀（`Sheet1!`、`'Q 1'!`：后面是定义名称时词法读不了，
+    /// 是引用的话引用本身留着）、动态数组的溢出符 `#` 和 `@`。字符串、错误值（`#REF!`）原样；方括号里 ' 转义下一个字符
+    /// （Excel 的写法，`Table1['[x']]`）。括号、引号不配对返回 nil。
+    static func maskingUnreadable(_ formula: String) -> String? {
+        let scalars = Array(formula.unicodeScalars)
         var result = String.UnicodeScalarView()
-        var depth = 0
-        var quote: Unicode.Scalar?
-        var scalars = formula.unicodeScalars.makeIterator()
-        while let scalar = scalars.next() {
-            if depth > 0 {
-                switch scalar {
-                case "'": guard scalars.next() != nil else { return nil }
-                case "[": depth += 1
-                case "]":
-                    depth -= 1
-                    if depth == 0 { result.append(contentsOf: " 0 ".unicodeScalars) }
-                default: break
-                }
-                continue
+        func blank(_ count: Int) { result.append(contentsOf: repeatElement(" " as Unicode.Scalar, count: count)) }
+        /// 从 `start` 的引号到配对的那个引号（两个连着的是转义，算一个字）。
+        func closing(_ quote: Unicode.Scalar, from start: Int) -> Int? {
+            var index = start + 1
+            while index < scalars.count {
+                guard scalars[index] == quote else { index += 1; continue }
+                guard index + 1 < scalars.count, scalars[index + 1] == quote else { return index }
+                index += 2
             }
-            if let open = quote {
-                // "" 和 '' 是转义：这一段到这里结束，紧接着的引号又开一段，效果一样。
-                if scalar == open { quote = nil }
-                result.append(scalar)
-                continue
-            }
+            return nil
+        }
+        var index = 0
+        while index < scalars.count {
+            let scalar = scalars[index]
             switch scalar {
-            case "\"", "'":
-                quote = scalar
-                result.append(scalar)
-            case "[": depth = 1
-            case "]": return nil
-            default: result.append(scalar)
+            case "\"":
+                guard let end = closing(scalar, from: index) else { return nil }
+                result.append(contentsOf: scalars[index...end])
+                index = end + 1
+            case "'":
+                guard let end = closing(scalar, from: index) else { return nil }
+                if end + 1 < scalars.count, scalars[end + 1] == "!" {
+                    blank(end + 2 - index)
+                    index = end + 2
+                } else {
+                    result.append(contentsOf: scalars[index...end])
+                    index = end + 1
+                }
+            case "[":
+                var depth = 0
+                var end = index
+                while end < scalars.count {
+                    switch scalars[end] {
+                    case "'" where depth > 0: end += 1
+                    case "[": depth += 1
+                    case "]": depth -= 1
+                    default: break
+                    }
+                    if depth == 0 { break }
+                    end += 1
+                }
+                guard end < scalars.count, depth == 0 else { return nil }
+                result.append(contentsOf: " 0 ".unicodeScalars)
+                index = end + 1
+            case "]":
+                return nil
+            case "#":
+                let rest = String(String.UnicodeScalarView(scalars[index...].prefix(16))).uppercased()
+                if let code = FormulaLexer.errorCodes.first(where: { rest.hasPrefix($0) }) {
+                    let count = code.unicodeScalars.count
+                    result.append(contentsOf: scalars[index..<(index + count)])
+                    index += count
+                } else {
+                    blank(1)
+                    index += 1
+                }
+            case "@":
+                blank(1)
+                index += 1
+            default:
+                guard FormulaLexer.isIdentifierStart(scalar),
+                      index == 0 || !FormulaLexer.isIdentifierContinue(scalars[index - 1]) else {
+                    result.append(scalar)
+                    index += 1
+                    continue
+                }
+                var end = index
+                while end < scalars.count, FormulaLexer.isIdentifierContinue(scalars[end]) { end += 1 }
+                if end < scalars.count, scalars[end] == "!" {
+                    blank(end + 1 - index)
+                    index = end + 1
+                } else {
+                    result.append(contentsOf: scalars[index..<end])
+                    index = end
+                }
             }
         }
-        return depth == 0 && quote == nil ? String(result) : nil
+        return String(result)
     }
 
     private static func shifted(_ reference: ReferenceToken, rows: Int, columns: Int) -> String? {
