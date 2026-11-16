@@ -41,6 +41,8 @@ step() {
 }
 
 if [ "${MODE}" = "ui" ]; then
+  echo "临时：故意让 ui 失败，验证汇总的 check-all 会变红（下一个提交删掉）" >&2
+  exit 1
   # check-ui.sh 自己编（scratch path 是 .build/ui-checks），不依赖 core 那份编译。
   step "SkySheet UI checks (offscreen)" scripts/check-ui.sh
 else
