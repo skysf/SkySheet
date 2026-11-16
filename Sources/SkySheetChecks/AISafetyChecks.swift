@@ -11,6 +11,7 @@ import SkySheetMCPKit
 func aiSafetyChecks() {
     roundUndoChecks()
     originalFormulaChecks()
+    readOnlyQueryChecks()
 }
 
 // MARK: - 第 2 条：整轮撤销
@@ -113,6 +114,44 @@ private func originalFormulaChecks() {
         _ = allowed("delete a sheet nothing original refers to") { try $0.deleteSheet(3) }
         _ = allowed("rename a sheet nothing original refers to") { try $0.renameSheet(3, to: "Spare") }
         _ = allowed("move R") { $0.moveSheet(from: 1, to: 3) }
+    }
+}
+
+// MARK: - 第 7 条：只读的 query 不许开文件、不许写
+
+@MainActor
+private func readOnlyQueryChecks() {
+    group("ai safety: query only reads and creates no files") {
+        let directory = try makeTemporaryDirectory()
+        let sheet = makeSheet("S", id: 1, ["A1": "Name", "B1": "Amount", "A2": "a", "B2": "1", "A3": "b", "B3": "2"])
+        let tables = QueryTables.tables(for: Workbook(sheets: [sheet]))
+        func path(_ name: String) -> String {
+            directory.appendingPathComponent(name).path.replacingOccurrences(of: "'", with: "''")
+        }
+        @MainActor func refused(_ sql: String) {
+            do {
+                _ = try SQLQuery.run(sql, tables: tables)
+                fail("accepted: \(sql)")
+            } catch {
+                check(error.message.contains("only SELECT"), "\(sql) → \(error.message)")
+            }
+        }
+        // 排查第 7 条的原例：sqlite3_stmt_readonly 放行 ATTACH，它在磁盘上新建了一个空的数据库文件。
+        refused("ATTACH DATABASE '\(path("attached.db"))' AS x")
+        refused("ATTACH ':memory:' AS m")
+        refused("DETACH DATABASE m")
+        refused("VACUUM INTO '\(path("vacuumed.db"))'")
+        refused("PRAGMA query_only = 0")
+        refused("BEGIN")
+        refused(#"CREATE TEMP TABLE t(x)"#)
+        let created = (try? FileManager.default.contentsOfDirectory(atPath: directory.path)) ?? ["?"]
+        checkEqual(created, [], "no file appeared on disk")
+
+        checkEqual(try SQLQuery.run(#"SELECT sum("Amount") FROM "S""#, tables: tables).rows, [[.real(3)]], "reading still works")
+        checkEqual(try SQLQuery.run("WITH t(x) AS (SELECT 2) SELECT x * 3 FROM t", tables: tables).rows, [[.integer(6)]],
+                   "a WITH query still works")
+        checkEqual(try SQLQuery.run("SELECT name FROM pragma_table_info('S')", tables: tables).rows,
+                   [[.text("_row")], [.text("Name")], [.text("Amount")]], "reading a table's columns still works")
     }
 }
 
