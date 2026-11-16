@@ -84,14 +84,31 @@ public enum TableBlocks {
                           columns: namedColumns(range.start.column...range.end.column, headerRow: range.start.row, sheet))
     }
 
-    /// 合计行：这一行有 SUM（或 SUBTOTAL）公式。例外：这一行的公式只算这一行自己时（横向逐行求和 `=SUM(B3:C3)`、
-    /// 常量求和 `=SUM(3,4)`），它是一条普通记录；当合计删掉，describe_sheet 和 SQL 会静默少掉最后一条（PR #12）。
+    /// 合计行：这一行有 SUM（或 SUBTOTAL）公式。例外：这一行的公式只算这一行自己（横向逐行求和 `=SUM(B3:C3)`、
+    /// 常量求和 `=SUM(3,4)`）、又没有合计标签时，它是一条普通记录；当合计删掉，describe_sheet 和 SQL 会静默少掉
+    /// 最后一条（PR #12）。
     private static func isTotals(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
         columns.contains { column in
             guard let source = sheet.cells[row, column]?.formula?.source.uppercased() else { return false }
             let body = source.hasPrefix("=") ? String(source.dropFirst()) : source
             return body.hasPrefix("SUM(") || body.hasPrefix("SUBTOTAL(")
-        } && !onlyThisRow(row: row, columns: columns, sheet)
+        } && (!onlyThisRow(row: row, columns: columns, sheet) || hasTotalLabel(row: row, columns: columns, sheet))
+    }
+
+    /// 合计标签只用来把只算本行的求和行放回 main 的判断：「合计 | 4 | 6 | =SUM(B4:C4)」是手填数字、只在合计列横向
+    /// 求和的合计行，main 因为它有 SUM 剔除了，这里也剔除。英文比小写，空白已去掉（Grand Total 就是 grandtotal）。
+    private static let totalLabels: Set<String> = ["合计", "总计", "小计", "汇总", "共计", "total", "subtotal", "grandtotal"]
+
+    /// 这一行第一个有字的文字格，去掉空白（含全角空格）和结尾的冒号后，整串等于上面的词。必须整串相等：
+    /// 「合计划款」「Summer」「Totals」只是像，前几轮按前缀认错过。
+    private static func hasTotalLabel(row: Int, columns: [Int], _ sheet: Sheet) -> Bool {
+        for column in columns.sorted() {
+            guard case .text(let text)? = sheet.cells[row, column]?.value else { continue }
+            var label = text.filter { !$0.isWhitespace }
+            while label.last == ":" || label.last == "：" { label.removeLast() }
+            if !label.isEmpty { return totalLabels.contains(label.lowercased()) }
+        }
+        return false
     }
 
     /// 这一行每个公式都切得了词，引用全在本 sheet 的这一行，或者根本没有引用（只有常量）。只要有一个公式引到别的行、

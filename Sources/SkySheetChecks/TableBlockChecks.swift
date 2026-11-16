@@ -75,6 +75,33 @@ func rowLocalSumChecks() {
             checkEqual(carol.dataRows, 1...3, "\(formula): Carol stays a record")
         }
     }
+    // 只算本行的求和行带着合计标签，是手填数字、只在合计列横向求和的合计行：main 因为这一行有 SUM 剔除了它，照样剔除。
+    // 标签是这一行第一个有字的文字格，去掉空白（含全角空格）和结尾的冒号后整串相等；只是像的留作记录。
+    group("table blocks: total labels keep main's totals") {
+        let totalRow = ["B4": "4", "C4": "6", "D4": "=SUM(B4:C4)"]
+        for label in ["合计", "总计", "小计", "汇总", "共计", "合计：", "合计:", "\u{3000}合计\u{3000}", "合\u{3000}计", "合 计 ：",
+                      "Total", "TOTAL", "Subtotal", " Grand Total : ", "grand total"] {
+            checkEqual(block(records.merging(totalRow) { $1 }.merging(["A4": label]) { $1 }).1.totalsRow, 3,
+                       "\(label): labelled total as in main")
+        }
+        // 第四次返工的例子：合计行不进统计，Jan 的合计仍是 4（不把手填的 4 再加一遍）。
+        let (labelled, total) = block(records.merging(totalRow) { $1 }.merging(["A4": "合计"]) { $1 })
+        checkEqual(total.dataRows, 1...2, "the labelled total is left out")
+        let jan = try SQLQuery.run("SELECT count(*), sum(Jan) FROM S", tables: QueryTables.tables(for: labelled))
+        checkEqual(jan.rows[0], [.integer(2), .real(4)], "SQL does not count the labelled total")
+        // 常量求和带标签也一样。
+        let (_, constant) = block(["A1": "项目", "B1": "金额", "A2": "甲", "B2": "=SUM(1,2)", "A3": "合计：", "B3": "=SUM(100,200)"])
+        checkEqual(constant.totalsRow, 2, "labelled constant SUM is a total as in main")
+        // 只是像合计、不是整串相等的，是记录。
+        for label in ["合计划款", "Summer", "Totals", "汇总表", "Subtotals", "Total Quality Management"] {
+            let (_, kept) = block(records.merging(totalRow) { $1 }.merging(["A4": label]) { $1 })
+            checkEqual(kept.totalsRow, nil, "\(label): not a total label")
+            checkEqual(kept.dataRows, 1...3, "\(label): stays a record")
+        }
+        // 标签只看第一个有字的文字格：Carol 是名字，后面一格写着 Total 不算。
+        let (_, carol) = block(records.merging(["A4": "Carol", "B4": "5", "C4": "6", "D4": "=SUM(B4:C4)", "E4": "Total"]) { $1 })
+        checkEqual(carol.totalsRow, nil, "a later Total cell is not the label")
+    }
     // 例外只有这一种，其余照 main：末行有公式引到别的行、别的 sheet，或者看不出引到哪儿（名称、OFFSET、
     // INDIRECT、切不了词），只要有以 SUM( / SUBTOTAL( 开头的公式就还是合计。
     group("table blocks: other SUM rows stay totals as in main") {
