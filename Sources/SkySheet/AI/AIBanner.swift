@@ -5,6 +5,8 @@ import SwiftUI
 /// 和「撤销这一轮」。只在这一轮改到的窗口里出现；没有 AI 活动时什么都不画（高度是 0）。
 struct AIBanner: View {
     let session: SheetSession
+    /// 「撤销这一轮」没做：这一轮里用户自己也改过（AISession.undoRound），弹一句话说明为什么。
+    @State private var roundRefused = false
 
     var body: some View {
         let ai = AISession.shared
@@ -20,7 +22,7 @@ struct AIBanner: View {
                     Text("\(ai.clientName) made \(ai.changeCount) changes. Nothing is saved until you press ⌘S.")
                 }
                 Spacer(minLength: 8)
-                Button("Undo This Round") { ai.undoRound(in: session) }
+                Button("Undo This Round") { roundRefused = ai.undoRound(in: session) == .userChanged }
                     .help("Put the workbook back the way it was before this round of AI changes. ⌘Z brings them back.")
                 Button {
                     ai.dismiss(session)
@@ -35,6 +37,14 @@ struct AIBanner: View {
             .padding(.horizontal, 10)
             .frame(height: 30)
             .background(Color.purple.opacity(0.08))
+            .alert(String(localized: "Can't Undo This Round"), isPresented: $roundRefused) {
+                Button(String(localized: "OK")) {}
+            } message: {
+                Text(String(localized: """
+                    You changed this workbook during this round of AI changes, so undoing the whole round would undo \
+                    your changes too. Nothing was undone. Use Edit > Undo (⌘Z) to go back one step at a time.
+                    """))
+            }
         }
     }
 }

@@ -128,7 +128,8 @@ enum MCPWriteTools {
                 description: """
                     Undoes your last change, or with round=true everything since your current round of changes \
                     began, as one step (the user can redo it with Cmd+Shift+Z). Refuses when the user changed the \
-                    workbook after you, so their work is never undone by mistake.
+                    workbook after you, and round=true also when they changed it at any point in the round, so their \
+                    work is never undone by mistake.
                     """,
                 input: MCPSchema.object([
                     "round": MCPSchema.boolean("Undo the whole round instead of the last change."),

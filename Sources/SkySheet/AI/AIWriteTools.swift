@@ -298,9 +298,22 @@ enum AIWriteTools {
             throw AIToolError("The user changed this workbook after your last change, so undo would undo their work. "
                 + "Ask the user, or fix things with write_cells.")
         }
+        let before = session.revision
         if try arguments.bool("round") == true {
-            guard ai.undoRound(in: session) else { throw AIToolError("There is nothing of yours to undo in this round.") }
-            ai.noteUndo(in: session, round: true)
+            switch ai.undoRound(in: session) {
+            case .undone:
+                break
+            case .nothing:
+                throw AIToolError("There is nothing of yours to undo in this round.")
+            case .userChanged:
+                // 用户在这一轮中间改过，后来 AI 又改了：上面「最后是不是 AI」的检查过了，快照里却没有用户那几步。
+                throw AIToolError("""
+                    The user also changed this workbook during this round, so undoing the whole round would undo their \
+                    changes too. Nothing was undone. Undo your own later changes one at a time (undo without round), \
+                    or ask the user.
+                    """)
+            }
+            ai.noteUndo(in: session, revisionBefore: before, round: true)
             return .ok(["undone": "round", "sheets": .array(context.workbook.sheets.map { .string($0.name) })])
         }
         guard ai.hasUndoableStep(in: session), let manager = session.undoManager, manager.canUndo else {
@@ -308,7 +321,7 @@ enum AIWriteTools {
         }
         let title = manager.undoActionName
         manager.undo()
-        ai.noteUndo(in: session)
+        ai.noteUndo(in: session, revisionBefore: before)
         return .ok(["undone": .string(title.isEmpty ? "last change" : title)])
     }
 }
