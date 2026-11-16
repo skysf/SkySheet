@@ -230,7 +230,12 @@ enum AIWriteTools {
             try context.change(String(localized: "AI: Format Cells"), { workbook in
                 if let range, !change.isEmpty { workbook.restyle(range, sheet: index, change) }
                 if let range, let merge {
-                    if merge { try workbook.merge(range, sheet: index) } else { workbook.unmerge(range, sheet: index) }
+                    // 合并和改格式一样每一格都要换样式：同一个上限，先按面积查（设计 9.7 节）。
+                    if merge {
+                        try workbook.merge(range, sheet: index, limit: formatLimit)
+                    } else {
+                        workbook.unmerge(range, sheet: index)
+                    }
                 }
                 if let range, let width {
                     workbook.setColumnWidth(width, columns: range.start.column...range.end.column, sheet: index)
@@ -253,6 +258,8 @@ enum AIWriteTools {
         } catch let MergeError.overlapsMerge(existing) {
             throw AIToolError("The range cuts through the merged cells \(existing.a1). Merge a range that contains them "
                 + "whole, or unmerge them first.")
+        } catch let MergeError.tooLarge(limit) {
+            throw AIToolError("That range has more than \(limit) cells, too many to merge into one; merge a smaller block.")
         }
         var payload: [String: JSONValue] = ["sheet": .string(context.workbook.sheets[index].name)]
         if let range { payload["range"] = .string(range.a1) }

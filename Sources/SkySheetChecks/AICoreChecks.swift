@@ -48,7 +48,7 @@ func aiCoreChecks() {
         let count = try SQLQuery.run(#"SELECT count(*) AS n, sum("C") FROM "Loan_2" WHERE "A" LIKE '%e%'"#, tables: tables)
         checkEqual(count.rows.first?.first, .integer(3), "title rows are not records; LIKE works")
 
-        let extra = QueryTables.tables(for: workbook, extra: [("plans", 0, CellRange(a1: "A1:C4")!)])
+        let extra = try QueryTables.tables(for: workbook, extra: [("plans", 0, CellRange(a1: "A1:C4")!)])
         checkEqual(try SQLQuery.run(#"SELECT "分期月份" FROM plans"#, tables: extra).rows.count, 3, "a named range is a table")
         let limited = try SQLQuery.run(#"SELECT * FROM "Loan""#, tables: tables, limit: 4)
         check(limited.truncated && limited.rows.count == 4, "results are capped")

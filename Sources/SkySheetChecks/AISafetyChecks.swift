@@ -12,6 +12,7 @@ func aiSafetyChecks() {
     roundUndoChecks()
     originalFormulaChecks()
     readOnlyQueryChecks()
+    expansionLimitChecks()
 }
 
 // MARK: - 第 2 条：整轮撤销
@@ -152,6 +153,89 @@ private func readOnlyQueryChecks() {
                    "a WITH query still works")
         checkEqual(try SQLQuery.run("SELECT name FROM pragma_table_info('S')", tables: tables).rows,
                    [[.text("_row")], [.text("Name")], [.text("Amount")]], "reading a table's columns still works")
+    }
+}
+
+// MARK: - 第 9、10 条：AI 给的区域先按面积查，再展开
+
+@MainActor
+private func expansionLimitChecks() {
+    group("ai safety: huge ranges are refused by area before anything is expanded") {
+        var bold = Workbook.CellStyleChange()
+        bold.bold = true
+        var workbook = Workbook(sheets: [makeSheet("R", id: 1, ["A1": "x"]), Sheet(id: 2, name: "Empty"),
+                                         makeSheet("Sparse", id: 3, ["A1": "1", "XFD1048576": "2"])])
+        workbook.restyle(CellRange(a1: "A1")!, sheet: 0, bold)
+        let start = workbook
+
+        // 先用小上限、刚超过一点的区域确认真的按面积拦：没有这道检查时这几块会照常展开（都很小）。
+        var merged = workbook
+        var mergeRefused = false
+        do throws(MergeError) {
+            try merged.merge(CellRange(a1: "A1:J20")!, sheet: 0, limit: 100)
+            fail("200 cells were merged under a limit of 100")
+        } catch {
+            checkEqual(error, .tooLarge(limit: 100), "merging more than the limit")
+            mergeRefused = true
+        }
+        check(merged == start, "a refused merge changes nothing")
+
+        var tablesRefused = false
+        do throws(TooManyCells) {
+            _ = try QueryTables.tables(for: workbook, extra: [("T", 0, CellRange(a1: "A1:J6")!), ("U", 0, CellRange(a1: "A1:J6")!)],
+                                       limit: 100)
+            fail("120 cells were loaded under a limit of 100")
+        } catch {
+            checkEqual(error, TooManyCells(cells: 120, limit: 100), "named ranges count together")
+            tablesRefused = true
+        }
+
+        var exportRefused = false
+        do throws(TooManyCells) {
+            _ = try CSVWriter.analysisData(workbook.sheets[0], range: CellRange(a1: "A1:J20")!, styles: workbook.styles,
+                                           dateSystem: workbook.dateSystem, limit: 100)
+            fail("200 cells were exported under a limit of 100")
+        } catch {
+            checkEqual(error, TooManyCells(cells: 200, limit: 100), "exporting more than the limit")
+            exportRefused = true
+        }
+
+        // 排查第 9、10 条的原例，都是一百多亿格：只在上面确认拦得住以后才跑（拦不住会真的去展开）。
+        guard mergeRefused, tablesRefused, exportRefused else { return }
+        let everything = CellRange(CellAddress(row: 0, column: 0),
+                                   CellAddress(row: CellAddress.maxRows - 1, column: CellAddress.maxColumns - 1))
+        let clock = Date()
+        do throws(MergeError) {
+            try merged.merge(CellRange(a1: "A1:XFC1048575")!, sheet: 0, limit: 50_000)
+            fail("A1:XFC1048575 was merged")
+        } catch {
+            checkEqual(error, .tooLarge(limit: 50_000), "format_cells merge of A1:XFC1048575")
+        }
+        check(merged == start, "no cells made, no merge recorded")
+        do throws(TooManyCells) {
+            _ = try QueryTables.tables(for: workbook, extra: [("T", 1, everything)])
+            fail("A:XFD of an empty sheet was loaded")
+        } catch {
+            checkEqual(error, TooManyCells(cells: 17_179_869_184, limit: ExpansionLimit.cells), "query tables {T: Empty!A:XFD}")
+        }
+        let sparse = workbook.sheets[2]
+        let exported = CellRange(CellAddress(row: 0, column: 0), sparse.contentRange!.end)
+        do throws(TooManyCells) {
+            _ = try CSVWriter.analysisData(sparse, range: exported, styles: workbook.styles, dateSystem: workbook.dateSystem)
+            fail("a sheet with A1 and XFD1048576 was exported")
+        } catch {
+            checkEqual(error, TooManyCells(cells: 17_179_869_184, limit: ExpansionLimit.cells), "export_sheet of a sparse sheet")
+        }
+        check(Date().timeIntervalSince(clock) < 1, "all three refused before touching the cells")
+
+        // 上限以内照常。
+        try merged.merge(CellRange(a1: "A1:J10")!, sheet: 0, limit: 100)
+        checkEqual(merged.sheets[0].merges, [CellRange(a1: "A1:J10")!], "a merge within the limit")
+        let tables = try QueryTables.tables(for: workbook, extra: [("T", 0, CellRange(a1: "A1:B3")!)])
+        checkEqual(tables.first { $0.name == "T" }?.rows.count, 2, "a named range within the limit")
+        let csv = try CSVWriter.analysisData(workbook.sheets[0], range: CellRange(a1: "A1:B2")!, styles: workbook.styles,
+                                             dateSystem: workbook.dateSystem)
+        checkEqual(String(decoding: csv, as: UTF8.self), "x,\n,\n", "an export within the limit")
     }
 }
 

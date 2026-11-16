@@ -185,7 +185,15 @@ enum AIReadTools {
             let (sheetName, range) = try AIFormat.range(text)
             extra.append((name, try sheetName.map(context.sheetIndex) ?? context.session.sheetIndex, range))
         }
-        let tables = QueryTables.tables(for: context.workbook, extra: extra)
+        let tables: [SQLQuery.Table]
+        do throws(TooManyCells) {
+            tables = try QueryTables.tables(for: context.workbook, extra: extra)
+        } catch {
+            throw AIToolError("""
+                The ranges in tables have \(error.cells) cells in all (empty ones count too); query loads at most \
+                \(error.limit). Name only the rows and columns in use, e.g. Loan!A1:J200.
+                """)
+        }
         do {
             let result = try SQLQuery.run(sql, tables: tables)
             return .ok([
@@ -239,7 +247,15 @@ enum AIReadTools {
             .flatMap { AIFormat.clamped($0, to: sheet.contentRange) }
             ?? AIWorkbookTools.usedRange(sheet).map { CellRange(CellAddress(row: 0, column: 0), $0.end) }
         guard let range else { throw AIToolError("\(sheet.name) is empty: there is nothing to export.") }
-        let data = CSVWriter.analysisData(sheet, range: range, styles: workbook.styles, dateSystem: workbook.dateSystem)
+        let data: Data
+        do throws(TooManyCells) {
+            data = try CSVWriter.analysisData(sheet, range: range, styles: workbook.styles, dateSystem: workbook.dateSystem)
+        } catch {
+            throw AIToolError("""
+                \(range.a1) of \(sheet.name) has \(error.cells) cells (empty ones count too); export_sheet writes at most \
+                \(error.limit). Give range with only the rows and columns in use.
+                """)
+        }
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("ai.skylu.skysheet/exports", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
