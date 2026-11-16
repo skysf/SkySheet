@@ -135,6 +135,9 @@ func formulaChecks() {
         check(ReferenceShift.isExact("$A$1#*2"), "the spill of an absolute reference")
         check(!ReferenceShift.isExact("A1#*2"), "the spill of a relative one shifts")
         check(ReferenceShift.isExact("#REF!+Sheet1!Rate"), "error values are left as they are")
+        // 第二轮审查第 1 条：看的是引用动没动，不是写出来的字一不一样（平移会把 $a$1 写成 $A$1）。
+        check(ReferenceShift.isExact("Sheet1!Rate*$a$1"), "an absolute reference in lowercase doesn't move either")
+        check(!ReferenceShift.isExact("Sheet1!Rate*$a1"), "a lowercase reference with a relative row does")
     }
 }
 
