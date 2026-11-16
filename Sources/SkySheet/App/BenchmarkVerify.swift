@@ -170,7 +170,7 @@ extension Benchmark {
         for text in ["12345.678", "A rather long piece of text that spills over", "-0.5", ""] {
             steps.append(("edit \(edited.a1) to \(text)", {
                 session.select(edited)
-                session.editing = CellEditing(address: edited, text: text, origin: .typing)
+                session.beginEditing(.typing, text: text)
                 session.commitEditing()
             }))
         }
@@ -181,7 +181,7 @@ extension Benchmark {
             steps.append(("switch back", { session.showSheet(here) }))
             steps.append(("edit after switching back", {
                 session.select(edited)
-                session.editing = CellEditing(address: edited, text: "777", origin: .typing)
+                session.beginEditing(.typing, text: "777")
                 session.commitEditing()
             }))
             steps.append(("switch away again", { session.showSheet(other) }))
@@ -228,6 +228,14 @@ extension Benchmark {
             steps.append(("click below merge \(merge.a1)", {
                 session.select(CellAddress(row: merge.end.row + 1, column: merge.start.column))
             }))
+        }
+        // 活动格跨过画布边界后要先扩展再滚动，扩展也不能让局部重画留下旧像素。
+        if let geometry = spreadsheet.canvas?.geometry {
+            let beyond = CellAddress(row: min(geometry.rowCount + 2, CellAddress.maxRows - 1),
+                                     column: min(geometry.columnCount + 2, CellAddress.maxColumns - 1))
+            steps.append(("cursor beyond canvas", { session.select(beyond) }))
+            steps.append(("move after canvas growth", { session.moveCursor(rows: 1, columns: 1) }))
+            steps.append(("return after canvas growth", { session.select(start) }))
         }
         return steps
     }

@@ -44,6 +44,21 @@ final class HeaderView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
+    override func viewDidChangeEffectiveAppearance() {
+        super.viewDidChangeEffectiveAppearance()
+        cachedChrome = nil
+        labelStyles = nil
+        needsDisplay = true
+    }
+
+    private var cachedChrome: GridChrome.Palette?
+    private var chrome: GridChrome.Palette {
+        if let cachedChrome { return cachedChrome }
+        let colors = GridChrome.palette(for: effectiveAppearance)
+        cachedChrome = colors
+        return colors
+    }
+
     /// 测速模式要知道哪里标了脏（DrawStats）。
     override func setNeedsDisplay(_ invalidRect: NSRect) {
         super.setNeedsDisplay(invalidRect)
@@ -193,16 +208,19 @@ final class HeaderView: NSView {
     private func labelStyles(points: CGFloat) -> (normal: LabelStyle, selected: LabelStyle, bold: LabelStyle) {
         if let known = labelStyles, known.points == points { return (known.normal, known.selected, known.bold) }
         let font = NSFont.systemFont(ofSize: points)
+        // 深色选区的强调色同时用于底色时，文字也用强调色会相近（黄色实测仅 4.20:1）；白字保持对比。
+        let selectedColor = chrome.selectedText
         let styles = (normal: LabelStyle(font: font, color: .secondaryLabelColor),
-                      selected: LabelStyle(font: font, color: .controlAccentColor),
-                      bold: LabelStyle(font: NSFont.boldSystemFont(ofSize: font.pointSize), color: .controlAccentColor))
+                      selected: LabelStyle(font: font, color: selectedColor),
+                      bold: LabelStyle(font: NSFont.boldSystemFont(ofSize: font.pointSize), color: selectedColor))
         labelStyles = (points, styles.normal, styles.selected, styles.bold)
         return styles
     }
 
     override func draw(_ dirtyRect: NSRect) {
         DrawStats.headerDraws += 1
-        NSColor(white: 0.965, alpha: 1).setFill()
+        let chrome = self.chrome
+        chrome.headerBackground.setFill()
         bounds.fill()
         guard let spreadsheet, let canvas = spreadsheet.canvas else { return }
         let isColumns = axis == .columns
@@ -248,12 +266,12 @@ final class HeaderView: NSView {
             let style = isSelected ? (wholeLines ? styles.bold : styles.selected) : styles.normal
             let labelSize = style.size(of: label)
             style.line(label).draw(at: CGPoint(x: rect.midX - labelSize.width / 2, y: rect.midY - labelSize.height / 2))
-            NSColor(white: 0.82, alpha: 1).setFill()
+            chrome.headerSeparator.setFill()
             (isColumns ? CGRect(x: rect.maxX - 1, y: 0, width: 1, height: bounds.height)
                        : CGRect(x: 0, y: rect.maxY - 1, width: bounds.width, height: 1)).fill()
             NSGraphicsContext.restoreGraphicsState()
         }
-        NSColor(white: 0.78, alpha: 1).setFill()
+        chrome.separator.setFill()
         (isColumns ? CGRect(x: 0, y: bounds.maxY - 1, width: bounds.width, height: 1)
                    : CGRect(x: bounds.maxX - 1, y: 0, width: 1, height: bounds.height)).fill()
     }

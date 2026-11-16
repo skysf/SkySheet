@@ -6,6 +6,11 @@ enum DateRenderer {
     static let invalid = "########"
 
     static func render(_ value: Decimal, section: FormatSection, system: DateSystem) -> String {
+        // 1904 簿里已有的 -1462...0 日历日期按对应的 1900 序列显示，保留同一天与时刻，不画成井号。
+        // 粘贴不再换算出这种数：落在 1904-01-01 之前就原样粘贴（设计第十五节）。
+        if section.isCalendarDate, system == .from1904, value < 0, value >= -1462 {
+            return render(value + 1462, section: section, system: .from1900)
+        }
         guard value >= 0, value < Decimal(DateSerial.maximumSerial(system: system) + 1) else { return invalid }
         let subsecondDigits = section.tokens.lazy.compactMap { token -> Int? in
             if case .date(.subsecond(let digits)) = token { return digits }

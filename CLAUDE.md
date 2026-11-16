@@ -14,13 +14,21 @@
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
 - 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，耗时随合成表负载与机器变化）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
+  后台 UI 自检用 `nice -n 10 scripts/check-ui.sh [editing|copy-limit|theme|format|appearance|locale|drawing]`，不给套件就全跑。
+  在 `Sources/SkySheetChecks/UI/` 加断言，再到唯一套件入口 `UI/main.swift` 注册；SPM 换入口编译同一份 App 源文件，
+  不启动文档恢复或 MCP、不接系统剪贴板。
 - 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
-- 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5]`，
+- 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5] [--appearance aqua|dark]`，
   把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。截图、测速只写新文件，输出路径已经有东西就拒绝。
 - 测速（设计 8.2 节「性能」）：`swift build -c release --arch arm64 --product SkySheet` 以后
   `.build/arm64-apple-macosx/release/SkySheet --benchmark synthetic:data|synthetic:formulas|synthetic:styles|文件.xlsx
   [--benchmark-only …]`，逐帧报主线程 CPU 时间；`--benchmark-only verify` 逐像素核对局部重画，改了画法就跑。
-  截图、测速都不弹窗口。
+  截图、测速都不弹窗口。`scroll` 默认保持历史行为；长时间循环采样另加 `--benchmark-cycle-scroll`，不能混着比历史数字。
+- 标准截图集：`nice -n 10 scripts/capture-ui.sh APP 全新输出目录 [--appearance aqua|dark]`。输入会在输出目录的 `inputs/`
+  自动合成，不需手工准备文件；包含纯数据、公式、样式、跨窗格合并、居中溢出和画布边界。只写临时目录，不提交截图或生成的表。
+  前后各跑一次后，`nice -n 10 swift scripts/compare-ui.swift 前图目录 后图目录 全新差异目录` 逐像素比较，
+  输出像素计数 JSON 和有变化的三栏图（前／后／红色差异）。导航后缩回的截图可用
+  `SKYSHEET_UI_NAV_SNAPSHOT=已有临时目录 nice -n 10 scripts/check-ui.sh drawing` 生成。
 - 看存出来的文件：`SKYSHEET_CHECK_OUTPUT=文件夹 swift run --arch arm64 --skip-build SkySheetChecks` 把保存自检写出的
   xlsx 留在那个文件夹，可以拿 `qlmanage -t` 或别的软件打开看。
 - 试 MCP：打包后用 JSON-RPC 直接跟 `dist/SkySheet.app/Contents/Helpers/skysheet-mcp` 说话；要和真的 Claude Code 试，用
