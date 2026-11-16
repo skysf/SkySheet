@@ -72,9 +72,13 @@ jobs:
           [ -n "${BUILD_DATE}" ] || fail "Info.plist 的 SkySheetBuildDate 是空的"
           ICON="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${PLIST}")"
           [ -s "${APP}/Contents/Resources/${ICON}.icns" ] || fail "缺图标 Contents/Resources/${ICON}.icns"
+          # 只支持 M 芯片：两个可执行文件都得是 arm64。lipo -archs 一次只收一个文件。
+          for BIN in "${APP}/Contents/MacOS/SkySheet" "${APP}/Contents/Helpers/skysheet-mcp"; do
+            ARCHS="$(lipo -archs "${BIN}")"
+            [ "${ARCHS}" = "arm64" ] || fail "${BIN} 的架构是 ${ARCHS}，不是 arm64"
+          done
           codesign --verify --deep --strict "${APP}" || fail "签名校验没过"
-          echo "版本 ${PLIST_VERSION}，打包时间 ${BUILD_DATE}，图标 ${ICON}.icns"
-          lipo -archs "${APP}/Contents/MacOS/SkySheet" "${APP}/Contents/Helpers/skysheet-mcp"
+          echo "版本 ${PLIST_VERSION}，打包时间 ${BUILD_DATE}，图标 ${ICON}.icns，两个可执行文件都是 arm64"
           codesign -dv "${APP}" 2>&1 | grep -E '^(Identifier|Signature|TeamIdentifier)=' || true
           find "${APP}" -maxdepth 3 | sort
 
