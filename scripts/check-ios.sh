@@ -12,19 +12,30 @@ app="$work/build/Build/Products/Debug-iphonesimulator/SkyFolio.app"
 ditto -c -k --keepParent "$app" "$results/SkyFolio-Simulator.zip"
 
 xcrun simctl list devices available --json > "$work/devices.json"
-python3 - "$work/devices.json" > "$work/selected" <<'PY'
+python3 - "$work/devices.json" "${SKYFOLIO_SIM_RUNTIME:-}" > "$work/selected" <<'PY'
 import json, sys
 devices = json.load(open(sys.argv[1]))["devices"]
 runtimes = sorted((key for key in devices if ".iOS-" in key),
                   key=lambda key: tuple(map(int, key.split(".iOS-")[1].split("-"))), reverse=True)
-for family, candidates in (("iPhone", reversed(runtimes)), ("iPad", runtimes)):
-    match = next(((runtime, d) for runtime in candidates for d in devices[runtime]
-                  if d["name"].startswith(family) and d["isAvailable"]), None)
-    if not match:
-        sys.exit(f"No available {family} simulator")
-    runtime, device = match
-    print(family, device["deviceTypeIdentifier"], runtime)
-    print(f"{family}: {device['name']} ({runtime})", file=sys.stderr)
+# 26.5 的模拟器偶发无法解析 Files 自己创建的文稿。两种尺寸用同一稳定 runtime；
+# 仍用最新 SDK 编译真机，可指定 SKYFOLIO_SIM_RUNTIME=26.5 在 CI 环境复查系统提供方。
+requested = sys.argv[2]
+preferred = "com.apple.CoreSimulator.SimRuntime.iOS-" + (requested or "26.2").replace(".", "-")
+if requested and preferred not in runtimes:
+    sys.exit(f"Requested simulator runtime unavailable: {requested}")
+if preferred in runtimes:
+    runtimes = [preferred] if requested else [preferred] + [other for other in runtimes if other != preferred]
+families = ("iPhone", "iPad")
+for runtime in runtimes:
+    selected = [next((d for d in devices[runtime] if d["name"].startswith(family) and d["isAvailable"]), None)
+                for family in families]
+    if all(selected):
+        for family, device in zip(families, selected):
+            print(family, device["deviceTypeIdentifier"], runtime)
+            print(f"{family}: {device['name']} ({runtime})", file=sys.stderr)
+        break
+else:
+    sys.exit("No runtime with both an iPhone and an iPad simulator")
 PY
 
 device=""

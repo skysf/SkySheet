@@ -1,5 +1,4 @@
 import XCTest
-import UIKit
 
 final class WorkbookUITests: XCTestCase {
     @MainActor func testBrowseFilesAndOpenCSV() {
@@ -13,25 +12,18 @@ final class WorkbookUITests: XCTestCase {
         XCTAssertTrue(picker.waitForExistence(timeout: 60), app.debugDescription)
         let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Picker Seed,")).firstMatch
         let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
-        if UIDevice.current.userInterfaceIdiom == .pad {
-            // iPad 保留侧边栏。点明确的位置，避免误用短暂出现在转场里的文件。
-            XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 35), app.debugDescription)
-            local.tap()
-        } else if !file.wait(for: \.isHittable, toEqual: true, timeout: 5) {
-            let back = app.buttons["BackButton"]
-            if back.isHittable, ["On My iPhone", "On My iPad"].contains(back.label) {
-                back.tap()
-            } else if local.isHittable {
-                local.tap()
-            } else {
-                let browse = app.buttons["Browse"]
-                XCTAssertTrue(browse.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
-                browse.tap()
-                if !file.wait(for: \.isHittable, toEqual: true, timeout: 5) {
-                    XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
-                    local.tap()
-                }
-            }
+        // Browse 可能先显示最近使用、位置列表或上次的子目录。每次导航后重新查看所在位置。
+        let phoneBack = app.buttons["BackButton"]
+        let padBack = app.buttons["DOC.navBarButton.backInHistory"]
+        let browse = app.buttons["Browse"]
+        for _ in 0..<5 {
+            if file.wait(for: \.isHittable, toEqual: true, timeout: 5) { break }
+            if phoneBack.isHittable, ["On My iPhone", "On My iPad"].contains(phoneBack.label) {
+                phoneBack.tap()
+            } else if padBack.isHittable, padBack.isEnabled, app.buttons["SkyFolio, Actions Menu"].exists {
+                padBack.tap()
+            } else if local.isHittable { local.tap() }
+            else if browse.isHittable { browse.tap() }
         }
         XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)
         // 经过系统提供方创建一个文稿，让 Files 自己分配和登记文件标识。
