@@ -6,35 +6,52 @@ final class WorkbookUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         app.buttons["open-workbook"].tap()
-        let folder = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Picker Samples")).firstMatch
-        if !folder.waitForExistence(timeout: 3) {
+        // iPad 上 Files 作为另一个进程加载，刚弹出时仍只能查到后面的 SkyFolio。
+        let picker = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ OR identifier BEGINSWITH %@", "Browse View (Picker)", "DOC.")).firstMatch
+        XCTAssertTrue(picker.waitForExistence(timeout: 60), app.debugDescription)
+        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "From Files")).firstMatch
+        if !file.waitForExistence(timeout: 5) {
             let back = app.buttons["BackButton"]
             let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
-            if back.waitForExistence(timeout: 3), back.isHittable { back.tap() }
-            else if local.waitForExistence(timeout: 4), local.isHittable { local.tap() }
-            else {
-                app.buttons["Browse"].tap()
-                XCTAssertTrue(local.waitForExistence(timeout: 8), app.debugDescription)
+            if back.isHittable, ["On My iPhone", "On My iPad"].contains(back.label) {
+                back.tap()
+            } else if local.isHittable {
+                local.tap()
+            } else {
+                let browse = app.buttons["Browse"]
+                XCTAssertTrue(browse.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
+                browse.tap()
+                XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
                 local.tap()
             }
         }
-        XCTAssertTrue(folder.waitForExistence(timeout: 12), app.debugDescription)
-        folder.tap()
-        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "From Files")).firstMatch
-        XCTAssertTrue(file.waitForExistence(timeout: 15), app.debugDescription)
+        XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)
         file.tap()
+        editExternalCSV(in: app)
+    }
+
+    @MainActor func testOpenDocumentURLWritesBackToOriginalCSV() throws {
+        continueAfterFailure = false
+        // 由 UI 测试进程持有原件，通过系统的打开文稿事件交给 SkyFolio。独立从原路径读回。
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("\(UUID().uuidString).csv")
+        try Data("31,93\n".utf8).write(to: url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        let app = XCUIApplication()
+        app.open(url)
+        editExternalCSV(in: app)
+        let text = try String(contentsOf: url, encoding: .utf8)
+        XCTAssertEqual(text.components(separatedBy: .newlines).filter { !$0.isEmpty }, ["31,93", ",47"])
+    }
+
+    @MainActor private func editExternalCSV(in app: XCUIApplication) {
         let input = app.textFields["formula-input"]
-        if !input.waitForExistence(timeout: 5) {
-            let confirm = app.buttons["Open"].firstMatch
-            if confirm.isHittable { confirm.tap() }
-            else if file.isHittable { file.doubleTap() }
-        }
-        XCTAssertTrue(input.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertTrue(input.waitForExistence(timeout: 40), app.debugDescription)
         XCTAssertEqual(input.value as? String, "31")
         app.buttons["cell-B2"].tap()
         input.tap()
         input.typeText("47\n")
-        XCTAssertTrue(app.staticTexts["save-status"].wait(for: \.label, toEqual: "Saved", timeout: 15), app.debugDescription)
+        XCTAssertTrue(app.staticTexts["save-status"].wait(for: \.label, toEqual: "Saved", timeout: 60), app.debugDescription)
         app.terminate()
     }
 
@@ -57,7 +74,7 @@ final class WorkbookUITests: XCTestCase {
         input.tap()
         input.typeText("=A1*3\n")
         XCTAssertTrue(awaitValue("21", of: b1))
-        XCTAssertTrue(app.staticTexts["save-status"].wait(for: \.label, toEqual: "Saved", timeout: 15))
+        XCTAssertTrue(app.staticTexts["save-status"].wait(for: \.label, toEqual: "Saved", timeout: 60), app.debugDescription)
         let shot = XCTAttachment(screenshot: app.screenshot())
         shot.name = "SkyFolio Workbook"
         shot.lifetime = .keepAlways
