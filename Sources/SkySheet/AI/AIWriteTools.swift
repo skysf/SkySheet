@@ -54,7 +54,7 @@ enum AIWriteTools {
         guard let data = FileManager.default.contents(atPath: url.path) else { throw AIToolError("There is no file at \(url.path).") }
         let document = try CSVReader.read(data, sheetName: "import")
         guard document.workbook.sheets[0].cells.count <= 200_000 else {
-            throw AIToolError("That CSV has more than 200,000 cells; SkySheet imports smaller tables.")
+            throw AIToolError("That CSV has more than 200,000 cells; SkyFolio imports smaller tables.")
         }
         return (document.workbook.sheets[0], document.workbook.styles)
     }

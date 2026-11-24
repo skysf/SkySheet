@@ -10,7 +10,7 @@ final class SettingsWindowController: NSWindowController {
 
     private init() {
         let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
-        window.title = String(localized: "SkySheet Settings")
+        window.title = String(localized: "SkyFolio Settings")
         window.styleMask = [.titled, .closable]
         window.titlebarAppearsTransparent = true
         window.backgroundColor = FolioTheme.paper.native
@@ -43,7 +43,7 @@ struct SettingsView: View {
                     .fixedSize(horizontal: false, vertical: true)
                 Toggle(String(localized: "Require ⌘S to apply AI edits to the file"), isOn: $confirmAIWrites)
                 if AIHelper.url == nil {
-                    Text("This copy of SkySheet has no AI helper inside, so AI apps cannot connect to it.")
+                    Text("This copy of SkyFolio has no AI helper inside, so AI apps cannot connect to it.")
                         .font(.caption)
                         .foregroundStyle(.orange)
                 } else {
@@ -67,7 +67,7 @@ struct SettingsView: View {
                 }
             }
             Section("Backups") {
-                Text("Before SkySheet first overwrites a file, it keeps a copy of the original (the last 10 per file).")
+                Text("Before SkyFolio first overwrites a file, it keeps a copy of the original (the last 10 per file).")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -101,7 +101,7 @@ struct SettingsView: View {
         switch status {
         case .connected: Text("Connected").foregroundStyle(.green)
         case .connectedAsking: Text("Connected · asks before each tool").foregroundStyle(.orange)
-        case .connectedElsewhere: Text("Connected to another copy of SkySheet").foregroundStyle(.orange)
+        case .connectedElsewhere: Text("Connected to another copy of SkyFolio").foregroundStyle(.orange)
         case .restartNeeded: Text("Restart Claude to finish").foregroundStyle(.orange)
         case .notConnected: Text("Not connected").foregroundStyle(.secondary)
         case .notInstalled: Text("Not installed").foregroundStyle(.tertiary)
@@ -119,7 +119,7 @@ struct SettingsView: View {
                 Button("Connect") { Task { await code.connect() } }
             } else {
                 Button("Copy Setup Prompt") { code.copyPrompt() }
-                    .help("Copy a message you can paste into Claude Code so it connects SkySheet itself")
+                    .help("Copy a message you can paste into Claude Code so it connects SkyFolio itself")
             }
         }
     }
@@ -132,7 +132,7 @@ struct SettingsView: View {
             Button("Disconnect") { desktop.disconnect() }
         case .notConnected, .connectedElsewhere, .connectedAsking, .restartNeeded(connecting: false):
             Button("Connect") { desktop.connect() }
-                .help("Add SkySheet to the Claude app's settings so its chats can use SkySheet")
+                .help("Add SkyFolio to the Claude app's settings so its chats can use SkyFolio")
         case .notInstalled:
             EmptyView()
         }

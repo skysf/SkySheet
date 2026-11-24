@@ -19,11 +19,11 @@ struct AppConnection {
     let appVersion: String
     let mayLaunch: Bool
 
-    /// 从小程序自己的位置找到它所在的 App：`SkySheet.app/Contents/Helpers/skysheet-mcp`。
+    /// 从小程序自己的位置找到它所在的 App：`SkyFolio.app/Contents/Helpers/skyfolio-mcp`。
     static func locate(environment: [String: String] = ProcessInfo.processInfo.environment) -> AppConnection {
         let appURL = environment["SKYSHEET_MCP_APP"].map { URL(fileURLWithPath: $0) } ?? enclosingApp()
         let bundle = appURL.flatMap { Bundle(url: $0) }
-        let bundleID = bundle?.bundleIdentifier ?? "ai.skylu.skysheet"
+        let bundleID = bundle?.bundleIdentifier ?? "ai.skylu.skyfolio"
         let version = MCPBridge.appVersion(of: bundle)
         return AppConnection(
             appURL: appURL,
@@ -37,7 +37,7 @@ struct AppConnection {
     private static func enclosingApp() -> URL? {
         guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
         var url = executable.deletingLastPathComponent()
-        // 最多往上找四层：Helpers → Contents → SkySheet.app。
+        // 最多往上找四层：Helpers → Contents → SkyFolio.app。
         for _ in 0..<4 {
             if url.pathExtension == "app" { return url }
             url = url.deletingLastPathComponent()
@@ -57,7 +57,7 @@ struct AppConnection {
             try MCPUnixSocket.writeLine(fd, payload)
             guard let line = try MCPUnixSocket.readLine(fd) else {
                 return MCPBridge.textResult(
-                    "SkySheet closed the connection without answering (it may have quit). Try again.", isError: true)
+                    "SkyFolio closed the connection without answering (it may have quit). Try again.", isError: true)
             }
             let result = try JSONDecoder().decode(MCPBridge.Response.self, from: line).result
             // 刚把 App 拉起来：之前打开的工作簿都不在了，先说一句，不然 AI 只看到「没有这个 sheet」，要自己去猜。
@@ -65,7 +65,7 @@ struct AppConnection {
         } catch let failure as ConnectionFailure {
             return MCPBridge.textResult(failure.message, isError: true)
         } catch {
-            return MCPBridge.textResult("Could not talk to SkySheet: \(error)", isError: true)
+            return MCPBridge.textResult("Could not talk to SkyFolio: \(error)", isError: true)
         }
     }
 
@@ -77,7 +77,7 @@ struct AppConnection {
     private func connectOrLaunch() throws -> (fd: Int32, launched: Bool) {
         if let fd = try? MCPUnixSocket.connect(path: socketPath) { return (fd, false) }
         guard mayLaunch else {
-            throw ConnectionFailure(message: "SkySheet is not running. Ask the user to open SkySheet.")
+            throw ConnectionFailure(message: "SkyFolio is not running. Ask the user to open SkyFolio.")
         }
         try launchApp()
         let deadline = Date().addingTimeInterval(45)
@@ -86,8 +86,8 @@ struct AppConnection {
             if let fd = try? MCPUnixSocket.connect(path: socketPath) { return (fd, true) }
         }
         throw ConnectionFailure(message: """
-            SkySheet did not start answering within 45 seconds. If an older SkySheet without AI support is open, \
-            ask the user to quit it; otherwise ask them to open SkySheet and try again.
+            SkyFolio did not start answering within 45 seconds. If an older SkyFolio without AI support is open, \
+            ask the user to quit it; otherwise ask them to open SkyFolio and try again.
             """)
     }
 
@@ -106,11 +106,11 @@ struct AppConnection {
         do {
             try process.run()
         } catch {
-            throw ConnectionFailure(message: "Could not start SkySheet: \(error.localizedDescription)")
+            throw ConnectionFailure(message: "Could not start SkyFolio: \(error.localizedDescription)")
         }
         process.waitUntilExit()
         guard process.terminationStatus == 0 else {
-            throw ConnectionFailure(message: "Could not start SkySheet (open exited with \(process.terminationStatus)).")
+            throw ConnectionFailure(message: "Could not start SkyFolio (open exited with \(process.terminationStatus)).")
         }
     }
 }

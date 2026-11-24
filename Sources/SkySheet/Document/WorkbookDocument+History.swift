@@ -6,6 +6,7 @@ extension WorkbookDocument {
     func attachAutosave(url: URL, loaded: LoadedWorkbook, history: WorkbookHistory? = nil, backups: BackupStore = BackupStore()) {
         autosaveWriter = WorkbookAutosave(url: url, loaded: loaded, history: history ?? WorkbookHistory(file: url), backups: backups, presenter: self)
         latestEdit = nil
+        autosavedRevision = nil
         lastSaveIssue = nil
         beforeUnconfirmedAI = nil
     }
@@ -45,6 +46,7 @@ extension WorkbookDocument {
             backedUp = true
             latestEdit = nil
             updateChangeCount(.changeCleared)
+            autosavedRevision = session?.revision
             RecoveryCoordinator.shared.forget(self)
         }
     }

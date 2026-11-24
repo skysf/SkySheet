@@ -18,8 +18,8 @@ let package = Package(
         .library(name: "SkyFolioWorkbook", targets: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay"]),
         .library(name: "SkyFolioTheme", targets: ["SkyFolioTheme"]),
         .executable(name: "SkySheet", targets: ["SkySheet"]),
-        // Claude Code 启动的 MCP 小程序，打包时放进 SkySheet.app/Contents/Helpers/（设计第三节、9.1 节）。
-        .executable(name: "skysheet-mcp", targets: ["SkySheetMCP"]),
+        // AI 客户端启动的 MCP 小程序，打包进 SkyFolio.app/Contents/Helpers/。
+        .executable(name: "skyfolio-mcp", targets: ["SkySheetMCP"]),
     ],
     targets: [
         .target(name: "SkyFolioTheme"),
@@ -33,7 +33,7 @@ let package = Package(
         .target(name: "SkySheetDisplay", dependencies: ["SkySheetCore"]),
         // MCP 协议、工具清单（唯一一份）、和 App 之间的通道。小程序和 App 共用，只依赖 Foundation。
         .target(name: "SkySheetMCPKit"),
-        // skysheet-mcp：握手和工具清单当场回，工具调用转给 App。
+        // skyfolio-mcp：握手和工具清单当场回，工具调用转给 App。
         .executableTarget(name: "SkySheetMCP", dependencies: ["SkySheetMCPKit"]),
         // App：文档、窗口、表格视图（AppKit + SwiftUI）、AI 层。打包见 scripts/build-app.sh。
         .executableTarget(

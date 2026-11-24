@@ -71,7 +71,7 @@ enum LayoutCommands {
         let alert = NSAlert()
         alert.messageText = String(localized: "Rows and columns can't be inserted or deleted in “\(name)”")
         alert.informativeText = reason(lock) + "\n\n" + String(localized: """
-            SkySheet keeps these as they are but can't move them, so after inserting or deleting they would point at the \
+            SkyFolio keeps these as they are but can't move them, so after inserting or deleting they would point at the \
             wrong cells in Excel or Tencent Docs. Duplicate the sheet and change the copy instead: copies don't carry them.
             """)
         alert.addButton(withTitle: String(localized: "OK"))
@@ -87,7 +87,7 @@ enum LayoutCommands {
         case .hyperlinks: String(localized: "It has hyperlinks.")
         case .filter: String(localized: "It has a filter or sort.")
         case .tables: String(localized: "It has Excel tables.")
-        case .otherContent(let name): String(localized: "It has content SkySheet keeps but doesn't understand (\(name)).")
+        case .otherContent(let name): String(localized: "It has content SkyFolio keeps but doesn't understand (\(name)).")
         case .referencedElsewhere(let part): String(localized: "Another part of the file (\(part)) points at its cells.")
         }
     }
@@ -98,7 +98,7 @@ enum LayoutCommands {
         let message = switch locked.reason {
         case .sharedFormula(let range):
             String(localized: """
-                \(locked.cell.a1) on “\(locked.sheet)” is part of a shared formula in \(range.a1) that SkySheet can't work \
+                \(locked.cell.a1) on “\(locked.sheet)” is part of a shared formula in \(range.a1) that SkyFolio can't work \
                 out, so its cells can only be changed in Excel. Nothing was changed.
                 """)
         case .dataTable(let range):
@@ -117,9 +117,9 @@ enum LayoutCommands {
         case .wouldPushContentOffSheet:
             String(localized: "There's no room: inserting would push cells with content off the end of the sheet.")
         case .unreadableFormula(let sheet, let cell):
-            String(localized: "SkySheet can't read the formula in \(cell.a1) on “\(sheet)”, so it couldn't keep its references right. Nothing was changed.")
+            String(localized: "SkyFolio can't read the formula in \(cell.a1) on “\(sheet)”, so it couldn't keep its references right. Nothing was changed.")
         case .unreadableName(let name):
-            String(localized: "SkySheet can't read the defined name “\(name)”, so it couldn't keep its references right. Nothing was changed.")
+            String(localized: "SkyFolio can't read the defined name “\(name)”, so it couldn't keep its references right. Nothing was changed.")
         case .splitsArrayFormula(let range):
             String(localized: "That would split the array formula in \(range.a1). Nothing was changed.")
         }

@@ -1,6 +1,6 @@
-# SkySheet
+# SkyFolio
 
-给 AI 用的轻量 macOS 表格（xlsx / csv）。Claude Code 通过 MCP（`skysheet`）读表、计算，把结果写进新 sheet；
+给 AI 用的轻量 macOS 表格（xlsx / csv）。Claude Code 通过 MCP（`skyfolio`）读表、计算，把结果写进新 sheet；
 原始数据永远不动。每条决定和理由都在设计文档：`docs/plans/2026-10-08-skysheet-design.md`（下称「设计」）。
 2026-11-15、11-16 定的计划（同一个 App 还开 Word 和 Markdown、改名 SkyFolio、以后给别人用）在
 `docs/plans/2026-11-15-skyfolio-word-markdown.md`（下称「新方案」），按设计第十三节的里程碑一步步做；还没做的别当成已经有了。
@@ -10,6 +10,7 @@
 - M4 完成（MCP v0.3.0，第一个真正可用的版本；v0.3.1 修了连接时整份重排 settings.json），M5 打磨中。里程碑见设计第十三节；每完成一个就改这一行。
 - 作者选择朱红文档袋图标，目标是日后在 App Store 分发 Mac、iPad 和 iPhone 版。三端图标取同一母图，配色在 `SkyFolioTheme`。iPhone 和 iPad 共用 `Mobile/SkyFolio.xcodeproj` 里的应用目标。CI 用 `scripts/check-ios.sh` 构建并运行模拟器，本机只需命令行工具。
 - 三端共用按操作自动保存和本机历史。写回前先验证、存历史、检查外部改动并备份。重开文档后仍可恢复某一步。Mac 上 AI 在获准工作表的改动默认写回，可整轮撤销。
+- 本机已干净安装 Mac 版 SkyFolio 0.3.10，正式标识为 `ai.skylu.skyfolio`。Codex 通过 `skyfolio-mcp` 连接新版。旧 SkySheet 及专属数据已移入废纸篓。仓库改名另行处理。
 - **还没做完的事都记在 `docs/plans/remaining-work.md`**。
   - 开工前先读一遍。
   - 第一次回复作者时，用两三句话提醒他还剩什么没做。
@@ -27,9 +28,9 @@
   不启动文档恢复或 MCP、不接系统剪贴板。
 - 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
   本机不编的做法（`.github/workflows/build-app.yml`，只能手动触发）：
-  1. `gh workflow run build-app.yml -f version=x.y.z`；
-  2. 跑完 `gh run download <run id> -n SkySheet-x.y.z-arm64-adhoc -D 新目录` 拿到 zip，`ditto -x -k <zip> 新目录` 解开；
-  3. 本机 `scripts/signing/sign-app.sh <解出的 SkySheet.app>` 签名：CI 上没有私钥，那份是 ad-hoc 签的，私钥只在本机；
+  1. 在要打包的分支运行 `gh workflow run build-app.yml --ref <分支> -f version=x.y.z`；
+  2. 跑完 `gh run download <run id> -n SkyFolio-x.y.z-arm64-adhoc -D 新目录` 拿到 zip，`ditto -x -k <zip> 新目录` 解开；
+  3. 本机 `scripts/signing/sign-app.sh <解出的 SkyFolio.app>` 签名。CI 的包用 ad-hoc 签名，项目证书和私钥保存在本机；
   4. 签完核对 `codesign --verify --deep --strict <App>`，`codesign -dvv <App>` 的 Authority 是「Skylu Signing」。
   CI 不传 DMG（里面是 ad-hoc 签的包，不能给人）；发版的 DMG 照旧本机 `build-app.sh` 出（设计第十一节）。
 - 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5] [--appearance aqua|dark]`，
@@ -45,8 +46,8 @@
   `SKYSHEET_UI_NAV_SNAPSHOT=已有临时目录 nice -n 10 scripts/check-ui.sh drawing` 生成。
 - 看存出来的文件：`SKYSHEET_CHECK_OUTPUT=文件夹 swift run --arch arm64 --skip-build SkySheetChecks` 把保存自检写出的
   xlsx 留在那个文件夹，可以拿 `qlmanage -t` 或别的软件打开看。
-- 试 MCP：打包后用 JSON-RPC 直接跟 `dist/SkySheet.app/Contents/Helpers/skysheet-mcp` 说话；要和真的 Claude Code 试，用
-  `claude -p "…" --mcp-config <临时 json> --strict-mcp-config --allowedTools mcp__skysheet`，不动用户自己的配置
+- 试 MCP：打包后用 JSON-RPC 直接跟 `dist/SkyFolio.app/Contents/Helpers/skyfolio-mcp` 说话；要和真的 Claude Code 试，用
+  `claude -p "…" --mcp-config <临时 json> --strict-mcp-config --allowedTools mcp__skyfolio`，不动用户自己的配置
   （`docs/architecture/mcp.md` 第五节）。
 - 真机检查清单：`docs/testing/`，每个里程碑一份。
 

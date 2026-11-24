@@ -5,17 +5,17 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>SkySheet</string>
+	<string>SkyFolio</string>
 	<key>CFBundleExecutable</key>
-	<string>SkySheet</string>
+	<string>SkyFolio</string>
 	<key>CFBundleIdentifier</key>
-	<string>ai.skylu.skysheet</string>
+	<string>ai.skylu.skyfolio</string>
 	<key>CFBundleIconFile</key>
-	<string>SkySheet</string>
+	<string>SkyFolio</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>SkySheet</string>
+	<string>SkyFolio</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<!-- 版本号由 scripts/build-app.sh 按 VERSION 或 git tag 写进去，这里只是占位。 -->
@@ -24,7 +24,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<!-- 打包时间（UTC，ISO 8601），也由 build-app.sh 写进去：get_status 报给 AI，用户问「是什么时候的」当场答。 -->
-	<key>SkySheetBuildDate</key>
+	<key>SkyFolioBuildDate</key>
 	<string></string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>
@@ -37,7 +37,7 @@
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 skylu.ai · AGPL-3.0</string>
 	<!-- 能打开、能保存的文件，角色是 Editor（M3 起能保存；M2 只看不改时是 Viewer）。
-	     LSHandlerRank 用 Alternate：不抢 Numbers、Excel、WPS 的默认打开方式，要用 SkySheet 打开时右键「打开方式」选它。
+	     LSHandlerRank 用 Alternate：不抢 Numbers、Excel、WPS 的默认打开方式，要用 SkyFolio 打开时右键「打开方式」选它。
 	     NSDocumentClass 对应代码里的 @objc(WorkbookDocument)。 -->
 	<key>CFBundleDocumentTypes</key>
 	<array>

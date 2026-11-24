@@ -102,7 +102,7 @@ struct AIContext {
         switch locked.reason {
         case .sharedFormula(let range):
             return """
-                \(cell) is part of an Excel shared formula in \(range.a1) whose formulas SkySheet can't work out, so none \
+                \(cell) is part of an Excel shared formula in \(range.a1) whose formulas SkyFolio can't work out, so none \
                 of its cells can be changed and nothing changed. Leave \(range.a1) as it is.
                 """
         case .dataTable(let range):
@@ -141,7 +141,7 @@ enum AIWorkbooks {
     private static func resolve(_ name: String?) throws -> WorkbookDocument {
         let documents = open
         guard !documents.isEmpty else {
-            throw AIToolError("No workbook is open in SkySheet. Ask the user which file to use, then call open_file.")
+            throw AIToolError("No workbook is open in SkyFolio. Ask the user which file to use, then call open_file.")
         }
         if let name, !name.trimmingCharacters(in: .whitespaces).isEmpty {
             let wanted = name.trimmingCharacters(in: .whitespaces)

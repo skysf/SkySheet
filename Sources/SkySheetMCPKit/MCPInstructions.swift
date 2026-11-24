@@ -11,7 +11,7 @@ import Foundation
 
 public enum MCPInstructions {
     public static let text = """
-    SkySheet is a spreadsheet app on the user's Mac; its window shows the workbook while you work. Usual order: \
+    SkyFolio is a spreadsheet app on the user's Mac; its window shows the workbook while you work. Usual order: \
     get_status (open workbooks, sheets, the user's selection) or open_file; describe_sheet to learn the layout; \
     read_range, query (SQL) or evaluate to get numbers; put results in a new sheet with add_sheet and write_cells; \
     show to point the user at them. Tool descriptions have the details.

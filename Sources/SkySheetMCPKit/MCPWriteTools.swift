@@ -84,7 +84,7 @@ enum MCPWriteTools {
                     at moved cells follow them; references to deleted cells become #REF!. Formulas in original sheets \
                     are never changed, so insert and delete are refused (the error lists those cells) when one points \
                     at cells that would move or go. They are also refused on sheets with pictures, charts, comments, \
-                    conditional formatting, data validation or similar, which SkySheet keeps but cannot move \
+                    conditional formatting, data validation or similar, which SkyFolio keeps but cannot move \
                     (describe_sheet says so); they cannot be combined with the other options.
                     width (columns, in characters, up to 255) or height (rows, in points, up to 409) sets the size; \
                     autofit=true sizes them to their content. hidden=true hides them, hidden=false shows them again. \

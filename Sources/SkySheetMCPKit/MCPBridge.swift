@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - 小程序和 App 之间的通道
 //
-// 管什么：`skysheet-mcp`（Claude Code 启动的小程序）把一次工具调用交给正在运行的 SkySheet 时，
+// 管什么：`skyfolio-mcp`（Claude Code 启动的小程序）把一次工具调用交给正在运行的 SkySheet 时，
 // 两边说的话长什么样、在哪个 Unix socket 上说（设计 9.1 节第 7 条）。
 // 不管什么：socket 怎么收发（MCPUnixSocket）、MCP 协议本身（MCPServerCore）。
 //
@@ -62,7 +62,7 @@ public enum MCPBridge {
     }
 
     /// 小程序得先把 App 拉起来才连得上时，结果前面那一句：之前打开的工作簿都不在了（App 被退出过）。
-    public static let relaunchNote = "Note: SkySheet was not running, so it was just started. Workbooks opened before "
+    public static let relaunchNote = "Note: SkyFolio was not running, so it was just started. Workbooks opened before "
         + "are no longer open: call get_status, and open_file again before using earlier sheets."
 
     /// 小程序拉起 App 时带的参数：App 看到它就不弹「打开」面板，恢复副本的提示也等用户自己切到 SkySheet 再问
@@ -75,10 +75,11 @@ public enum MCPBridge {
         bundle?.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "dev"
     }
 
-    /// 什么时候打的包（UTC，ISO 8601），scripts/build-app.sh 写进 Info.plist 的 `SkySheetBuildDate`；开发版没有。
-    /// 用户问「SkySheet 是什么时候的」，get_status 当场答，不用 AI 上网找。
+    /// 打包脚本写入 UTC 时间；开发工具指向旧版 App 时也能读到原来的键。
     public static func appBuildDate(of bundle: Bundle?) -> String? {
-        (bundle?.object(forInfoDictionaryKey: "SkySheetBuildDate") as? String).flatMap { $0.isEmpty ? nil : $0 }
+        let date = bundle?.object(forInfoDictionaryKey: "SkyFolioBuildDate") as? String
+            ?? bundle?.object(forInfoDictionaryKey: "SkySheetBuildDate") as? String
+        return date.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     // MARK: 在哪说
@@ -90,7 +91,7 @@ public enum MCPBridge {
     public static func socketPath(bundleIdentifier: String, home: String = realHomeDirectory()) -> String {
         let preferred = home + "/Library/Application Support/" + bundleIdentifier + "/mcp.sock"
         if preferred.utf8.count < 104 { return preferred }
-        return "/tmp/skysheet-mcp-\(getuid())-\(stableHash(bundleIdentifier) % 100_000).sock"
+        return "/tmp/skyfolio-mcp-\(getuid())-\(stableHash(bundleIdentifier) % 100_000).sock"
     }
 
     /// 两个进程算出来必须一样的哈希（FNV-1a）。**不能用 `hashValue`**：Swift 每个进程的哈希种子不同，

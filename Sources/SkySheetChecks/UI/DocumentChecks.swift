@@ -47,10 +47,12 @@ func closeDecisionChecks() {
         guard let editing = reopened.session else { return fail("no reopened session") }
         let author = AIAuthorship.Mark.Author.ai(client: "Test", model: nil)
         let role = SheetRole.ai(AIAuthorship(created: .init(author, date: Date(timeIntervalSince1970: 1))))
-        try editing.apply("AI: Add Sheet", author: author, groupUndo: true) {
-            _ = try $0.addSheet(named: "Analysis", role: role)
+        // 真机上自动保存回执能先于 AppKit 的撤销组关闭到达，关窗时仍应认得这版已在磁盘上。
+        try AIUndoGrouping.step(reopened.undoManager) {
+            try editing.apply("AI: Add Sheet", author: author) { _ = try $0.addSheet(named: "Analysis", role: role) }
+            reopened.finishAutosave()
         }
-        reopened.finishAutosave()
+        check(!reopened.isDocumentEdited && reopened.undoManager?.canUndo == true, "a late undo-group close preserves undo without asking to save again")
         check(try LoadedWorkbook(contentsOf: url).workbook.sheetIndex(named: "Analysis") != nil, "allowed AI edits autosave by default")
         let withAI = try history.versions()
         checkEqual(withAI.first?.title, "AI: Add Sheet", "AI edit is recorded")
@@ -64,8 +66,17 @@ func closeDecisionChecks() {
         }
         reopened.finishAutosave()
         checkEqual(try Data(contentsOf: url), beforeApproval, "opt-in confirmation holds AI writes while preserving their history")
+        check(reopened.isDocumentEdited, "unapproved AI changes still require a close decision")
         reopened.save(withDelegate: nil, didSave: nil, contextInfo: nil)
         check(try LoadedWorkbook(contentsOf: url).workbook.sheetIndex(named: "Review") != nil, "explicit approval writes AI results")
+        let external = Data("Changed by another process".utf8)
+        try external.write(to: url, options: .atomic)
+        editing.select(a1)
+        editing.beginEditing(.typing, text: "42")
+        editing.commitEditing(groupUndo: true)
+        reopened.finishAutosave()
+        check(reopened.lastSaveIssue != nil && reopened.isDocumentEdited, "a failed autosave still requires a close decision")
+        checkEqual(try Data(contentsOf: url), external, "the external version is preserved")
     }
     group("ui-22: close decision sees the real document undo manager's dirty state") {
         let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))

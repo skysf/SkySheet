@@ -33,6 +33,7 @@ final class WorkbookDocument: NSDocument {
     var recoveringRevision: Int?
     var autosaveWriter: WorkbookAutosave?
     var latestEdit: UUID?
+    var autosavedRevision: Int?
     var lastSaveIssue: (any Error)?
     nonisolated static let aiConfirmationKey = "ConfirmAIWorkbookWrites"
     var savePreferences: UserDefaults = .standard
@@ -41,6 +42,17 @@ final class WorkbookDocument: NSDocument {
     var recoveredFrom: URL?
 
     override class var autosavesInPlace: Bool { false }
+
+    override var isDocumentEdited: Bool {
+        // AppKit 有时在自动保存完成之后才关闭撤销组，又把已写回的这一版标为有改动。
+        // 仅对同一原件、同一版的成功回执消除这个假标记，撤销栈照常保留。
+        if let revision = autosavedRevision, revision == session?.revision,
+           let url = fileURL, url.standardizedFileURL == autosaveWriter?.url.standardizedFileURL,
+           latestEdit == nil, lastSaveIssue == nil, beforeUnconfirmedAI == nil {
+            return false
+        }
+        return super.isDocumentEdited
+    }
 
     override func read(from url: URL, ofType typeName: String) throws {
         let loaded = try DocumentLoader.load(contentsOf: url, typeName: typeName, history: WorkbookHistory(file: url))
@@ -148,9 +160,9 @@ extension XLSXError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .passwordProtected:
-            String(localized: "This workbook is password-protected. SkySheet can't open protected files yet.")
+            String(localized: "This workbook is password-protected. SkyFolio can't open protected files yet.")
         case .legacyExcelFormat:
-            String(localized: "This is an old-style .xls file. SkySheet opens .xlsx and .csv files; save it as .xlsx first.")
+            String(localized: "This is an old-style .xls file. SkyFolio opens .xlsx and .csv files; save it as .xlsx first.")
         case .zip, .missingPart, .malformedXML:
             String(localized: "This file is damaged or isn't an .xlsx workbook.")
         }
@@ -168,6 +180,6 @@ extension XLSXError: LocalizedError {
 
 extension CSVError: LocalizedError {
     public var errorDescription: String? {
-        String(localized: "SkySheet couldn't read the text in this file. It reads UTF-8, UTF-16 and GB18030 (GBK).")
+        String(localized: "SkyFolio couldn't read the text in this file. It reads UTF-8, UTF-16 and GB18030 (GBK).")
     }
 }

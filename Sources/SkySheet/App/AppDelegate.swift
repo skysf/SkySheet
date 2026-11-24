@@ -3,7 +3,7 @@ import SkySheetMCPKit
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
-    /// skysheet-mcp 在后台把 App 拉起来的（设计 9.1 节）：没人看着，不弹「打开」面板，恢复副本的提示等用户自己切过来再问。
+    /// skyfolio-mcp 在后台把 App 拉起来的（设计 9.1 节）：没人看着，不弹「打开」面板，恢复副本的提示等用户自己切过来再问。
     private let launchedByAI = CommandLine.arguments.contains(MCPBridge.launchedByAIArgument)
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -24,7 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             BenchmarkRunner.start(request)
             return
         }
-        // AI 的通道：Claude Code 启动的 skysheet-mcp 连这个 socket（设计第三节）。
+        // AI 的通道：Claude Code 启动的 skyfolio-mcp 连这个 socket（设计第三节）。
         AIBridgeServer.shared.start()
         // 第五道保险：上次没正常退出留下的恢复副本，先问要不要恢复；然后每 30 秒写一次。
         RecoveryCoordinator.shared.start(askNow: !launchedByAI)

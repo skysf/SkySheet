@@ -2,14 +2,14 @@ import AppKit
 import Observation
 import SkySheetMCPKit
 
-/// 「连接 Claude 桌面版」（设计 9.5 节、第 17 条）：往 claude_desktop_config.json 的 mcpServers 里加 skysheet（按原文只动
-/// 这一项，第一次改之前备份；`ClaudeDesktopConfig`、`AIClientConfig.update`），桌面版的普通聊天下次启动就能用 SkySheet。
+/// 「连接 Claude 桌面版」（设计 9.5 节、第 17 条）：往 claude_desktop_config.json 的 mcpServers 里加 skyfolio（按原文只动
+/// 这一项，第一次改之前备份；`ClaudeDesktopConfig`、`AIClientConfig.update`），桌面版的普通聊天下次启动就能用 SkyFolio。
 /// 它的 Code 页跑的是 Claude Code，走 ClaudeCodeSetup 那一行。
 ///
 /// 它开着的时候会拿内存里的那份把文件整份盖掉（见 ClaudeDesktopConfig）：所以点的时候它开着，就记下要的结果，在它退出
-/// 那一刻再写一遍（那时没人盖了），提示用户退出再打开 Claude。SkySheet 先退出的话这一步就没人做了：提示里说了要开着；
+/// 那一刻再写一遍（那时没人盖了），提示用户退出再打开 Claude。SkyFolio 先退出的话这一步就没人做了：提示里说了要开着；
 /// 真被盖掉了，设置里显示没连上，再点一次就好。
-/// 「总是允许」存在它自己那里，SkySheet 写不了：连上以后的提示里告诉用户在哪点。
+/// 「总是允许」存在它自己那里，SkyFolio 写不了：连上以后的提示里告诉用户在哪点。
 @MainActor
 @Observable
 final class ClaudeDesktopSetup {
@@ -72,10 +72,10 @@ final class ClaudeDesktopSetup {
         pending = connecting
         message = connecting
             ? String(localized: """
-                Added to Claude's settings. Quit Claude (⌘Q) and open it again to finish. Keep SkySheet open until \
-                Claude has quit: Claude can overwrite its settings while it runs, and SkySheet adds itself back as Claude quits.
+                Added to Claude's settings. Quit Claude (⌘Q) and open it again to finish. Keep SkyFolio open until \
+                Claude has quit: Claude can overwrite its settings while it runs, and SkyFolio adds itself back as Claude quits.
                 """)
-            : String(localized: "Removed from Claude's settings. Quit Claude (⌘Q) to finish, and keep SkySheet open until it has quit.")
+            : String(localized: "Removed from Claude's settings. Quit Claude (⌘Q) to finish, and keep SkyFolio open until it has quit.")
     }
 
     /// Claude 退出了：这次运行里点过连接或断开，就照要的结果再写一遍（它开着时可能拿内存里的那份把文件盖掉了）。
@@ -110,8 +110,8 @@ final class ClaudeDesktopSetup {
 
     private static var connected: String {
         String(localized: """
-            Connected. Open Claude to use SkySheet in its chats. It asks before each SkySheet tool until you choose \
-            Always allow, in the prompt or for all of SkySheet's tools at once in Claude's Connectors settings.
+            Connected. Open Claude to use SkyFolio in its chats. It asks before each SkyFolio tool until you choose \
+            Always allow, in the prompt or for all of SkyFolio's tools at once in Claude's Connectors settings.
             """)
     }
 }

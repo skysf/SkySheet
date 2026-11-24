@@ -9,12 +9,16 @@ import SkySheetMCPKit
 enum AIWorkbookTools {
     static func status() -> AIToolResult {
         let documents = AIWorkbooks.open
-        guard !documents.isEmpty else {
-            return .ok(["skysheet": app, "workbooks": [],
-                        "next_step": "No workbook is open. Ask the user which file to use, then call open_file."])
+        let info = app
+        // 旧客户端按 skysheet 取版本，新客户端使用与文稿类型无关的 app 键。
+        var result: [String: JSONValue] = ["app": info, "skysheet": info, "workbooks": []]
+        if documents.isEmpty {
+            result["next_step"] = "No workbook is open. Ask the user which file to use, then call open_file."
+        } else {
+            let current = try? AIWorkbooks.context(AIToolArguments([:])).document
+            result["workbooks"] = .array(documents.map { summary($0, current: $0 === current) })
         }
-        let current = try? AIWorkbooks.context(AIToolArguments([:])).document
-        return .ok(["skysheet": app, "workbooks": .array(documents.map { summary($0, current: $0 === current) })])
+        return .ok(.object(result))
     }
 
     /// 这个 SkySheet 是哪一版、什么时候打的包。模型看不到握手里 serverInfo 的版本：用户问「SkySheet 是什么版本、
@@ -73,10 +77,10 @@ enum AIWorkbookTools {
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
         guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("There is no file at \(url.path).") }
         guard ["xlsx", "csv", "tsv", "txt"].contains(url.pathExtension.lowercased()) else {
-            throw AIToolError("SkySheet opens .xlsx, .csv and .tsv files; \(url.lastPathComponent) is not one of them.")
+            throw AIToolError("SkyFolio opens .xlsx, .csv and .tsv files; \(url.lastPathComponent) is not one of them.")
         }
         let (opened, _) = try await NSDocumentController.shared.openDocument(withContentsOf: url, display: true)
-        guard let document = opened as? WorkbookDocument else { throw AIToolError("SkySheet could not open that file.") }
+        guard let document = opened as? WorkbookDocument else { throw AIToolError("SkyFolio could not open that file.") }
         AIWorkbooks.makeCurrent(document)
         return .ok(summary(document, current: true))
     }
@@ -104,7 +108,7 @@ enum AIWorkbookTools {
         let path = try arguments.requiredString("path")
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
         guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw AIToolError("There is already a file at \(url.path). SkySheet never overwrites files for AI; pick a new name.")
+            throw AIToolError("There is already a file at \(url.path). Choose a new name for the copy.")
         }
         let folder = url.deletingLastPathComponent()
         var isFolder: ObjCBool = false
@@ -138,6 +142,6 @@ enum AIWorkbookTools {
         // moveItem 碰到已经有的文件会失败：写的这一会儿别人放了一个同名文件，也不会被盖掉。
         try FileManager.default.moveItem(at: temporary, to: url)
         return .ok(["saved_to": .string(url.path), "sheets": .array(savedSheets.map { .string($0) }),
-                    "note": "The user's own file is unchanged; only Cmd+S in SkySheet writes to it."])
+                    "note": "The copy was saved. The open workbook continues using its original location and autosave settings."])
     }
 }

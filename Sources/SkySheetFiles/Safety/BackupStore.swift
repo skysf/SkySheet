@@ -1,7 +1,7 @@
 import Foundation
 
 /// 第四道保险（设计第十节）：一个文件在 SkySheet 里第一次被覆盖之前，先把原文件复制一份到
-/// `~/Library/Application Support/ai.skylu.skysheet/Backups/<文件名> (<路径的短哈希>)/<时间>.<扩展名>`，
+/// `~/Library/Application Support/ai.skylu.skyfolio/Backups/<文件名> (<路径的短哈希>)/<时间>.<扩展名>`，
 /// 每个文件留最近 10 份。不同文件夹里同名的文件靠短哈希分开。
 public struct BackupStore: Sendable {
     public let root: URL
@@ -56,7 +56,11 @@ public enum SafetyFolders {
         #if os(iOS)
         return base.appendingPathComponent("ai.skylu.skyfolio", isDirectory: true)
         #else
-        return base.appendingPathComponent("ai.skylu.skysheet", isDirectory: true)
+        // 有独立标识的测试 App 使用自己的目录，命令行程序使用正式版目录。
+        if Bundle.main.bundleURL.pathExtension == "app", let identifier = Bundle.main.bundleIdentifier {
+            return base.appendingPathComponent(identifier, isDirectory: true)
+        }
+        return base.appendingPathComponent("ai.skylu.skyfolio", isDirectory: true)
         #endif
     }
 

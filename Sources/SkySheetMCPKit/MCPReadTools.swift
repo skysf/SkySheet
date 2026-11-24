@@ -10,7 +10,7 @@ enum MCPReadTools {
             return MCPToolDefinition(
                 .getStatus, title: "Get status",
                 description: """
-                    Gives the version and build date of the SkySheet running on this Mac (answer questions about them \
+                    Gives the version and build date of the SkyFolio running on this Mac (answer questions about them \
                     from here, not the web), and lists the workbooks open in it. For each: path, whether it has \
                     unsaved changes, and its sheets with their role (original data, read-only to you, or an AI sheet \
                     you may edit, with who wrote it) and used range; plus the sheet the user is looking at and their \
@@ -22,8 +22,8 @@ enum MCPReadTools {
             return MCPToolDefinition(
                 .openFile, title: "Open file",
                 description: """
-                    Opens an .xlsx, .csv or .tsv file in SkySheet and makes it the current workbook. A window appears \
-                    but SkySheet does not take keyboard focus. Only open paths the user gave you or tools returned. \
+                    Opens an .xlsx, .csv or .tsv file in SkyFolio and makes it the current workbook. A window appears \
+                    but SkyFolio does not take keyboard focus. Only open paths the user gave you or tools returned. \
                     Opening a file that is already open just makes it current. Returns the same summary as get_status \
                     for that workbook.
                     """,
@@ -38,7 +38,7 @@ enum MCPReadTools {
                     query, and for each column its header, type (number, date, text, mixed), number format, count, \
                     a few sample values, and sum, min and max for numbers; merged cells; frozen panes; column widths \
                     and row heights that differ from the default; hidden rows and columns; whether rows and columns \
-                    can be inserted or deleted; how many formulas; and cells SkySheet could not recalculate (they keep \
+                    can be inserted or deleted; how many formulas; and cells SkyFolio could not recalculate (they keep \
                     the value saved in the file).
                     """,
                 input: MCPSchema.object(["sheet": MCPSchema.sheet, "workbook": MCPSchema.workbook], required: ["sheet"]),
@@ -83,7 +83,7 @@ enum MCPReadTools {
             return MCPToolDefinition(
                 .evaluate, title: "Evaluate formula",
                 description: """
-                    Calculates one formula with SkySheet's engine without writing it anywhere, e.g. \
+                    Calculates one formula with SkyFolio's engine without writing it anywhere, e.g. \
                     =PMT(3.1%/12,360,-1000000) for a monthly payment, or =RATE(36,-1047.40,36144.81)*12. \
                     References such as B2 or Loan!B2 read the workbook; sheet sets where plain references point \
                     (default: the current sheet). Returns the value and how it displays. Use it to try a formula \
@@ -99,7 +99,7 @@ enum MCPReadTools {
             return MCPToolDefinition(
                 .exportSheet, title: "Export sheet as CSV",
                 description: """
-                    Writes a sheet, or a range of it, to a UTF-8 CSV file in SkySheet's cache folder and returns its \
+                    Writes a sheet, or a range of it, to a UTF-8 CSV file in SkyFolio's cache folder and returns its \
                     local path, for Python or pandas running on this Mac. Numbers are written raw (no thousands \
                     separators; percents as fractions), dates as YYYY-MM-DD, formulas as their values; the first row \
                     is written as it is (usually the header). Bring results back with add_sheet from_csv or \

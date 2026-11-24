@@ -7,13 +7,13 @@
 ## 一、结构：三段，活只在 App 里做
 
 ```
-Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ──Unix socket──▶ SkySheet（AIToolRouter → AI*Tools）
+Claude Code ──MCP（stdio，一行一条 JSON）──▶ skyfolio-mcp ──Unix socket──▶ SkyFolio（AIToolRouter → AI*Tools）
 ```
 
 | 部分 | 在哪 | 管什么 |
 | --- | --- | --- |
 | `SkySheetMCPKit`（库） | `Sources/SkySheetMCPKit/` | MCP 协议（`MCPServerCore`，两代客户端）、工具清单（`MCPToolName` + 说明）、总说明、通道格式与 socket 收发、AI 客户端配置文件的改法（`AIClientConfig` + `ClaudeCodeConfig` / `ClaudeDesktopConfig`）。只依赖 Foundation，小程序和 App 共用 |
-| `skysheet-mcp`（小程序） | `Sources/SkySheetMCP/`，打包进 `SkySheet.app/Contents/Helpers/` | 握手和工具清单当场回，工具调用转给 App；App 没开就 `open -g` 拉起来（带 `--launched-by-ai`） |
+| `skyfolio-mcp`（小程序） | `Sources/SkySheetMCP/`，打包进 `SkyFolio.app/Contents/Helpers/` | 握手和工具清单当场回，工具调用转给 App；App 没开就 `open -g` 拉起来（带 `--launched-by-ai`） |
 | App 这一头 | `Sources/SkySheet/AI/` | `AIBridgeServer` 听 socket → `AIToolRouter` 排队、穷举分派 → `AIWorkbookTools` / `AIReadTools` / `AIWriteTools` / `AIRowColumnTools`；`AISession` 管这一轮 |
 
 1. **工具清单只有一份**（`MCPToolName`）：小程序回清单、App 分派都 switch 它，加工具漏了哪边编译不过。清单由小程序给，
@@ -28,7 +28,7 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 ## 二、通道
 
 - 一次调用一条连接（连上 → 一行请求 → 一行回答 → 断开），带通道版本号，对不上回「请重启 Claude Code」。
-- socket：`~/Library/Application Support/ai.skylu.skysheet/mcp.sock`（按 bundle id 分；太长退到 /tmp，用 FNV 哈希，
+- socket：`~/Library/Application Support/ai.skylu.skyfolio/mcp.sock`（按 bundle id 分；太长退到 /tmp，用 FNV 哈希，
   **不能用 `hashValue`**）。目录 0700、socket 0600、`getpeereid` 核用户号；还有人在听就不抢。
 - 阻塞收发只在自己开的 `Thread` 上，不进 Swift 并发的协作线程池。
 - 小程序拉起 App 那一次，结果前面加一句（`MCPBridge.relaunchNote`）：之前开着的工作簿都不在了。
@@ -59,7 +59,7 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 8. **SQL 只读**：每次现建内存库、装表、`PRAGMA query_only`，只许一条语句、`sqlite3_stmt_readonly`，最多跑 3 秒、回 500 行。
    装完表再挂上 authorizer，只放行读表、函数、SELECT、WITH RECURSIVE 和只看表结构的几个 PRAGMA（`SQLQuery.schemaPragmas`，
    2026-11-16）：前两道挡不住 ATTACH，它能在磁盘上建文件。
-9. **版本和打包时间从 get_status 给**（`skysheet: {version, built}`）：模型看不到 MCP 握手里的 serverInfo，用户问「什么版本、
+9. **版本和打包时间从 get_status 给**（`app: {version, built}`，也保留旧键 `skysheet`）：模型看不到 MCP 握手里的 serverInfo，用户问「什么版本、
    什么时候的」只能从这里答，不然它会去网上搜（2026-10-14 桌面版的聊天）。版本读 Info.plist 的 CFBundleShortVersionString
    （和小程序报的 serverInfo 同一个读法，`MCPBridge.appVersion`），打包时间读 build-app.sh 写的 `SkySheetBuildDate`（UTC）；
    `swift run` 的开发版是 dev、没有打包时间。
@@ -80,14 +80,14 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 
 ## 四、连接 AI 客户端（设置 ⌘, 的「AI」一节）
 
-两家各一行、一行一个按钮；读 `mcpServers.skysheet.command`、改文件的规矩（备份、软链接、原子写、没有要改的不写）
+两家各一行、一行一个按钮；读 `mcpServers.skyfolio.command`、改文件的规矩（备份、软链接、原子写、没有要改的不写）
 两家共用 `AIClientConfig`，按原文改 JSON 共用 `JSONText`。配置里写的都是**这一份 App 包里**的小程序路径。
 
 ### Claude Code（`ClaudeCodeSetup`）
 
-- 走它自己的命令行 `claude mcp add --scope user skysheet -- <包里的小程序>`，**不直接改 `~/.claude.json`**（正在跑的
-  Claude Code 会整份重写它）。同时往 `~/.claude/settings.json` 的 `permissions.allow` 加 `mcp__skysheet`（第一次改前备份成
-  `.skysheet-backup`），只动这一条，文件格式不对就报错、一个字节不写。找不到命令行就「复制一段话」。
+- 走它自己的命令行 `claude mcp add --scope user skyfolio -- <包里的小程序>`，**不直接改 `~/.claude.json`**（正在跑的
+  Claude Code 会整份重写它）。同时往 `~/.claude/settings.json` 的 `permissions.allow` 加 `mcp__skyfolio`（第一次改前备份成
+  `.skyfolio-backup`），只动这一条，文件格式不对就报错、一个字节不写。找不到命令行就「复制一段话」。
 - **按原文改，不许整份解析再写回**（`JSONText`）：先让 JSONSerialization 验合法，再扫出每个值在原文里的位置，只在 allow
   列表末尾插进这一条（或删掉它和它的逗号）；新写的部分照文件自己的换行、缩进和冒号。没有要改的就不写。v0.3.0 用
   `JSONSerialization.data(.prettyPrinted, .sortedKeys)` 整份重写，作者的 settings.json 键全被重排（2026-10-09）。
@@ -95,7 +95,7 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 
 ### Claude 桌面版的普通聊天（`ClaudeDesktopSetup`）
 
-- 改 `~/Library/Application Support/Claude/claude_desktop_config.json` 的 `mcpServers.skysheet`
+- 改 `~/Library/Application Support/Claude/claude_desktop_config.json` 的 `mcpServers.skyfolio`
   （`{"command": <小程序>, "args": []}`，桌面版认的就是 command / args / env）。它的 Code 页跑的是 Claude Code，走上面那一行。
 - 同样按原文只动这一项：没有就加在 mcpServers 末尾（没有 mcpServers 就补在根对象末尾），连着另一份只换 command 那个字符串
   （用户加的 env 留着），断开只删这一项（mcpServers 空了留着 `{}`）。格式不对一个字节不写。
@@ -125,6 +125,6 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
   目录不跟 bundle id 走（`SafetyFolders`），测完杀掉它以后，把它写进 `Recovery/` 的那几份（json 里的 originalPath 指着测试文件）
   删掉，不然装着的那一份下次启动会问要不要恢复（2026-10-14）。
 - 端到端（发版前）：打包好的 App，用 JSON-RPC 直接跟包里的小程序说话（和 Claude Code 一样），再用
-  `claude -p … --mcp-config <临时配置> --strict-mcp-config --allowedTools mcp__skysheet` 真问一遍（不动用户自己的
-  Claude Code 配置），看它的 MCP 日志（`~/Library/Caches/claude-cli-nodejs/<目录>/mcp-logs-skysheet/`）里没有 truncated。
+  `claude -p … --mcp-config <临时配置> --strict-mcp-config --allowedTools mcp__skyfolio` 真问一遍（不动用户自己的
+  Claude Code 配置），看它的 MCP 日志（`~/Library/Caches/claude-cli-nodejs/<目录>/mcp-logs-skyfolio/`）里没有 truncated。
   清单在 `docs/testing/m4-mcp.md`。

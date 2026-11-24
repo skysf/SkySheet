@@ -29,7 +29,7 @@ struct FormulaBar: View {
                 Label("Not recalculated", systemImage: "exclamationmark.triangle")
                     .font(.system(size: 11))
                     .foregroundStyle(.orange)
-                    .help("SkySheet shows the value saved in the file: \(reason).")
+                    .help("SkyFolio shows the value saved in the file: \(reason).")
                     .padding(.trailing, 10)
             }
         }
