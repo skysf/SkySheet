@@ -8,7 +8,8 @@
 ## 现在在哪
 
 - M4 完成（MCP v0.3.0，第一个真正可用的版本；v0.3.1 修了连接时整份重排 settings.json），M5 打磨中。里程碑见设计第十三节；每完成一个就改这一行。
-- 作者于 2026-11-24 定下按操作自动保存，历史跨重开保留。写回前先验证、存历史、检查外部改动并备份。Mac、iPad、iPhone 共用这套存储和朱红文档袋主题。移动端一个应用目标在 `Mobile/SkyFolio.xcodeproj`，CI 用 `scripts/check-ios.sh` 构建并跑 iPhone、iPad 模拟器，本机只需命令行工具。
+- 作者选择朱红文档袋图标，目标是日后在 App Store 分发 Mac、iPad 和 iPhone 版。三端图标取同一母图，配色在 `SkyFolioTheme`。iPhone 和 iPad 共用 `Mobile/SkyFolio.xcodeproj` 里的应用目标。CI 用 `scripts/check-ios.sh` 构建并运行模拟器，本机只需命令行工具。
+- 三端共用按操作自动保存和本机历史。写回前先验证、存历史、检查外部改动并备份。重开文档后仍可恢复某一步。Mac 上 AI 在获准工作表的改动默认写回，可整轮撤销。
 - **还没做完的事都记在 `docs/plans/remaining-work.md`**。
   - 开工前先读一遍。
   - 第一次回复作者时，用两三句话提醒他还剩什么没做。
