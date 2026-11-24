@@ -11,9 +11,13 @@ struct WorkbookEditor: View {
     @State private var position = ScrollPosition()
     @State private var choosingAddress = false
     @State private var addressInput = ""
-    @State private var historyVisible = false
-    @State private var versions: [WorkbookHistory.Version] = []
+    @State private var history: HistoryList?
     @State private var copying = false
+
+    private struct HistoryList: Identifiable {
+        let id = UUID()
+        let versions: [WorkbookHistory.Version]
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -84,12 +88,12 @@ struct WorkbookEditor: View {
         .alert(String(localized: "Workbook"), isPresented: Binding(get: { book.problem != nil }, set: { if !$0 { book.problem = nil } })) {
             Button(String(localized: "OK")) {}
         } message: { Text(book.problem ?? "") }
-        .sheet(isPresented: $historyVisible) {
+        .sheet(item: $history) { selection in
             NavigationStack {
-                List(versions) { version in
+                List(selection.versions) { version in
                     Button {
                         do { try book.restore(version) } catch { book.problem = error.localizedDescription }
-                        historyVisible = false
+                        history = nil
                     } label: {
                         VStack(alignment: .leading) {
                             Text(version.title)
@@ -98,16 +102,16 @@ struct WorkbookEditor: View {
                     }
                     .accessibilityLabel(String(localized: "Restore \(version.title)"))
                 }
-                .overlay { if versions.isEmpty { Text(String(localized: "Versions appear here as you edit.")) } }
+                .overlay { if selection.versions.isEmpty { Text(String(localized: "Versions appear here as you edit.")) } }
                 .navigationTitle(String(localized: "Version History"))
-                .toolbar { Button(String(localized: "Done")) { historyVisible = false } }
+                .toolbar { Button(String(localized: "Done")) { history = nil } }
             }.presentationDetents([.medium, .large])
         }
     }
 
     private func showHistory() {
         typing = false
-        do { versions = try book.versions(); historyVisible = true }
+        do { history = HistoryList(versions: try book.versions()) }
         catch { book.problem = error.localizedDescription }
     }
 }

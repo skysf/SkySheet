@@ -40,8 +40,18 @@ while read -r family hardware runtime <&3; do
   container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
+  printf '31,93\n' > "$container/Documents/From Files.csv"
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
-    -resultBundlePath "$work/$family.xcresult" test-without-building; then failed=1; fi
+    -resultBundlePath "$work/$family.xcresult" test-without-building; then
+    failed=1
+    container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
+    python3 - "$container" <<'PY'
+import json, pathlib, sys
+history = pathlib.Path(sys.argv[1]) / "Library/Application Support/ai.skylu.skyfolio/History"
+for version in sorted(history.glob("*/*.json")):
+    print("Simulator history", version.parent.name, json.loads(version.read_bytes())["title"])
+PY
+  fi
   xcrun xcresulttool export attachments --path "$work/$family.xcresult" --output-path "$results/$family"
   xcrun simctl shutdown "$device"
   cleanup_device

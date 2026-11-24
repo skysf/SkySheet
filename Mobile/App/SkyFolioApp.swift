@@ -46,12 +46,15 @@ struct WorkbookLibrary: View {
             .disabled(opening != nil)
             .overlay { if opening != nil { ProgressView(String(localized: "Opening…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
         }
-        .sheet(isPresented: $picker) {
-            WorkbookPicker { url in
-                picker = false
-                if let url { open(url) }
+        // 部分文件提供方只报 public.data，能否读由所选文件的扩展名和实际解析共同确定。
+        .fileImporter(isPresented: $picker, allowedContentTypes: [.data]) { result in
+            switch result {
+            case .success(let url): open(url)
+            case .failure(let error) where (error as? CocoaError)?.code == .userCancelled: break
+            case .failure(let error): problem = error.localizedDescription
             }
         }
+        .fileDialogDefaultDirectory(.documentsDirectory)
         .onAppear { refresh() }
         .onOpenURL { url in if url.isFileURL { open(url) } }
         .onChange(of: phase) { _, next in
@@ -66,11 +69,19 @@ struct WorkbookLibrary: View {
     private func refresh() {
         localFiles = ((try? FileManager.default.contentsOfDirectory(at: .documentsDirectory, includingPropertiesForKeys: nil,
                                                                      options: [.skipsHiddenFiles])) ?? [])
-            .filter { ["xlsx", "csv", "tsv"].contains($0.pathExtension.lowercased()) }
+            .filter(Self.supports)
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
+    private static func supports(_ url: URL) -> Bool {
+        ["xlsx", "csv", "tsv"].contains(url.pathExtension.lowercased())
+    }
+
     private func open(_ url: URL, replacingEditor: Bool = false) {
+        guard Self.supports(url) else {
+            problem = String(localized: "Choose an Excel (.xlsx), CSV or TSV workbook.")
+            return
+        }
         guard replacingEditor || book?.finish() != false else { return }
         let request = UUID()
         opening = request
@@ -81,24 +92,5 @@ struct WorkbookLibrary: View {
                 if opening == request { book = loaded }
             } catch { if opening == request { problem = error.localizedDescription } }
         }
-    }
-}
-
-private struct WorkbookPicker: UIViewControllerRepresentable {
-    let picked: (URL?) -> Void
-    func makeCoordinator() -> Coordinator { Coordinator(picked) }
-    func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let xlsx = UTType(filenameExtension: "xlsx") ?? UTType(importedAs: "org.openxmlformats.spreadsheetml.sheet", conformingTo: .spreadsheet)
-        let picker = UIDocumentPickerViewController(forOpeningContentTypes: [xlsx, .commaSeparatedText, .tabSeparatedText], asCopy: false)
-        picker.directoryURL = .documentsDirectory
-        picker.delegate = context.coordinator
-        return picker
-    }
-    func updateUIViewController(_ picker: UIDocumentPickerViewController, context: Context) {}
-    final class Coordinator: NSObject, UIDocumentPickerDelegate {
-        let picked: (URL?) -> Void
-        init(_ picked: @escaping (URL?) -> Void) { self.picked = picked }
-        func documentPicker(_ controller: UIDocumentPickerViewController, didPickDocumentsAt urls: [URL]) { picked(urls.first) }
-        func documentPickerWasCancelled(_ controller: UIDocumentPickerViewController) { picked(nil) }
     }
 }

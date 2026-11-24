@@ -1,22 +1,31 @@
 import XCTest
 
 final class WorkbookUITests: XCTestCase {
-    @MainActor func testFilesPickerOpensWorkbook() {
+    @MainActor func testBrowseFilesAndOpenCSV() {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launch()
         app.buttons["open-workbook"].tap()
-        let file = app.cells.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH[c] %@",
-                                                  "Arithmetic, xlsx", "Arithmetic, xlsx,")).firstMatch
-        XCTAssertTrue(file.waitForExistence(timeout: 30), app.debugDescription)
-        // Files 的图标视图给整个网格项一个很高的可访问区域，真正打开文件的是上部的缩略图或文件名。
-        let name = file.staticTexts["Arithmetic"]
-        if name.exists { name.tap() } else { file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.23)).tap() }
-        let input = app.textFields["formula-input"]
-        if !input.waitForExistence(timeout: 8), file.exists, file.isHittable {
-            file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.23)).tap()
+        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "From Files")).firstMatch
+        if !file.waitForExistence(timeout: 5) {
+            let browse = app.buttons["Browse"]
+            if browse.isHittable { browse.tap() }
+            let local = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
+            if local.waitForExistence(timeout: 5), local.isHittable { local.tap() }
+            let folder = app.cells.containing(.staticText, identifier: "SkyFolio").firstMatch
+            if folder.waitForExistence(timeout: 5), folder.isHittable { folder.tap() }
         }
-        XCTAssertTrue(input.waitForExistence(timeout: 25), app.debugDescription)
+        XCTAssertTrue(file.waitForExistence(timeout: 15), app.debugDescription)
+        file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.23)).tap()
+        let input = app.textFields["formula-input"]
+        if !input.waitForExistence(timeout: 5) {
+            let confirm = app.buttons["Open"].firstMatch
+            if confirm.isHittable { confirm.tap() }
+            else if file.isHittable { file.doubleTap() }
+        }
+        XCTAssertTrue(input.waitForExistence(timeout: 20), app.debugDescription)
+        XCTAssertEqual(input.value as? String, "31")
+        app.terminate()
     }
 
     @MainActor func testEditReopenAndRestore() throws {
