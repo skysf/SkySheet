@@ -127,7 +127,7 @@ final class AISession {
         let key = ObjectIdentifier(session)
         guard let snapshot = snapshots[key], touched.contains(key) else { return .nothing }
         guard rounds[key]?.onlyAIChanged(currentRevision: session.revision) == true else { return .userChanged }
-        session.apply(String(localized: "Undo AI Changes")) { $0 = snapshot }
+        session.apply(String(localized: "Undo AI Changes"), groupUndo: true) { $0 = snapshot }
         session.aiTouched = [:]
         touched.remove(key)
         snapshots[key] = nil
