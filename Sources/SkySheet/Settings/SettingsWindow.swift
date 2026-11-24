@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SkySheetFiles
 import SwiftUI
 
@@ -11,6 +12,8 @@ final class SettingsWindowController: NSWindowController {
         let window = NSWindow(contentViewController: NSHostingController(rootView: SettingsView()))
         window.title = String(localized: "SkySheet Settings")
         window.styleMask = [.titled, .closable]
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = FolioTheme.paper.native
         super.init(window: window)
     }
 
@@ -73,6 +76,9 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+        .scrollContentBackground(.hidden)
+        .background(FolioTheme.paper.color)
+        .tint(FolioTheme.accent.color)
         .frame(width: 460)
         .fixedSize(horizontal: false, vertical: true)
     }

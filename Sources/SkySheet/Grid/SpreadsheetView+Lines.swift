@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
 
@@ -92,8 +93,8 @@ final class SizeLabel: NSTextField {
         isSelectable = false
         isBordered = false
         drawsBackground = true
-        backgroundColor = GridChrome.sizeBackground
-        textColor = .labelColor
+        backgroundColor = FolioTheme.paper.native
+        textColor = FolioTheme.ink.native
         font = .systemFont(ofSize: 11)
         wantsLayer = true
         layer?.cornerRadius = 4

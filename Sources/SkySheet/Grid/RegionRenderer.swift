@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
 
@@ -278,11 +279,11 @@ struct RegionRenderer {
         let shade = NSBezierPath(rect: range)
         shade.append(NSBezierPath(rect: cursor))
         shade.windingRule = .evenOdd
-        NSColor.controlAccentColor.withAlphaComponent(0.12).setFill()
+        FolioTheme.accent.light.withAlphaComponent(0.10).setFill()
         shade.fill()
         let outline = NSBezierPath(rect: range.insetBy(dx: 0, dy: 0))
         outline.lineWidth = 2
-        NSColor.controlAccentColor.setStroke()
+        FolioTheme.accent.light.setStroke()
         outline.stroke()
     }
 

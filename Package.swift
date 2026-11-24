@@ -12,13 +12,17 @@ let otherChecks = (try? FileManager.default.contentsOfDirectory(atPath: "Sources
 // 零第三方依赖（设计第 7 条）：压缩用系统的 Compression，SQL 查询用系统的 SQLite3。
 let package = Package(
     name: "SkySheet",
-    platforms: [.macOS(.v15)],
+    platforms: [.macOS(.v15), .iOS(.v18)],
     products: [
+        // Mac 文档和 iPhone / iPad 共用的文件、公式与显示规则。移动端只链接这个产品。
+        .library(name: "SkyFolioWorkbook", targets: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay"]),
+        .library(name: "SkyFolioTheme", targets: ["SkyFolioTheme"]),
         .executable(name: "SkySheet", targets: ["SkySheet"]),
         // Claude Code 启动的 MCP 小程序，打包时放进 SkySheet.app/Contents/Helpers/（设计第三节、9.1 节）。
         .executable(name: "skysheet-mcp", targets: ["SkySheetMCP"]),
     ],
     targets: [
+        .target(name: "SkyFolioTheme"),
         // zip 读写：xlsx 本质上是一个 zip 包。
         .target(name: "SkyZip"),
         // 值类型的工作簿模型、公式引擎和函数库、数字格式。不碰任何文件格式。
@@ -34,9 +38,9 @@ let package = Package(
         // App：文档、窗口、表格视图（AppKit + SwiftUI）、AI 层。打包见 scripts/build-app.sh。
         .executableTarget(
             name: "SkySheet",
-            dependencies: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit", "SkyZip"],
+            dependencies: ["SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit", "SkyZip", "SkyFolioTheme"],
             path: uiChecks ? "Sources" : "Sources/SkySheet",
-            exclude: uiChecks ? ["SkySheet/App/main.swift", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit", "SkyZip", "SkySheetMCP"] + otherChecks : [],
+            exclude: uiChecks ? ["SkySheet/App/main.swift", "SkySheetCore", "SkySheetFiles", "SkySheetDisplay", "SkySheetMCPKit", "SkyZip", "SkySheetMCP", "SkyFolioTheme"] + otherChecks : [],
             sources: uiChecks ? ["SkySheet", "SkySheetChecks/UI", "SkySheetChecks/Harness.swift"] : nil
         ),
         // 自检。本机只有命令行工具，没有 XCTest，也没有 Swift Testing（设计第十二节），

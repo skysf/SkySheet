@@ -70,7 +70,7 @@ extension WorkbookDocument {
     private func writeVerified(to url: URL, ofType typeName: String) throws {
         guard let session else { throw CocoaError(.fileWriteUnknown) }
         let workbook = session.workbook
-        if DocumentLoader.isDelimitedText(typeName: typeName) {
+        if LoadedWorkbook.isDelimitedText(typeName: typeName) {
             let format = typeName == fileType ? (csvFormat ?? Self.csvFormat(for: typeName)) : Self.csvFormat(for: typeName)
             let result = try CSVWriter.write(workbook.sheets[session.sheetIndex], styles: workbook.styles,
                                              dateSystem: workbook.dateSystem, format: format)
@@ -174,7 +174,7 @@ extension WorkbookDocument {
     /// csv 放不下的：好几张表，或者这张表上新改了 csv 存不下的样子（格式、合并单元格、冻结……，CSVWriter.losesFormatting；
     /// 2026-10-14 起界面上能改这些了）。先问是另存成 xlsx，还是只存 csv。
     private func checkSheetsFitCSV(_ url: URL, _ typeName: String, then next: @escaping (Bool) -> Void) {
-        guard DocumentLoader.isDelimitedText(typeName: typeName), let session, let window = windowForSheet else { return next(true) }
+        guard LoadedWorkbook.isDelimitedText(typeName: typeName), let session, let window = windowForSheet else { return next(true) }
         let workbook = session.workbook
         let name = session.sheet.name
         let manySheets = workbook.sheets.count > 1

@@ -1,0 +1,5 @@
+[
+  { "format": "0.0%", "input": "0.0295", "expected": "3.0%" },
+  { "format": "0.0,", "input": "2950", "expected": "3.0" },
+  { "format": "0%", "input": "0", "expected": "0%" }
+]

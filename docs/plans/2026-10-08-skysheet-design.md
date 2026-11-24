@@ -34,7 +34,7 @@ SkySheet 是一个**给 AI 用的**轻量 macOS 表格工具：
 | --- | --- | --- | --- |
 | 1 | 名字 | App 叫 SkySheet；bundle id `ai.skylu.skysheet`；MCP 服务名 `skysheet`；仓库 `skysf/SkySheet`（公开）。**计划（2026-11-16 定，M6 做）：改名 SkyFolio**，对外全名「SkyFolio by Skylu」；bundle id `ai.skylu.skyfolio`，MCP 服务名 `skyfolio`，仓库 `skysf/SkyFolio`；App 第一次启动时把备份、恢复副本和两家 AI 客户端配置里的 `skysheet` 条目迁过来（新方案第七节）。xlsx 里 AI 的 sheet 的标记 `SkySheet.AI.` 不改；表格引擎的模块继续叫 `SkySheet*` | Excel 是微软的商标，Numbers 是苹果的，Sheet 是普通词。skylu 是作者的个人品牌（skylu.ai）；SkyStudio 是另一个品牌，不混用。改名是因为它要开 Word、Markdown，不只是表格了。已知撞名：韩国 MUIN 公司 2026-10 发布的天文照片 Mac app「Skyfolio」（也走 GitHub Releases），安卓上 Snapwood 的「SkyFolio - OneDrive Photos」；作者知道后仍选它，全名带上品牌来区分；上 App Store 或正式推广之前，去 USPTO、EUIPO、中国商标网正式查一次。`SkySheet.AI.` 已经写进了用户的文件，改了旧文件就认不出来 |
 | 2 | 许可证 | AGPL-3.0 | 和 SrtFlow 一样；MCP 协议代码从 SrtFlow 搬来，两边一致 |
-| 3 | 平台 | macOS 15 起，只支持 Apple 芯片（arm64） | 和 SrtFlow 一样，不为 Intel 多测一套 |
+| 3 | 平台 | 已发布的版本支持 Apple 芯片 Mac（macOS 15 起）。2026-11-24 定下三端目标，增加 iPhone、iPad，日后上架 App Store | 三端共用文件和公式引擎。移动端共用触屏交互，Mac 继续使用 AppKit |
 | 4 | 签名 | 自签名证书「Skylu Signing」，作者所有个人工具共用；不公证 | 第十一节 |
 | 5 | 文件 | 读写 xlsx、csv。计划（2026-11-15、11-16 定）：Word（.docx，顺带 .dotx、.docm）只读，M8 做；Markdown（.md）读写，M7 先只读、M9 能改；.doc、.rtf、.odt 不做 | 作者的数据就是这两种（腾讯文档、银行导出）。2026-11-15 作者要同一个 App 开更多种文件：先 Word 和 Markdown，PPT 以后（新方案第二节） |
 | 6 | 原样保留 | 读不懂的、没改过的部分，保存时按原字节写回 | 样例里就有图片和合并单元格，丢了就是毁数据 |

@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
 
@@ -23,7 +24,7 @@ final class CellEditor: NSTextField, NSTextFieldDelegate {
         cell?.allowsUndo = false
         wantsLayer = true
         layer?.borderWidth = 2
-        layer?.borderColor = NSColor.controlAccentColor.cgColor
+        layer?.borderColor = FolioTheme.accent.light.cgColor
         delegate = self
         isHidden = true
     }

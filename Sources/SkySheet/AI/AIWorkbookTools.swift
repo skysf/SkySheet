@@ -45,7 +45,7 @@ enum AIWorkbookTools {
         return [
             "workbook": .string(AIWorkbooks.label(document)),
             "path": document.fileURL.map { .string($0.path) } ?? .null,
-            "kind": DocumentLoader.isDelimitedText(url: document.fileURL, typeName: document.fileType) ? "csv" : "xlsx",
+            "kind": LoadedWorkbook.isDelimitedText(url: document.fileURL, typeName: document.fileType) ? "csv" : "xlsx",
             "unsaved_changes": .bool(document.isDocumentEdited),
             "current": .bool(current),
             "sheets": .array(sheets),
