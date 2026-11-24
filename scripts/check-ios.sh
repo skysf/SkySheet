@@ -36,14 +36,32 @@ failed=0
 while read -r family hardware runtime <&3; do
   device="$(xcrun simctl create "SkyFolio checks $family" "$hardware" "$runtime")"
   xcrun simctl bootstatus "$device" -b
+  xcrun simctl install "$device" "$app"
+  container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
   # 在系统 Files 自己的「我的 iPhone / iPad」放样本，和 SkyFolio 的 Documents 分开。
   xcrun simctl launch "$device" com.apple.DocumentsApp
-  source_container="$(xcrun simctl get_app_container "$device" com.apple.DocumentsApp group.com.apple.FileProvider.LocalStorage)"
+  # 这个共享目录在部分 runtime 属于提供方扩展，Files 主应用的 get_app_container 查不到。
+  source_container="$(python3 - "$container" <<'PY'
+from pathlib import Path
+import plistlib, sys, time
+
+groups = Path(sys.argv[1]).parents[2] / "Shared/AppGroup"
+providers = set()
+for _ in range(30):
+    for metadata in groups.glob("*/.com.apple.mobile_container_manager.metadata.plist"):
+        identifier = plistlib.loads(metadata.read_bytes()).get("MCMMetadataIdentifier", "")
+        if "fileprovider" in identifier.lower():
+            providers.add(identifier)
+        if "fileprovider.localstorage" in identifier.lower():
+            print(metadata.parent)
+            sys.exit(0)
+    time.sleep(1)
+sys.exit(f"Local File Provider group unavailable. Found {sorted(providers)}")
+PY
+)"
   provider_file="$source_container/File Provider Storage/From Files.csv"
   mkdir -p "$(dirname "$provider_file")"
   printf '31,93\n' > "$provider_file"
-  xcrun simctl install "$device" "$app"
-  container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
