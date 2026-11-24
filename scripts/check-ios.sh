@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# iPhone 和 iPad 使用同一目标。编一次模拟器包，在同一台 CI 机器上依次运行两种尺寸的真界面测试。
+# iPhone 和 iPad 使用同一目标，模拟器包只编一次。可以按设备和系统版本独立复查。
 set -euo pipefail
 cd "$(dirname "$0")/.."
 work="$(mktemp -d "${RUNNER_TEMP:-${TMPDIR:-/tmp}}/skyfolio-mobile.XXXXXX")"
@@ -12,20 +12,20 @@ app="$work/build/Build/Products/Debug-iphonesimulator/SkyFolio.app"
 ditto -c -k --keepParent "$app" "$results/SkyFolio-Simulator.zip"
 
 xcrun simctl list devices available --json > "$work/devices.json"
-python3 - "$work/devices.json" "${SKYFOLIO_SIM_RUNTIME:-}" > "$work/selected" <<'PY'
+python3 - "$work/devices.json" "${SKYFOLIO_SIM_RUNTIME:-}" "${SKYFOLIO_SIM_FAMILY:-}" > "$work/selected" <<'PY'
 import json, sys
 devices = json.load(open(sys.argv[1]))["devices"]
 runtimes = sorted((key for key in devices if ".iOS-" in key),
                   key=lambda key: tuple(map(int, key.split(".iOS-")[1].split("-"))), reverse=True)
-# 26.5 的模拟器偶发无法解析 Files 自己创建的文稿。两种尺寸用同一稳定 runtime；
-# 仍用最新 SDK 编译真机，可指定 SKYFOLIO_SIM_RUNTIME=26.5 在 CI 环境复查系统提供方。
 requested = sys.argv[2]
-preferred = "com.apple.CoreSimulator.SimRuntime.iOS-" + (requested or "26.2").replace(".", "-")
-if requested and preferred not in runtimes:
-    sys.exit(f"Requested simulator runtime unavailable: {requested}")
-if preferred in runtimes:
-    runtimes = [preferred] if requested else [preferred] + [other for other in runtimes if other != preferred]
-families = ("iPhone", "iPad")
+if requested:
+    runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + requested.replace(".", "-")
+    if runtime not in runtimes:
+        sys.exit(f"Requested simulator runtime unavailable: {requested}")
+    runtimes = [runtime]
+families = (sys.argv[3],) if sys.argv[3] else ("iPhone", "iPad")
+if not set(families) <= {"iPhone", "iPad"}:
+    sys.exit(f"Unknown device families: {families}")
 for runtime in runtimes:
     selected = [next((d for d in devices[runtime] if d["name"].startswith(family) and d["isAvailable"]), None)
                 for family in families]
@@ -35,7 +35,7 @@ for runtime in runtimes:
             print(f"{family}: {device['name']} ({runtime})", file=sys.stderr)
         break
 else:
-    sys.exit("No runtime with both an iPhone and an iPad simulator")
+    sys.exit(f"No simulator for {', '.join(families)} in {runtimes}")
 PY
 
 device=""
@@ -75,7 +75,15 @@ PY
   printf '31,93\n' > "$provider_file"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
+  # 苹果自己的 Files 先建立副本；编辑与重开两个用例运行期间，由提供方完成索引。
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
+    -only-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
+    -collect-test-diagnostics never -resultBundlePath "$work/$family-prepare.xcresult" test-without-building; then
+    failed=1
+    xcrun xcresulttool export attachments --path "$work/$family-prepare.xcresult" --output-path "$results/$family-preparation"
+  fi
+  if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
+    -skip-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
     -collect-test-diagnostics never -resultBundlePath "$work/$family.xcresult" test-without-building; then
     failed=1
     container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
@@ -104,6 +112,5 @@ PY
   cleanup_device
   device=""
 done 3< "$work/selected"
-test -d "$results/iPhone"
-test -d "$results/iPad"
+while read -r family hardware runtime; do test -d "$results/$family"; done < "$work/selected"
 exit "$failed"
