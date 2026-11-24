@@ -10,6 +10,7 @@ final class WorkbookDocumentController: NSDocumentController {
     override var hasEditedDocuments: Bool {
         for case let document as WorkbookDocument in documents {
             document.session?.commitEditing(groupUndo: true)
+            document.finishAutosave()
         }
         return super.hasEditedDocuments
     }

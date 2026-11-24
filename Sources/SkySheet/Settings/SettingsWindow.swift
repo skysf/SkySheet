@@ -30,16 +30,18 @@ final class SettingsWindowController: NSWindowController {
 }
 
 struct SettingsView: View {
+    @AppStorage(WorkbookDocument.aiConfirmationKey) private var confirmAIWrites = false
     private var code: ClaudeCodeSetup { ClaudeCodeSetup.shared }
     private var desktop: ClaudeDesktopSetup { ClaudeDesktopSetup.shared }
 
     var body: some View {
         Form {
             Section("AI") {
-                Text("Let Claude read your workbooks and write its results into new sheets. Your original sheets stay read-only to it, and nothing reaches your files until you press ⌘S. Claude Desktop is for chats in the Claude app; its Code tab uses the Claude Code connection.")
+                Text(String(localized: "Let Claude read your workbooks and write results into new sheets. Your original sheets are read-only to Claude. Review edits in File > Version History. For the Code tab in Claude Desktop, use the Claude Code connection."))
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                Toggle(String(localized: "Require ⌘S to apply AI edits to the file"), isOn: $confirmAIWrites)
                 if AIHelper.url == nil {
                     Text("This copy of SkySheet has no AI helper inside, so AI apps cannot connect to it.")
                         .font(.caption)

@@ -1,9 +1,72 @@
 import AppKit
 import ObjectiveC.runtime
 import SkySheetCore
+import SkySheetFiles
 
 @MainActor
 func closeDecisionChecks() {
+    group("mac: commit, undo and reopen an autosaved workbook with its intermediate steps") {
+        let folder = try makeTemporaryDirectory()
+        let url = folder.appendingPathComponent("Autosave.xlsx")
+        try FileManager.default.copyItem(at: fixtureURL("IronCalc/arithmetic.xlsx"), to: url)
+        let history = WorkbookHistory(file: url, root: folder.appendingPathComponent("History"))
+        let backups = BackupStore(root: folder.appendingPathComponent("Backup"))
+        func open() throws -> WorkbookDocument {
+            let doc = WorkbookDocument()
+            doc.savePreferences = UserDefaults(suiteName: "SkyFolioChecks.\(UUID().uuidString)")!
+            doc.fileURL = url
+            doc.fileType = WorkbookDocument.xlsxType
+            try doc.read(from: url, ofType: WorkbookDocument.xlsxType)
+            doc.makeWindowControllers()
+            if let loaded = doc.loaded { doc.attachAutosave(url: url, loaded: loaded, history: history, backups: backups) }
+            return doc
+        }
+        let doc = try open()
+        guard let session = doc.session else { return fail("no document session") }
+        let a1 = CellAddress(row: 0, column: 0)
+        session.select(a1)
+        for text in ["7", "9"] {
+            session.beginEditing(.typing, text: text)
+            session.commitEditing(groupUndo: true)
+        }
+        doc.finishAutosave()
+        checkEqual(try LoadedWorkbook(contentsOf: url).workbook.sheets[0].cells[a1]?.value, .number(9), "real document autosaved")
+        doc.undoManager?.undo()
+        doc.finishAutosave()
+        checkEqual(try LoadedWorkbook(contentsOf: url).workbook.sheets[0].cells[a1]?.value, .number(7), "undo also saved")
+        doc.close()
+        let reopened = try open()
+        defer { reopened.close() }
+        let versions = try history.versions()
+        checkEqual(versions.count, 4, "initial version, both edits and undo")
+        guard versions.count == 4 else { return }
+        try reopened.restoreVersion(versions[1])
+        reopened.finishAutosave()
+        checkEqual(try LoadedWorkbook(contentsOf: url).workbook.sheets[0].cells[a1]?.value, .number(9), "restored after document was closed and reopened")
+        checkEqual(try history.versions().count, 5, "restore has its own step")
+        guard let editing = reopened.session else { return fail("no reopened session") }
+        let author = AIAuthorship.Mark.Author.ai(client: "Test", model: nil)
+        let role = SheetRole.ai(AIAuthorship(created: .init(author, date: Date(timeIntervalSince1970: 1))))
+        try editing.apply("AI: Add Sheet", author: author, groupUndo: true) {
+            _ = try $0.addSheet(named: "Analysis", role: role)
+        }
+        reopened.finishAutosave()
+        check(try LoadedWorkbook(contentsOf: url).workbook.sheetIndex(named: "Analysis") != nil, "allowed AI edits autosave by default")
+        let withAI = try history.versions()
+        checkEqual(withAI.first?.title, "AI: Add Sheet", "AI edit is recorded")
+        check(withAI.count > 1 && WorkbookHistory.restoreLabel(at: 1, in: withAI).contains("Before AI edits"),
+              "history identifies the state before the AI round")
+        reopened.savePreferences.set(true, forKey: WorkbookDocument.aiConfirmationKey)
+        defer { reopened.savePreferences.removeObject(forKey: WorkbookDocument.aiConfirmationKey) }
+        let beforeApproval = try Data(contentsOf: url)
+        try editing.apply("AI: Add Sheet", author: author, groupUndo: true) {
+            _ = try $0.addSheet(named: "Review", role: role)
+        }
+        reopened.finishAutosave()
+        checkEqual(try Data(contentsOf: url), beforeApproval, "opt-in confirmation holds AI writes while preserving their history")
+        reopened.save(withDelegate: nil, didSave: nil, contextInfo: nil)
+        check(try LoadedWorkbook(contentsOf: url).workbook.sheetIndex(named: "Review") != nil, "explicit approval writes AI results")
+    }
     group("ui-22: close decision sees the real document undo manager's dirty state") {
         let session = SheetSession(workbook: Workbook(sheets: [Sheet(id: 1, name: "Main")]))
         let document = WorkbookDocument()

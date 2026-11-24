@@ -130,8 +130,8 @@ enum MCPReadTools {
                 .saveCopy, title: "Save a copy",
                 description: """
                     Saves the workbook to a new file: .xlsx keeps every sheet; .csv holds one sheet (sheet, or the \
-                    one the user is looking at). The path must not exist yet: SkySheet never overwrites files for \
-                    AI. The open window keeps working on the user's file, which only changes when they press Cmd+S.
+                    one the user is looking at). The destination must be a new file. The open window keeps working on \
+                    the current workbook.
                     """,
                 input: MCPSchema.object([
                     "path": MCPSchema.string("New file path ending in .xlsx or .csv."),

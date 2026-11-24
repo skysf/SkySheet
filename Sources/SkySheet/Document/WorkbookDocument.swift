@@ -3,8 +3,7 @@ import SkySheetCore
 import SkySheetDisplay
 import SkySheetFiles
 
-/// 一个打开的 xlsx / csv（设计 8.1 节）。文档层用 AppKit 的 NSDocument：SwiftUI 的 DocumentGroup 会自动把改动存回原文件，
-/// 违反「只有 ⌘S 才写回」（设计第 15 条）。保存和六道保险在 WorkbookDocument+Saving.swift。
+/// 一个打开的 xlsx / csv。编辑按步骤自动保存；NSDocument 负责打开、另存、窗口和系统撤销。
 ///
 /// NSDocument 的 read / write 不在主线程隔离域里，但我们没开并发读写（canConcurrentlyReadDocuments、
 /// canAsynchronouslyWrite 都是默认的 false），系统在主线程上调它们。下面几个 nonisolated(unsafe) 的属性都只在主线程上读写。
@@ -24,7 +23,7 @@ final class WorkbookDocument: NSDocument {
     /// 打开的是 csv 时原来的写法（编码、分隔符、换行）。
     nonisolated(unsafe) var csvFormat: CSVFormat?
     /// 刚写好、核对过、还没确认存成功的：存成功以后它们成为新的原包和基准。
-    nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?)?
+    nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?, bytes: Data)?
     /// 这次打开以后备份过原文件没有（第四道保险：第一次覆盖前备份）。
     var backedUp = false
     /// 恢复副本的编号（第五道保险）。从恢复副本打开的文档接着用那一份的编号：新副本写好之前旧的不删（RecoveryCoordinator.reopen）。
@@ -32,13 +31,19 @@ final class WorkbookDocument: NSDocument {
     /// 恢复副本写好了的那一版（改动次数），和正在后台写的那一版。写成了才记进 recoveredRevision，没写成的下一轮重写。
     var recoveredRevision: Int?
     var recoveringRevision: Int?
+    var autosaveWriter: WorkbookAutosave?
+    var latestEdit: UUID?
+    var lastSaveIssue: (any Error)?
+    nonisolated static let aiConfirmationKey = "ConfirmAIWorkbookWrites"
+    var savePreferences: UserDefaults = .standard
+    var beforeUnconfirmedAI: Workbook?
     /// 从恢复副本打开的：原来那个文件。存的时候默认存回它旁边。
     var recoveredFrom: URL?
 
     override class var autosavesInPlace: Bool { false }
 
     override func read(from url: URL, ofType typeName: String) throws {
-        let loaded = try DocumentLoader.load(contentsOf: url, typeName: typeName)
+        let loaded = try DocumentLoader.load(contentsOf: url, typeName: typeName, history: WorkbookHistory(file: url))
         self.loaded = loaded
         source = loaded.source
         baseline = loaded.workbook
@@ -52,16 +57,31 @@ final class WorkbookDocument: NSDocument {
         session.structureLock = { [weak self] id in self?.structureLock(forSheet: id) }
         session.refusedChange = { [weak self] locked in LayoutCommands.explain(locked, in: self?.windowForSheet) }
         self.session = session
+        if let fileURL { attachAutosave(url: fileURL, loaded: loaded) }
+        session.didEdit = { [weak self] title, author, before in
+            guard let self else { return }
+            let needsConfirmation = savePreferences.bool(forKey: Self.aiConfirmationKey)
+            if !needsConfirmation { beforeUnconfirmedAI = nil }
+            if case .ai = author {
+                if needsConfirmation, beforeUnconfirmedAI == nil { beforeUnconfirmedAI = before }
+                saveStep(title, aiRound: AISession.shared.roundID)
+            } else {
+                if let beforeUnconfirmedAI, self.session?.workbook == beforeUnconfirmedAI { self.beforeUnconfirmedAI = nil }
+                saveStep(title)
+            }
+        }
         addWindowController(WorkbookWindowController(session: session))
     }
 
     /// 「复原到上次存的样子」和「文件被别的程序改了，重新载入」：读回来以后换掉窗口里的工作簿，撤销记录清空。
     override func revert(toContentsOf url: URL, ofType typeName: String) throws {
+        finishAutosave()
         try super.revert(toContentsOf: url, ofType: typeName)
         guard let loaded, let session else { return }
         session.editing = nil
         session.replaceWorkbook(loaded.workbook)
         session.resetSelection()
+        attachAutosave(url: url, loaded: loaded)
         undoManager?.removeAllActions()
         backedUp = false
     }
@@ -83,11 +103,13 @@ final class WorkbookDocument: NSDocument {
                            contextInfo: UnsafeMutableRawPointer?) {
         // 实际修改才显式分组，让 NSDocument 同步脏状态；空组也会标脏，不能包住无变化的提交。
         session?.commitEditing(groupUndo: true)
+        finishAutosave()
         super.canClose(withDelegate: delegate, shouldClose: shouldCloseSelector, contextInfo: contextInfo)
     }
 
     override func close() {
         session?.commitEditing()
+        finishAutosave()
         RecoveryCoordinator.shared.forget(self)
         super.close()
     }
@@ -95,9 +117,9 @@ final class WorkbookDocument: NSDocument {
 
 /// 给共用读入结果补上 Mac 实际字体量出的 CSV 列宽。文档窗口和截图模式走同一入口。
 enum DocumentLoader {
-    static func load(contentsOf url: URL, typeName: String? = nil) throws -> LoadedWorkbook {
-        var loaded = try LoadedWorkbook(contentsOf: url, typeName: typeName)
-        if loaded.csvFormat != nil {
+    static func load(contentsOf url: URL, typeName: String? = nil, history: WorkbookHistory? = nil) throws -> LoadedWorkbook {
+        var loaded = try LoadedWorkbook(data: Data(contentsOf: url), url: url, typeName: typeName, history: history)
+        if loaded.csvFormat != nil, loaded.source == nil {
             // NSDocument 同步读文件、截图和测速都在主线程。只在量 Mac 字体时要求这个前提。
             loaded = MainActor.assumeIsolated { [loaded] in
                 var fitted = loaded
