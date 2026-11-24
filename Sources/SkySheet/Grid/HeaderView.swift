@@ -208,9 +208,8 @@ final class HeaderView: NSView {
     private func labelStyles(points: CGFloat) -> (normal: LabelStyle, selected: LabelStyle, bold: LabelStyle) {
         if let known = labelStyles, known.points == points { return (known.normal, known.selected, known.bold) }
         let font = NSFont.systemFont(ofSize: points)
-        // 深色选区的强调色同时用于底色时，文字也用强调色会相近（黄色实测仅 4.20:1）；白字保持对比。
         let selectedColor = chrome.selectedText
-        let styles = (normal: LabelStyle(font: font, color: .secondaryLabelColor),
+        let styles = (normal: LabelStyle(font: font, color: chrome.text),
                       selected: LabelStyle(font: font, color: selectedColor),
                       bold: LabelStyle(font: NSFont.boldSystemFont(ofSize: font.pointSize), color: selectedColor))
         labelStyles = (points, styles.normal, styles.selected, styles.bold)
@@ -259,14 +258,14 @@ final class HeaderView: NSView {
             }
             let isSelected = selectedSpan.contains(item.index)
             if isSelected {
-                NSColor.controlAccentColor.withAlphaComponent(wholeLines ? 0.32 : 0.18).setFill()
+                chrome.selectionTint.withAlphaComponent(wholeLines ? 0.26 : 0.14).setFill()
                 rect.fill()
             }
             let label = isColumns ? CellAddress.columnName(item.index) : String(item.index + 1)
             let style = isSelected ? (wholeLines ? styles.bold : styles.selected) : styles.normal
             let labelSize = style.size(of: label)
             style.line(label).draw(at: CGPoint(x: rect.midX - labelSize.width / 2, y: rect.midY - labelSize.height / 2))
-            chrome.headerSeparator.setFill()
+            chrome.separator.setFill()
             (isColumns ? CGRect(x: rect.maxX - 1, y: 0, width: 1, height: bounds.height)
                        : CGRect(x: 0, y: rect.maxY - 1, width: bounds.width, height: 1)).fill()
             NSGraphicsContext.restoreGraphicsState()

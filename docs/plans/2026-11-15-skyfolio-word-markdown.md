@@ -524,7 +524,7 @@ DMG 里的「首次打开必读」已经有这几步，照着更新）：
 
 ## 九、平台
 
-只支持 Apple 芯片的 Mac：作者 2026-11-15 考虑过 Intel 芯片和 Windows，不做，设计第 3 条不变。
+2026-11-24 作者更新目标，SkyFolio 面向 Apple 芯片 Mac、iPad 和 iPhone，日后在 App Store 分发。Mac 使用现有 AppKit 界面，iPad 和 iPhone 共用一个适配不同宽度的移动端界面。工作簿和文档引擎、图标与界面配色三端共享。本机照旧用命令行工具，移动端 SDK 在 CI 上使用。第八节的自签名和 GitHub 下载描述现有 Mac 分发方式。
 
 ## 十、里程碑
 

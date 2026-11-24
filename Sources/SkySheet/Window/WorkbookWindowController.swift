@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SwiftUI
 
 /// 一个工作簿一个窗口：上面公式栏、中间表格、下面页签和合计。
@@ -8,6 +9,8 @@ final class WorkbookWindowController: NSWindowController {
         let window = NSWindow(contentViewController: WorkbookViewController(session: session))
         window.setContentSize(NSSize(width: 1100, height: 720))
         window.minSize = NSSize(width: 480, height: 320)
+        window.titlebarAppearsTransparent = true
+        window.backgroundColor = FolioTheme.paper.native
         super.init(window: window)
         shouldCascadeWindows = true
         // 第一次（没记住位置）摆在主屏幕正中：被 AI 在后台拉起来时，默认位置可能落在别的屏幕边上（2026-10-09）。

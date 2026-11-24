@@ -1,3 +1,4 @@
+import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
 import SwiftUI
@@ -39,17 +40,17 @@ struct BottomBar: View {
             Text(summary)
                 .font(.system(size: 11))
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FolioTheme.secondaryInk.color)
                 .lineLimit(1)
             Text("\(Int((session.zoom * 100).rounded()))%")
                 .font(.system(size: 11))
                 .monospacedDigit()
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FolioTheme.secondaryInk.color)
                 .frame(width: 48, alignment: .trailing)
                 .padding(.trailing, 10)
         }
         .frame(height: 28)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(FolioTheme.paper.color)
     }
 
     /// 选了不止一格才显示。数字按活动格的格式显示（活动格是 ¥ 格式，合计也是 ¥）。
@@ -95,6 +96,7 @@ private struct SheetTab: View {
             HStack(spacing: 5) {
                 Text(tab.name)
                     .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                    .foregroundStyle(isSelected ? FolioTheme.ink.color : FolioTheme.secondaryInk.color)
                 if let authorship = tab.authorship {
                     Text(authorship.badge)
                         .font(.system(size: 9, weight: .semibold))
@@ -120,7 +122,7 @@ private struct SheetTab: View {
 
     private var background: Color {
         if tab.authorship != nil { return Color.purple.opacity(isSelected ? 0.16 : 0.07) }
-        return isSelected ? Color(nsColor: .controlBackgroundColor) : Color.clear
+        return isSelected ? FolioTheme.peach.color : Color.clear
     }
 
     /// 白色的页签颜色（腾讯文档常写 FFFFFFFF）等于没有。

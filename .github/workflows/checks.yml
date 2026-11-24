@@ -46,6 +46,10 @@ jobs:
       - name: Run core checks
         run: scripts/check-all.sh core
 
+      # iPhone 和 iPad 使用同一套 SDK。在已有的 core 机器编译真机和模拟器目标，保持两个 macOS job 的上限。
+      - name: Build shared workbook and theme for iOS
+        run: scripts/check-ios.sh
+
   ui:
     name: ui
     runs-on: macos-26

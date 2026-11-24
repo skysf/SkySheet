@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
 import SkySheetFiles
@@ -98,6 +99,12 @@ func chromeContrastChecks() {
             let appearance = NSAppearance(named: name)!
             grid.appearance = appearance
             appearance.performAsCurrentDrawingAppearance {
+                let palette = GridChrome.palette(for: appearance)
+                let headerColor = name == .darkAqua ? FolioTheme.header.dark : FolioTheme.header.light
+                checkEqual(palette.headerBackground, headerColor, "header uses the matching paper color")
+                let ink = luminance(FolioTheme.ink.native)
+                let peach = luminance(FolioTheme.peach.native)
+                check((max(ink, peach) + 0.05) / (min(ink, peach) + 0.05) >= 4.5, "active tab contrast")
                 let label = grid.sizeLabel
                 let backgroundColor = opaque(label.backgroundColor!, over: .white)
                 let fg = luminance(opaque(label.textColor!, over: backgroundColor))

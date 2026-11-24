@@ -1,4 +1,5 @@
 import AppKit
+import SkyFolioTheme
 import SkySheetCore
 import SwiftUI
 
@@ -14,12 +15,13 @@ struct FormulaBar: View {
         HStack(spacing: 0) {
             Text(cursor.a1)
                 .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(FolioTheme.ink.color)
                 .frame(width: 72, alignment: .leading)
                 .padding(.leading, 10)
             Divider().frame(height: 16)
             Text("fx")
                 .font(.system(size: 12, design: .serif).italic())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(FolioTheme.accent.color)
                 .padding(.horizontal, 8)
             FormulaField(session: session)
             Spacer(minLength: 8)
@@ -32,7 +34,7 @@ struct FormulaBar: View {
             }
         }
         .frame(height: 28)
-        .background(Color(nsColor: .windowBackgroundColor))
+        .background(FolioTheme.paper.color)
     }
 }
 
@@ -47,6 +49,7 @@ private struct FormulaField: NSViewRepresentable {
         field.drawsBackground = false
         field.focusRingType = .none
         field.font = .systemFont(ofSize: 12)
+        field.textColor = FolioTheme.ink.native
         field.usesSingleLineMode = true
         field.cell?.wraps = false
         field.cell?.isScrollable = true

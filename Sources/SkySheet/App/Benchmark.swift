@@ -73,7 +73,7 @@ final class Benchmark {
             wall = ContinuousClock.now
             cpu = threadCPU()
         }
-        if DocumentLoader.isDelimitedText(url: url, typeName: nil) {
+        if LoadedWorkbook.isDelimitedText(url: url, typeName: nil) {
             let loaded = try DocumentLoader.load(contentsOf: url)
             workbook = loaded.workbook
             lap("open: read + recalc (csv)")

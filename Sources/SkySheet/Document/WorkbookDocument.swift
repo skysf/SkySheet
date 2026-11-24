@@ -10,7 +10,7 @@ import SkySheetFiles
 /// canAsynchronouslyWrite 都是默认的 false），系统在主线程上调它们。下面几个 nonisolated(unsafe) 的属性都只在主线程上读写。
 @objc(WorkbookDocument)
 final class WorkbookDocument: NSDocument {
-    nonisolated(unsafe) var loaded: DocumentLoader.Loaded?
+    nonisolated(unsafe) var loaded: LoadedWorkbook?
     /// 窗口建好以后的编辑状态。保存时从这里拿工作簿。
     nonisolated(unsafe) var session: SheetSession?
     /// 原包：保存时没改过的部件照抄（设计 7.2 节）。打开的是 csv 时没有。换了原包（存过、重新载入）就重新判断哪些表能插删行列。
@@ -93,44 +93,21 @@ final class WorkbookDocument: NSDocument {
     }
 }
 
-/// 读文件、整本重算。App 打开文档和截图模式都走这里。
+/// 给共用读入结果补上 Mac 实际字体量出的 CSV 列宽。文档窗口和截图模式走同一入口。
 enum DocumentLoader {
-    struct Loaded {
-        var workbook: Workbook
-        var source: XLSXSource?
-        var csvFormat: CSVFormat?
-        /// 读进来那一次重算排好的计划：交给窗口，打开后第一次编辑就不用再从头排（RecalcCache）。
-        var recalcCache = RecalcCache()
-    }
-
-    static func load(contentsOf url: URL, typeName: String? = nil) throws -> Loaded {
-        let data = try Data(contentsOf: url)
-        let cache = RecalcCache()
-        if isDelimitedText(url: url, typeName: typeName) {
-            let csv = try CSVReader.read(data, sheetName: url.deletingPathExtension().lastPathComponent)
-            var workbook = csv.workbook
-            Recalculator.recalculate(&workbook, options: RecalcOptions(cache: cache))
-            // NSDocument 的 read 不在主线程隔离域里，但实际在主线程上调（WorkbookDocument 的说明）；截图模式也在主线程。
-            // 量字体要在主线程：assumeIsolated 把这个前提写明，万一不在主线程会当场报错，而不是悄悄出问题。
-            let fitted = MainActor.assumeIsolated { () -> Workbook in
-                var copy = workbook
-                autoFitColumns(&copy)
-                return copy
+    static func load(contentsOf url: URL, typeName: String? = nil) throws -> LoadedWorkbook {
+        var loaded = try LoadedWorkbook(contentsOf: url, typeName: typeName)
+        if loaded.csvFormat != nil {
+            // NSDocument 同步读文件、截图和测速都在主线程。只在量 Mac 字体时要求这个前提。
+            loaded = MainActor.assumeIsolated { [loaded] in
+                var fitted = loaded
+                for index in fitted.workbook.sheets.indices {
+                    fitted.workbook.sheets[index].columns = fittedColumns(for: loaded.workbook.sheets[index], in: loaded.workbook)
+                }
+                return fitted
             }
-            return Loaded(workbook: fitted, source: nil, csvFormat: csv.format, recalcCache: cache)
         }
-        var document = try XLSXReader.readDocument(data)
-        // 读进来先整本重算一遍：TODAY() 是今天，我们算得了的公式用我们的结果，算不了的保留文件里的缓存值。
-        Recalculator.recalculate(&document.workbook, options: RecalcOptions(cache: cache))
-        return Loaded(workbook: document.workbook, source: document.source, csvFormat: nil, recalcCache: cache)
-    }
-
-    /// csv 没有列宽：按内容定宽（设计 7.3 节，AutoFit 的说明）。量文字要用真正画的字体，所以在 App 这一层做。
-    @MainActor
-    private static func autoFitColumns(_ workbook: inout Workbook) {
-        for index in workbook.sheets.indices {
-            workbook.sheets[index].columns = fittedColumns(for: workbook.sheets[index], in: workbook)
-        }
+        return loaded
     }
 
     /// 一张 sheet 按内容定的列宽（AI 从 csv 导进来的 sheet 也用它）。
@@ -142,10 +119,6 @@ enum DocumentLoader {
                                digitWidth: fonts.digitWidth(styles.style(0).font), measure: { fonts.width(of: $0, style: $1) })
     }
 
-    static func isDelimitedText(url: URL? = nil, typeName: String?) -> Bool {
-        if let typeName, typeName.contains("separated-values") || typeName.contains("delimited") { return true }
-        return ["csv", "tsv", "txt"].contains(url?.pathExtension.lowercased() ?? "")
-    }
 }
 
 /// 打不开时给用户看的话（界面只用英文，设计第 22 条）。
