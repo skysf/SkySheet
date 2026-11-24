@@ -13,7 +13,7 @@ final class SkyFolioApp: UIResponder, UIApplicationDelegate {
     }
 }
 
-final class WorkbookScene: UIResponder, UIWindowSceneDelegate, UIDocumentBrowserViewControllerDelegate {
+final class WorkbookScene: UIResponder, UIWindowSceneDelegate, @MainActor UIDocumentBrowserViewControllerDelegate {
     var window: UIWindow?
     private let browser = UIDocumentBrowserViewController(forOpening: [.data])
     private var editor: UIHostingController<AnyView>?
