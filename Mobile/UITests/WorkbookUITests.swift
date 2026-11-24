@@ -4,17 +4,13 @@ final class WorkbookUITests: XCTestCase {
     @MainActor private func browseToLocalFiles(in app: XCUIApplication) -> XCUIElement {
         continueAfterFailure = false
         app.launch()
-        app.buttons["open-workbook"].tap()
-        // iPad 上 Files 作为另一个进程加载，刚弹出时仍只能查到后面的 SkyFolio。
-        let picker = app.descendants(matching: .any)
-            .matching(NSPredicate(format: "identifier == %@ OR identifier BEGINSWITH %@", "Browse View (Picker)", "DOC.")).firstMatch
-        XCTAssertTrue(picker.waitForExistence(timeout: 60), app.debugDescription)
         let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Picker Seed,")).firstMatch
         let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
         // Browse 可能先显示最近使用、位置列表或上次的子目录。每次导航后重新查看所在位置。
         let phoneBack = app.buttons["BackButton"]
         let padBack = app.buttons["DOC.navBarButton.backInHistory"]
         let browse = app.buttons["Browse"]
+        let browseTab = app.tabBars.buttons["Browse"]
         for _ in 0..<5 {
             if file.wait(for: \.isHittable, toEqual: true, timeout: 5) { break }
             if phoneBack.isHittable, ["On My iPhone", "On My iPad"].contains(phoneBack.label) {
@@ -22,6 +18,7 @@ final class WorkbookUITests: XCTestCase {
             } else if padBack.isHittable, padBack.isEnabled, app.buttons["SkyFolio, Actions Menu"].exists {
                 padBack.tap()
             } else if local.isHittable { local.tap() }
+            else if browseTab.isHittable { browseTab.tap() }
             else if browse.isHittable { browse.tap() }
         }
         XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)

@@ -85,7 +85,7 @@ PY
     xcrun xcresulttool export attachments --path "$work/$family-prepare.xcresult" --output-path "$results/$family-preparation"
   fi
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
-    -skip-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
+    -only-testing:SkyFolioUITests/WorkbookUITests/testSelectExternalWorkbookFromFiles \
     -collect-test-diagnostics never -resultBundlePath "$work/$family.xcresult" test-without-building; then
     failed=1
     container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
