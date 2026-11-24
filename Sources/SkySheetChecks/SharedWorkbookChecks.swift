@@ -12,6 +12,8 @@ func sharedWorkbookChecks() {
         let history = WorkbookHistory(file: url, root: folder.appendingPathComponent("History"))
         let backups = BackupStore(root: folder.appendingPathComponent("Backups"))
         let writer = WorkbookAutosave(url: url, loaded: opened, history: history, backups: backups)
+        checkEqual(try history.versions().count, 0, "opening alone creates no revision")
+        checkEqual(try Data(contentsOf: url), opened.originalData, "opening leaves source bytes intact")
         let address = CellAddress(row: 0, column: 0)
         var workbook = opened.workbook
         for number in [17, 42] {
@@ -35,12 +37,17 @@ func sharedWorkbookChecks() {
         if let backup = backups.backups(of: url).first {
             checkEqual(try Data(contentsOf: backup), opened.originalData, "exact original backup")
         }
+        let expectedFile = try Data(contentsOf: url)
         let external = Data("externally replaced".utf8)
         try external.write(to: url, options: .atomic)
         writer.submit(.init("Concurrent edit", workbook: workbook, source: opened.source, baseline: opened.workbook)) { _ in }
         check(writer.flush()?.error is WorkbookAutosave.Issue, "external edits are reported")
         checkEqual(try Data(contentsOf: url), external, "external edit survives")
         checkEqual(try history.versions().first?.title, "Concurrent edit", "local edit saved in history despite conflict")
+        try expectedFile.write(to: url, options: .atomic)
+        if let error = writer.flush()?.error { throw error }
+        checkEqual(try LoadedWorkbook(contentsOf: url).workbook.sheets[0].cells[address]?.value, .number(42), "retry writes pending data")
+        checkEqual(try history.versions().count, 5, "retry does not duplicate the operation")
     }
 
     group("autosave: CSV preserves its format and keeps formulas available on reopen") {

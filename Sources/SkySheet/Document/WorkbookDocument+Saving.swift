@@ -24,8 +24,17 @@ extension WorkbookDocument {
     /// 要赶在 NSDocument 自己的检查之前，它那个提示只有「存 / 不存」两个选择（2026-10-08 实测）。
     override func save(withDelegate delegate: Any?, didSave didSaveSelector: Selector?,
                        contextInfo: UnsafeMutableRawPointer?) {
-        session?.commitEditing()
+        session?.commitEditing(groupUndo: true)
         finishAutosave()
+        if beforeUnconfirmedAI != nil, autosaveWriter != nil {
+            beforeUnconfirmedAI = nil
+            saveStep(String(localized: "Apply AI Changes"))
+            finishAutosave()
+        }
+        if autosaveWriter != nil, latestEdit == nil, lastSaveIssue == nil, beforeUnconfirmedAI == nil, !isDocumentEdited {
+            report(didSave: true, to: delegate, didSaveSelector, contextInfo)
+            return
+        }
         checkExternalChange { proceed in
             if proceed {
                 super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
@@ -48,7 +57,7 @@ extension WorkbookDocument {
                 return completionHandler(error)
             }
             super.save(to: url, ofType: typeName, for: saveOperation) { error in
-                self.finishSave(error, saveOperation)
+                self.finishSave(error, saveOperation, at: url)
                 completionHandler(error)
             }
         }
@@ -77,13 +86,15 @@ extension WorkbookDocument {
             let result = try CSVWriter.write(workbook.sheets[session.sheetIndex], styles: workbook.styles,
                                              dateSystem: workbook.dateSystem, format: format)
             try result.data.write(to: url)
-            try CSVWriter.verify(try Data(contentsOf: url), written: result)
-            pendingSave = (workbook, nil, format)
+            let bytes = try Data(contentsOf: url)
+            try CSVWriter.verify(bytes, written: result)
+            pendingSave = (workbook, nil, format, bytes)
         } else {
             let result = try XLSXWriter.write(workbook, source: source, baseline: baseline)
             try result.data.write(to: url)
-            let saved = try SaveVerifier.verify(try Data(contentsOf: url), written: result, workbook: workbook, source: source)
-            pendingSave = (workbook, saved.source, nil)
+            let bytes = try Data(contentsOf: url)
+            let saved = try SaveVerifier.verify(bytes, written: result, workbook: workbook, source: source)
+            pendingSave = (workbook, saved.source, nil, bytes)
         }
     }
 
@@ -94,7 +105,7 @@ extension WorkbookDocument {
     }
 
     /// 存成功了：刚写的成为新的原包和基准，恢复副本不要了。「存一份副本」（saveTo）不改文档自己。
-    private func finishSave(_ error: Error?, _ operation: NSDocument.SaveOperationType) {
+    private func finishSave(_ error: Error?, _ operation: NSDocument.SaveOperationType, at url: URL) {
         defer { pendingSave = nil }
         guard error == nil, let pending = pendingSave, operation == .saveOperation || operation == .saveAsOperation else {
             return
@@ -102,9 +113,12 @@ extension WorkbookDocument {
         source = pending.source
         csvFormat = pending.csvFormat
         baseline = pending.workbook
-        if let url = fileURL, let disk = try? LoadedWorkbook(contentsOf: url, typeName: fileType) {
-            attachAutosave(url: url, loaded: disk)
-        }
+        autosaveWriter = WorkbookAutosave(url: url, bytes: pending.bytes, format: pending.csvFormat,
+                                         history: WorkbookHistory(file: url), presenter: self)
+        latestEdit = nil
+        lastSaveIssue = nil
+        beforeUnconfirmedAI = nil
+        session?.saveStatus = String(localized: "Saved")
         if operation == .saveAsOperation {
             // 另存出来的新文件是我们自己刚写的，不用再备份；以后存的就是它。
             backedUp = true

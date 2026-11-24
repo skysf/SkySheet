@@ -31,7 +31,7 @@ extension SheetSession {
 
     /// `change` 抛错时什么都不改。改完和原来一样（比如输入了原来的值）就不登记撤销。
     /// `author` 是谁改的：直接改到的 AI 的 sheet 记下「最后是谁改的」（设计 9.3 节第 5 条）；只是跟着重算变了值的不算。
-    func apply(_ actionName: String, author: AIAuthorship.Mark.Author = .user, groupUndo: Bool = false,
+    func apply(_ actionName: String, author: AIAuthorship.Mark.Author = .user, groupUndo: Bool = false, historyTitle: String? = nil,
                _ change: (inout Workbook) throws -> Void) rethrows {
         let before = Snapshot(workbook: workbook, sheetIndex: sheetIndex, selection: selection)
         var changed = workbook
@@ -48,7 +48,7 @@ extension SheetSession {
         } else {
             registerUndo(restoring: before, actionName)
         }
-        didEdit?(actionName, author)
+        didEdit?(historyTitle ?? actionName, author, before.workbook)
     }
 
     /// 换一整本（apply、撤销、重新载入都走这里）：样式变了重建样式表，看的 sheet 还在不在。
@@ -77,7 +77,7 @@ extension SheetSession {
                 session.selection = snapshot.selection
                 session.registerUndo(restoring: current, actionName)
                 let label = session.undoManager?.isRedoing == true ? String(localized: "Redo \(actionName)") : String(localized: "Undo \(actionName)")
-                session.didEdit?(label, .user)
+                session.didEdit?(label, .user, current.workbook)
             }
         }
         undoManager.setActionName(actionName)
@@ -110,7 +110,8 @@ extension SheetSession {
                 }
                 input = .formula(FormulaRewriter.renameSheets(in: formula, renames: renames))
             }
-            apply(String(localized: "Typing"), groupUndo: groupUndo) { workbook in
+            let label = String(localized: "Edit \(workbook.sheets[index].name)!\(edit.address.a1)")
+            apply(String(localized: "Typing"), groupUndo: groupUndo, historyTitle: label) { workbook in
                 workbook.enter(input, at: edit.address, sheet: index)
             }
         }

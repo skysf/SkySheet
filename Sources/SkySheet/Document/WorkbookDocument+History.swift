@@ -3,15 +3,17 @@ import SkySheetCore
 import SkySheetFiles
 
 extension WorkbookDocument {
-    func attachAutosave(url: URL, loaded: LoadedWorkbook) {
-        autosaveWriter = WorkbookAutosave(url: url, loaded: loaded, history: WorkbookHistory(file: url), presenter: self)
+    func attachAutosave(url: URL, loaded: LoadedWorkbook, history: WorkbookHistory? = nil, backups: BackupStore = BackupStore()) {
+        autosaveWriter = WorkbookAutosave(url: url, loaded: loaded, history: history ?? WorkbookHistory(file: url), backups: backups, presenter: self)
         latestEdit = nil
         lastSaveIssue = nil
+        beforeUnconfirmedAI = nil
     }
 
-    func saveStep(_ title: String, author: AIAuthorship.Mark.Author) {
+    func saveStep(_ title: String) {
         guard let session, let url = fileURL, let writer = autosaveWriter, url == writer.url else { return }
-        let change = WorkbookAutosave.Change(title, workbook: session.workbook, source: source, baseline: baseline)
+        let change = WorkbookAutosave.Change(title, workbook: session.workbook, source: source, baseline: baseline,
+                                             writesOriginal: beforeUnconfirmedAI == nil)
         latestEdit = change.id
         session.saveStatus = String(localized: "Saving…")
         writer.submit(change) { [weak self] receipt in self?.accept(receipt) }
@@ -27,6 +29,10 @@ extension WorkbookDocument {
         lastSaveIssue = receipt.error
         if let error = receipt.error {
             session?.saveStatus = String(localized: "Couldn't save · \(error.localizedDescription)")
+            if !isDocumentEdited { updateChangeCount(.changeDone) }
+        } else if beforeUnconfirmedAI != nil {
+            session?.saveStatus = String(localized: "Saved in history · ⌘S to apply AI edits")
+            latestEdit = nil
         } else {
             fileModificationDate = receipt.modificationDate ?? fileModificationDate
             session?.saveStatus = String(localized: "Saved")
@@ -80,6 +86,7 @@ extension WorkbookDocument {
         session.resetSelection()
         undoManager?.removeAllActions()
         updateChangeCount(.changeDone)
-        saveStep(String(localized: "Restore \(version.title)"), author: .user)
+        beforeUnconfirmedAI = nil
+        saveStep(String(localized: "Restore \(version.title)"))
     }
 }

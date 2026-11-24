@@ -3,19 +3,22 @@
 一个给 AI 用的轻量 macOS 表格工具：打开 xlsx / csv 看数据，让 Claude Code 通过 MCP 读表、计算贷款和理财的数，
 把结果写进新的 sheet，原始数据永远不动。
 
-**状态：v0.3.1，第一个真正可用的版本。** 能打开、编辑、保存 xlsx 和 csv（保存有六道保险：只有 ⌘S 写回原文件、写完读回来
-核对、第一次覆盖前备份、崩溃后能恢复、文件被别的程序改过先问）；Claude Code 通过 MCP（`skysheet`，14 个工具）读表、跑 SQL、
+Mac 和 SkyFolio 移动预览版在编辑提交后自动保存。Mac 的「File → Version History」和移动端的「… → Version History」可以在重新打开后恢复某一步。每次写回都先读回核对，第一次覆盖前备份，其他程序修改过文件时保留双方的编辑。
+
+CSV 和 TSV 交给其他软件时带第一张表的值。本机历史另外保留公式、样式和其他工作表，需要把这些内容带到另一台设备时可以另存为 xlsx。
+
+Claude Code 通过 MCP（`skysheet`，14 个工具）读表、跑 SQL、
 算公式，把结果写进紫色页签的新 sheet，原始 sheet 对它只读。设置（⌘,）里点「Connect」就连上 Claude Code，
 Claude 桌面版的聊天那一行同样一点（重启一次 Claude）。
 设计见 [docs/plans/2026-10-08-skysheet-design.md](docs/plans/2026-10-08-skysheet-design.md)。
 
-- macOS 15 起，Apple 芯片
+- Mac 支持 macOS 15 及以上、Apple 芯片。移动目标支持 iOS / iPadOS 18 及以上。
 - 零第三方依赖
 - 许可证：AGPL-3.0
 
 ---
 
 A lightweight macOS spreadsheet built for AI: open an xlsx or csv file, let Claude Code read and compute through MCP,
-and get the results in new sheets while the original data stays untouched. Status: v0.3.1 opens, edits and saves
-xlsx and csv files (backups, crash recovery, a read-back check on every save), and Claude Code or the Claude desktop
+and get the results in new sheets while the original sheets stay read-only to AI. Edits autosave with local version
+history, backups and read-back verification. The same workbook engine powers SkyFolio on iPhone and iPad. Claude Code or the Claude desktop
 app's chats connect through MCP (`skysheet`, 14 tools; Settings → Connect).

@@ -22,7 +22,7 @@ struct WorkbookLibrary: View {
                 if let book {
                     WorkbookEditor(book: book, close: {
                         if book.finish() { self.book = nil; refresh() }
-                    }, openCopy: { open($0, leavingCopy: true) })
+                    }, openDocument: { open($0, replacingEditor: true) })
                     .id(ObjectIdentifier(book))
                 } else {
                     List {
@@ -55,7 +55,7 @@ struct WorkbookLibrary: View {
         .onAppear { refresh() }
         .onOpenURL { url in if url.isFileURL { open(url) } }
         .onChange(of: phase) { _, next in
-            if next == .background { _ = book?.finish() }
+            if next == .background { book?.finishInBackground() }
             if next == .active, book == nil { refresh() }
         }
         .alert(String(localized: "Couldn't Open Workbook"), isPresented: Binding(get: { problem != nil }, set: { if !$0 { problem = nil } })) {
@@ -70,8 +70,8 @@ struct WorkbookLibrary: View {
             .sorted { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     }
 
-    private func open(_ url: URL, leavingCopy: Bool = false) {
-        guard leavingCopy || book?.finish() != false else { return }
+    private func open(_ url: URL, replacingEditor: Bool = false) {
+        guard replacingEditor || book?.finish() != false else { return }
         let request = UUID()
         opening = request
         Task {

@@ -18,15 +18,22 @@ devices = json.load(open(sys.argv[1]))["devices"]
 runtimes = sorted((key for key in devices if ".iOS-" in key),
                   key=lambda key: tuple(map(int, key.split(".iOS-")[1].split("-"))), reverse=True)
 for family in ("iPhone", "iPad"):
-    device = next((d for runtime in runtimes for d in devices[runtime]
-                   if d["name"].startswith(family) and d["isAvailable"]), None)
-    if not device:
+    match = next(((runtime, d) for runtime in runtimes for d in devices[runtime]
+                  if d["name"].startswith(family) and d["isAvailable"]), None)
+    if not match:
         sys.exit(f"No available {family} simulator")
-    print(family, device["udid"])
+    runtime, device = match
+    print(family, device["deviceTypeIdentifier"], runtime)
     print(f"{family}: {device['name']}", file=sys.stderr)
 PY
 
-while read -r family device; do
+device=""
+cleanup_device() {
+  if [[ -n "$device" ]]; then xcrun simctl delete "$device"; fi
+}
+trap cleanup_device EXIT
+while read -r family hardware runtime <&3; do
+  device="$(xcrun simctl create "SkyFolio checks $family" "$hardware" "$runtime")"
   xcrun simctl bootstatus "$device" -b
   xcrun simctl install "$device" "$app"
   container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
@@ -39,4 +46,8 @@ while read -r family device; do
   }
   xcrun xcresulttool export attachments --path "$work/$family.xcresult" --output-path "$results/$family"
   xcrun simctl shutdown "$device"
-done < "$work/selected"
+  cleanup_device
+  device=""
+done 3< "$work/selected"
+test -d "$results/iPhone"
+test -d "$results/iPad"

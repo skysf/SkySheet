@@ -8,7 +8,7 @@ public struct WorkbookHistory: Sendable {
         public let id: UUID
         public let date: Date
         public let title: String
-        fileprivate let fileExtension: String
+        fileprivate let fileName: String
         fileprivate let digest: String
         fileprivate let parts: [String]
         fileprivate let diskDigest: String?
@@ -33,7 +33,7 @@ public struct WorkbookHistory: Sendable {
     func latestWorkbook(matching bytes: Data) throws -> LoadedWorkbook? {
         guard let url = try manifests().first else { return nil }
         let entry = try JSONDecoder().decode(Version.self, from: Data(contentsOf: url))
-        guard entry.fileExtension == "Version.xlsx", entry.diskDigest == Self.digest(bytes) else { return nil }
+        guard entry.fileName == "Version.xlsx", entry.diskDigest == Self.digest(bytes) else { return nil }
         return try load(entry)
     }
 
@@ -45,7 +45,7 @@ public struct WorkbookHistory: Sendable {
             data.append(bytes)
         }
         guard Self.digest(data) == version.digest else { throw CocoaError(.fileReadCorruptFile) }
-        return try LoadedWorkbook(data: data, url: URL(fileURLWithPath: version.fileExtension))
+        return try LoadedWorkbook(data: data, url: URL(fileURLWithPath: version.fileName))
     }
 
     /// 第一次编辑时也记下打开时的版本。已打开的版本正好是上次落盘的那一步，就接着它写。
@@ -70,7 +70,7 @@ public struct WorkbookHistory: Sendable {
                         if !fm.fileExists(atPath: url.path) { try part.write(to: url, options: .atomic) }
                         return hash
                     }
-                    let item = Version(id: id, date: Date(), title: title, fileExtension: name,
+                    let item = Version(id: id, date: Date(), title: title, fileName: name,
                                        digest: Self.digest(bytes), parts: hashes, diskDigest: diskHash)
                     number += 1
                     let name = String(format: "%016lld-", Int64(number)) + id.uuidString + ".json"

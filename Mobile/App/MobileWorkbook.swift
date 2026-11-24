@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import UIKit
 import SkySheetCore
 import SkySheetDisplay
 import SkySheetFiles
@@ -17,8 +18,13 @@ final class MobileWorkbook {
     var input = ""
     var status = ""
     var problem: String?
+    private(set) var externalConflict = false
+    private(set) var canUndo = false
+    private(set) var canRedo = false
+    @ObservationIgnored private let undo = UndoManager()
     private var initialInput = ""
     private var latestEdit: UUID?
+    @ObservationIgnored private var backgroundTask: UIBackgroundTaskIdentifier = .invalid
     private var origin: LoadedWorkbook
     var sheet: Sheet { workbook.sheets[sheetIndex] }
 
@@ -36,6 +42,7 @@ final class MobileWorkbook {
         let sheet = loaded.workbook.sheets[index]
         geometry = SheetGeometry(sheet: sheet, baseFontSize: resolver.baseFontSize, zoom: 1.7)
         merges = MergeIndex(sheet.merges)
+        undo.groupsByEvent = false
         select(address)
     }
 
@@ -78,9 +85,11 @@ final class MobileWorkbook {
                 refreshInput()
                 return false
             }
-            if changed.styles != workbook.styles { styles = StyleResolver(workbook: changed) }
-            workbook = changed
-            submit(String(localized: "Edit \(sheet.name)!\(address.a1)"))
+            let title = String(localized: "Edit \(sheet.name)!\(address.a1)")
+            undo.beginUndoGrouping()
+            replace(changed, title: title)
+            undo.endUndoGrouping()
+            refreshUndo()
         }
         refreshInput()
         return true
@@ -93,6 +102,24 @@ final class MobileWorkbook {
             return false
         }
         return true
+    }
+
+    func finishInBackground() {
+        guard commit(), latestEdit != nil, backgroundTask == .invalid else { return }
+        backgroundTask = UIApplication.shared.beginBackgroundTask(withName: "Workbook autosave") { [weak self] in
+            Task { @MainActor in self?.endBackgroundTask() }
+        }
+        let writer = writer
+        Task {
+            _ = await Task.detached { writer.flush() }.value
+            endBackgroundTask()
+        }
+    }
+
+    private func endBackgroundTask() {
+        guard backgroundTask != .invalid else { return }
+        UIApplication.shared.endBackgroundTask(backgroundTask)
+        backgroundTask = .invalid
     }
 
     func versions() throws -> [WorkbookHistory.Version] {
@@ -129,11 +156,42 @@ final class MobileWorkbook {
             throw CocoaError(.fileReadCorruptFile)
         }
         origin = restored
+        undo.removeAllActions()
+        refreshUndo()
         workbook = restored.workbook
         styles = StyleResolver(workbook: workbook)
         sheetIndex = index
         resetGrid()
         submit(String(localized: "Restore \(version.title)"))
+    }
+
+    func stepBack() {
+        guard commit(), undo.canUndo else { return }
+        undo.undo()
+        refreshUndo()
+    }
+
+    func stepForward() {
+        guard commit(), undo.canRedo else { return }
+        undo.redo()
+        refreshUndo()
+    }
+
+    private func replace(_ next: Workbook, title: String) {
+        let previous = workbook
+        undo.registerUndo(withTarget: self) { book in
+            MainActor.assumeIsolated { book.replace(previous, title: title) }
+        }
+        if next.styles != workbook.styles { styles = StyleResolver(workbook: next) }
+        workbook = next
+        let label = undo.isUndoing ? String(localized: "Undo \(title)") : undo.isRedoing ? String(localized: "Redo \(title)") : title
+        refreshInput()
+        submit(label)
+    }
+
+    private func refreshUndo() {
+        canUndo = undo.canUndo
+        canRedo = undo.canRedo
     }
 
     private func resetGrid() {
@@ -156,9 +214,12 @@ final class MobileWorkbook {
         writer.submit(change) { [weak self] receipt in
             guard let self, latestEdit == receipt.id else { return }
             if let error = receipt.error {
+                externalConflict = error is WorkbookAutosave.Issue
                 status = String(localized: "Couldn't save")
                 problem = error.localizedDescription
             } else {
+                externalConflict = false
+                latestEdit = nil
                 status = String(localized: "Saved")
             }
         }

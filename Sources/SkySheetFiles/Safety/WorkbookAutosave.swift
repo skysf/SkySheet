@@ -16,11 +16,13 @@ public final class WorkbookAutosave: @unchecked Sendable {
         public let workbook: Workbook
         public let source: XLSXSource?
         public let baseline: Workbook?
-        public init(_ title: String, workbook: Workbook, source: XLSXSource?, baseline: Workbook?) {
+        public let writesOriginal: Bool
+        public init(_ title: String, workbook: Workbook, source: XLSXSource?, baseline: Workbook?, writesOriginal: Bool = true) {
             self.title = title
             self.workbook = workbook
             self.source = source
             self.baseline = baseline
+            self.writesOriginal = writesOriginal
         }
     }
 
@@ -40,17 +42,23 @@ public final class WorkbookAutosave: @unchecked Sendable {
     private var opened: Data?
     private var needsBackup = true
     private var pending: [Change] = []
+    private var unwritten: (id: UUID, bytes: Data)?
     private var lastReceipt: Receipt?
 
-    public init(url: URL, loaded: LoadedWorkbook, history: WorkbookHistory, backups: BackupStore = BackupStore(),
+    public convenience init(url: URL, loaded: LoadedWorkbook, history: WorkbookHistory, backups: BackupStore = BackupStore(),
+                            presenter: (any NSFilePresenter)? = nil) {
+        self.init(url: url, bytes: loaded.originalData, format: loaded.csvFormat, history: history, backups: backups, presenter: presenter)
+    }
+
+    public init(url: URL, bytes: Data, format: CSVFormat?, history: WorkbookHistory, backups: BackupStore = BackupStore(),
                 presenter: (any NSFilePresenter)? = nil) {
         self.url = url
         self.history = history
         self.backups = backups
         self.presenter = presenter
-        self.csvFormat = loaded.csvFormat
-        expectedBytes = loaded.originalData
-        opened = loaded.originalData
+        csvFormat = format
+        expectedBytes = bytes
+        opened = bytes
     }
 
     /// 输入、粘贴、撤销和恢复版本都走这里。历史写失败的步骤保留，下次提交时按原顺序重试。
@@ -64,7 +72,19 @@ public final class WorkbookAutosave: @unchecked Sendable {
 
     /// 关闭、另存或重新加载前的屏障；后台工作不等主线程来确认。
     public func flush() -> Receipt? {
-        queue.sync { pending.isEmpty ? lastReceipt : processPending() }
+        queue.sync {
+            if !pending.isEmpty { return processPending() }
+            if let unwritten {
+                do {
+                    let date = try replace(with: unwritten.bytes)
+                    self.unwritten = nil
+                    lastReceipt = Receipt(id: unwritten.id, modificationDate: date, error: nil)
+                } catch {
+                    lastReceipt = Receipt(id: unwritten.id, modificationDate: nil, error: error)
+                }
+            }
+            return lastReceipt
+        }
     }
 
     private func processPending() -> Receipt {
@@ -89,11 +109,18 @@ public final class WorkbookAutosave: @unchecked Sendable {
                     try CSVWriter.verify(bytes, written: csv)
                     return bytes
                 }
-                try history.record(id: change.id, title: change.title, xlsx: xlsx, diskBytes: try? output.get(),
+                try history.record(id: change.id, title: change.title, xlsx: xlsx, diskBytes: change.writesOriginal ? try? output.get() : nil,
                                    opened: opened, fileName: url.lastPathComponent)
                 opened = nil
                 recorded = true
-                let date = try replace(with: output.get())
+                var date: Date?
+                if change.writesOriginal {
+                    unwritten = nil
+                    let bytes = try output.get()
+                    unwritten = (change.id, bytes)
+                    date = try replace(with: bytes)
+                    unwritten = nil
+                }
                 receipt = Receipt(id: change.id, modificationDate: date, error: nil)
             } catch {
                 receipt = Receipt(id: requested, modificationDate: nil, error: error)
@@ -115,8 +142,16 @@ public final class WorkbookAutosave: @unchecked Sendable {
                 // 在同一次协调里比原字节、备份和原子替换，修改时间一样的外部写入也能发现。
                 guard try Data(contentsOf: destination) == expectedBytes else { throw Issue.externalChange }
                 if bytes != expectedBytes {
+                    let manager = FileManager.default
+                    let staging = try manager.url(for: .itemReplacementDirectory, in: .userDomainMask,
+                                                  appropriateFor: destination, create: true)
+                    defer { try? manager.removeItem(at: staging) }
+                    let verifiedFile = staging.appendingPathComponent(destination.lastPathComponent)
+                    try bytes.write(to: verifiedFile)
+                    guard try Data(contentsOf: verifiedFile) == bytes else { throw CocoaError(.fileWriteUnknown) }
+                    guard try Data(contentsOf: destination) == expectedBytes else { throw Issue.externalChange }
                     if needsBackup { try backups.backUp(destination) }
-                    try bytes.write(to: destination, options: .atomic)
+                    _ = try manager.replaceItemAt(destination, withItemAt: verifiedFile)
                     needsBackup = false
                     expectedBytes = bytes
                 }

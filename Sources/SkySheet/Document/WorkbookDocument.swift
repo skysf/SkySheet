@@ -23,7 +23,7 @@ final class WorkbookDocument: NSDocument {
     /// 打开的是 csv 时原来的写法（编码、分隔符、换行）。
     nonisolated(unsafe) var csvFormat: CSVFormat?
     /// 刚写好、核对过、还没确认存成功的：存成功以后它们成为新的原包和基准。
-    nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?)?
+    nonisolated(unsafe) var pendingSave: (workbook: Workbook, source: XLSXSource?, csvFormat: CSVFormat?, bytes: Data)?
     /// 这次打开以后备份过原文件没有（第四道保险：第一次覆盖前备份）。
     var backedUp = false
     /// 恢复副本的编号（第五道保险）。从恢复副本打开的文档接着用那一份的编号：新副本写好之前旧的不删（RecoveryCoordinator.reopen）。
@@ -34,6 +34,7 @@ final class WorkbookDocument: NSDocument {
     var autosaveWriter: WorkbookAutosave?
     var latestEdit: UUID?
     var lastSaveIssue: (any Error)?
+    var beforeUnconfirmedAI: Workbook?
     /// 从恢复副本打开的：原来那个文件。存的时候默认存回它旁边。
     var recoveredFrom: URL?
 
@@ -55,7 +56,12 @@ final class WorkbookDocument: NSDocument {
         session.refusedChange = { [weak self] locked in LayoutCommands.explain(locked, in: self?.windowForSheet) }
         self.session = session
         if let fileURL { attachAutosave(url: fileURL, loaded: loaded) }
-        session.didEdit = { [weak self] title, author in self?.saveStep(title, author: author) }
+        session.didEdit = { [weak self] title, author, before in
+            guard let self else { return }
+            if case .ai = author, beforeUnconfirmedAI == nil { beforeUnconfirmedAI = before }
+            if let beforeUnconfirmedAI, self.session?.workbook == beforeUnconfirmedAI { self.beforeUnconfirmedAI = nil }
+            saveStep(title)
+        }
         addWindowController(WorkbookWindowController(session: session))
     }
 
@@ -105,7 +111,7 @@ final class WorkbookDocument: NSDocument {
 enum DocumentLoader {
     static func load(contentsOf url: URL, typeName: String? = nil, history: WorkbookHistory? = nil) throws -> LoadedWorkbook {
         var loaded = try LoadedWorkbook(data: Data(contentsOf: url), url: url, typeName: typeName, history: history)
-        if loaded.csvFormat != nil {
+        if loaded.csvFormat != nil, loaded.source == nil {
             // NSDocument 同步读文件、截图和测速都在主线程。只在量 Mac 字体时要求这个前提。
             loaded = MainActor.assumeIsolated { [loaded] in
                 var fitted = loaded

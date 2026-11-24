@@ -6,7 +6,7 @@ import SkyFolioTheme
 struct WorkbookEditor: View {
     @Bindable var book: MobileWorkbook
     let close: () -> Void
-    let openCopy: (URL) -> Void
+    let openDocument: (URL) -> Void
     @FocusState private var typing: Bool
     @State private var position = ScrollPosition()
     @State private var choosingAddress = false
@@ -47,12 +47,21 @@ struct WorkbookEditor: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
+                    Button { book.stepBack() } label: { Label(String(localized: "Undo"), systemImage: "arrow.uturn.backward") }
+                        .disabled(!book.canUndo)
+                    Button { book.stepForward() } label: { Label(String(localized: "Redo"), systemImage: "arrow.uturn.forward") }
+                        .disabled(!book.canRedo)
                     Button { showHistory() } label: { Label(String(localized: "Version History"), systemImage: "clock.arrow.circlepath") }
+                    if book.externalConflict {
+                        Button { if book.commit() { _ = book.writer.flush(); openDocument(book.url) } } label: {
+                            Label(String(localized: "Reload File from Disk"), systemImage: "arrow.clockwise")
+                        }
+                    }
                     Button {
                         copying = true
                         Task {
                             defer { copying = false }
-                            do { openCopy(try await book.saveLocalCopy()) } catch { book.problem = error.localizedDescription }
+                            do { openDocument(try await book.saveLocalCopy()) } catch { book.problem = error.localizedDescription }
                         }
                     } label: { Label(String(localized: "Save Excel Copy on This Device"), systemImage: "doc.on.doc") }
                 } label: { Label(String(localized: "Workbook Options"), systemImage: "ellipsis.circle") }
@@ -60,6 +69,7 @@ struct WorkbookEditor: View {
             }
         }
         .disabled(copying)
+        .onChange(of: book.sheetIndex) { _, _ in position.scrollTo(point: .zero) }
         .onChange(of: typing) { _, active in if !active { _ = book.commit() } }
         .alert(String(localized: "Go to Cell"), isPresented: $choosingAddress) {
             TextField(String(localized: "Cell address"), text: $addressInput).textInputAutocapitalization(.characters)
