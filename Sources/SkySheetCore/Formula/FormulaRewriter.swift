@@ -38,7 +38,9 @@ public enum FormulaRewriter {
             guard moved != reference else { continue }
             let original = formula[token.range]
             let prefix = reference.sheet == nil ? "" : String(original[...original.lastIndex(of: "!")!])
-            result += formula[cursor..<token.range.lowerBound] + prefix + (moved.map(ReferenceShift.render) ?? "#REF!")
+            result.append(contentsOf: formula[cursor..<token.range.lowerBound])
+            result += prefix
+            result += moved.map(ReferenceShift.render) ?? "#REF!"
             cursor = token.range.upperBound
         }
         return result + formula[cursor...]
