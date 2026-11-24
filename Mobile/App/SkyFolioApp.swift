@@ -84,11 +84,12 @@ struct WorkbookLibrary: View {
         }
         guard replacingEditor || book?.finish() != false else { return }
         let request = UUID()
+        let access = WorkbookFileAccess(url)
         opening = request
         Task {
             defer { if opening == request { opening = nil } }
             do {
-                let loaded = try await MobileWorkbook.open(url)
+                let loaded = try await MobileWorkbook.open(access)
                 if opening == request { book = loaded }
             } catch { if opening == request { problem = error.localizedDescription } }
         }

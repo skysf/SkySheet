@@ -5,9 +5,23 @@ import SkySheetCore
 import SkySheetDisplay
 import SkySheetFiles
 
+/// 在 Files 回调期间取得权限，后台读入、后续编辑和关窗按同一份文稿的生命周期配对。
+final class WorkbookFileAccess: Sendable {
+    let url: URL
+    private let scoped: Bool
+
+    init(_ url: URL) {
+        self.url = url
+        scoped = url.startAccessingSecurityScopedResource()
+    }
+
+    deinit { if scoped { url.stopAccessingSecurityScopedResource() } }
+}
+
 @MainActor @Observable
 final class MobileWorkbook {
-    let url: URL
+    private let access: WorkbookFileAccess
+    var url: URL { access.url }
     let writer: WorkbookAutosave
     private(set) var workbook: Workbook
     private(set) var sheetIndex: Int
@@ -28,15 +42,15 @@ final class MobileWorkbook {
     private var origin: LoadedWorkbook
     var sheet: Sheet { workbook.sheets[sheetIndex] }
 
-    init(url: URL, loaded: LoadedWorkbook, history: WorkbookHistory) throws {
+    init(access: WorkbookFileAccess, loaded: LoadedWorkbook, history: WorkbookHistory) throws {
         guard let index = loaded.workbook.sheets.firstIndex(where: { $0.visibility == .visible }) else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        self.url = url
+        self.access = access
         origin = loaded
         workbook = loaded.workbook
         sheetIndex = index
-        writer = WorkbookAutosave(url: url, loaded: loaded, history: history)
+        writer = WorkbookAutosave(url: access.url, loaded: loaded, history: history)
         let resolver = StyleResolver(workbook: loaded.workbook)
         styles = resolver
         let sheet = loaded.workbook.sheets[index]
@@ -46,11 +60,10 @@ final class MobileWorkbook {
         select(address)
     }
 
-    static func open(_ url: URL) async throws -> MobileWorkbook {
+    static func open(_ access: WorkbookFileAccess) async throws -> MobileWorkbook {
+        let url = access.url
         let history = WorkbookHistory(file: url)
         let loaded = try await Task.detached(priority: .userInitiated) {
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
             var error: NSError?
             var result: Result<Data, Error> = .failure(CocoaError(.fileReadUnknown))
             NSFileCoordinator().coordinate(readingItemAt: url, options: [], error: &error) { file in
@@ -59,7 +72,7 @@ final class MobileWorkbook {
             if let error { throw error }
             return try LoadedWorkbook(data: result.get(), url: url, history: history)
         }.value
-        return try MobileWorkbook(url: url, loaded: loaded, history: history)
+        return try MobileWorkbook(access: access, loaded: loaded, history: history)
     }
 
     func select(_ cell: CellAddress) {

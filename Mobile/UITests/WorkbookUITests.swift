@@ -6,17 +6,23 @@ final class WorkbookUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         app.buttons["open-workbook"].tap()
-        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "From Files")).firstMatch
-        if !file.waitForExistence(timeout: 5) {
-            let browse = app.buttons["Browse"]
-            if browse.isHittable { browse.tap() }
-            let local = app.descendants(matching: .any).matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
-            if local.waitForExistence(timeout: 5), local.isHittable { local.tap() }
-            let folder = app.cells.containing(.staticText, identifier: "SkyFolio").firstMatch
-            if folder.waitForExistence(timeout: 5), folder.isHittable { folder.tap() }
+        let folder = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Picker Samples")).firstMatch
+        if !folder.waitForExistence(timeout: 3) {
+            let back = app.buttons["BackButton"]
+            let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
+            if back.waitForExistence(timeout: 3), back.isHittable { back.tap() }
+            else if local.waitForExistence(timeout: 4), local.isHittable { local.tap() }
+            else {
+                app.buttons["Browse"].tap()
+                XCTAssertTrue(local.waitForExistence(timeout: 8), app.debugDescription)
+                local.tap()
+            }
         }
+        XCTAssertTrue(folder.waitForExistence(timeout: 12), app.debugDescription)
+        folder.tap()
+        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "From Files")).firstMatch
         XCTAssertTrue(file.waitForExistence(timeout: 15), app.debugDescription)
-        file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.23)).tap()
+        file.tap()
         let input = app.textFields["formula-input"]
         if !input.waitForExistence(timeout: 5) {
             let confirm = app.buttons["Open"].firstMatch
@@ -25,6 +31,10 @@ final class WorkbookUITests: XCTestCase {
         }
         XCTAssertTrue(input.waitForExistence(timeout: 20), app.debugDescription)
         XCTAssertEqual(input.value as? String, "31")
+        app.buttons["cell-B2"].tap()
+        input.tap()
+        input.typeText("47\n")
+        XCTAssertTrue(app.staticTexts["save-status"].wait(for: \.label, toEqual: "Saved", timeout: 15), app.debugDescription)
         app.terminate()
     }
 
