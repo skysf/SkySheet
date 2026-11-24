@@ -46,7 +46,6 @@ struct WorkbookLibrary: View {
             .disabled(opening != nil)
             .overlay { if opening != nil { ProgressView(String(localized: "Opening…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
         }
-        .accessibilityHidden(picker)
         .sheet(isPresented: $picker) {
             WorkbookPicker { url in
                 picker = false
@@ -89,7 +88,7 @@ private struct WorkbookPicker: UIViewControllerRepresentable {
     let picked: (URL?) -> Void
     func makeCoordinator() -> Coordinator { Coordinator(picked) }
     func makeUIViewController(context: Context) -> UIDocumentPickerViewController {
-        let xlsx = UTType(importedAs: "org.openxmlformats.spreadsheetml.sheet", conformingTo: .spreadsheet)
+        let xlsx = UTType(filenameExtension: "xlsx") ?? UTType(importedAs: "org.openxmlformats.spreadsheetml.sheet", conformingTo: .spreadsheet)
         let picker = UIDocumentPickerViewController(forOpeningContentTypes: [xlsx, .commaSeparatedText, .tabSeparatedText], asCopy: false)
         picker.directoryURL = .documentsDirectory
         picker.delegate = context.coordinator

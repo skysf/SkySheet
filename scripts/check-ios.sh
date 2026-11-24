@@ -32,6 +32,7 @@ cleanup_device() {
   if [[ -n "$device" ]]; then xcrun simctl delete "$device"; fi
 }
 trap cleanup_device EXIT
+failed=0
 while read -r family hardware runtime <&3; do
   device="$(xcrun simctl create "SkyFolio checks $family" "$hardware" "$runtime")"
   xcrun simctl bootstatus "$device" -b
@@ -39,11 +40,8 @@ while read -r family hardware runtime <&3; do
   container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
-  xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
-    -resultBundlePath "$work/$family.xcresult" test-without-building || {
-    xcrun xcresulttool export attachments --path "$work/$family.xcresult" --output-path "$results/$family" || true
-    exit 1
-  }
+  if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
+    -resultBundlePath "$work/$family.xcresult" test-without-building; then failed=1; fi
   xcrun xcresulttool export attachments --path "$work/$family.xcresult" --output-path "$results/$family"
   xcrun simctl shutdown "$device"
   cleanup_device
@@ -51,3 +49,4 @@ while read -r family hardware runtime <&3; do
 done 3< "$work/selected"
 test -d "$results/iPhone"
 test -d "$results/iPad"
+exit "$failed"

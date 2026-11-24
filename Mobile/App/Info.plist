@@ -11,6 +11,15 @@
             <string>public.tab-separated-values-text</string>
         </array>
     </dict></array>
+    <key>UTImportedTypeDeclarations</key><array><dict>
+        <key>UTTypeIdentifier</key><string>org.openxmlformats.spreadsheetml.sheet</string>
+        <key>UTTypeDescription</key><string>Excel Workbook</string>
+        <key>UTTypeConformsTo</key><array><string>public.spreadsheet</string></array>
+        <key>UTTypeTagSpecification</key><dict>
+            <key>public.filename-extension</key><array><string>xlsx</string></array>
+            <key>public.mime-type</key><string>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</string>
+        </dict>
+    </dict></array>
     <key>LSSupportsOpeningDocumentsInPlace</key><true/>
     <key>UIFileSharingEnabled</key><true/>
     <key>UISupportedInterfaceOrientations</key><array>

@@ -1,6 +1,24 @@
 import XCTest
 
 final class WorkbookUITests: XCTestCase {
+    @MainActor func testFilesPickerOpensWorkbook() {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["open-workbook"].tap()
+        let file = app.cells.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH[c] %@",
+                                                  "Arithmetic, xlsx", "Arithmetic, xlsx,")).firstMatch
+        XCTAssertTrue(file.waitForExistence(timeout: 30), app.debugDescription)
+        // Files 的图标视图给整个网格项一个很高的可访问区域，真正打开文件的是上部的缩略图或文件名。
+        let name = file.staticTexts["Arithmetic"]
+        if name.exists { name.tap() } else { file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.23)).tap() }
+        let input = app.textFields["formula-input"]
+        if !input.waitForExistence(timeout: 8), file.exists, file.isHittable {
+            file.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.23)).tap()
+        }
+        XCTAssertTrue(input.waitForExistence(timeout: 25), app.debugDescription)
+    }
+
     @MainActor func testEditReopenAndRestore() throws {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -9,12 +27,7 @@ final class WorkbookUITests: XCTestCase {
             let expected = value.isEmpty ? NSPredicate(format: "value == nil OR value == ''") : NSPredicate(format: "value == %@", value)
             return XCTWaiter.wait(for: [XCTNSPredicateExpectation(predicate: expected, object: element)], timeout: 10) == .completed
         }
-        app.buttons["open-workbook"].tap()
-        // 文件在模拟器本机的 Files 文档提供方，使用正式的系统选择器。
-        let file = app.cells.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH[c] %@",
-                                                  "Arithmetic, xlsx", "Arithmetic, xlsx,")).firstMatch
-        XCTAssertTrue(file.waitForExistence(timeout: 20), app.debugDescription)
-        file.tap()
+        app.buttons["file-Arithmetic.xlsx"].tap()
         let input = app.textFields["formula-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 15))
         input.tap()
