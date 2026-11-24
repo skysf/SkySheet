@@ -46,8 +46,8 @@ class PaneView: NSView {
     func setNeedsDisplay(sheetTop top: Double?, bottom: Double?) {
         let visible = visibleRect
         guard !visible.isEmpty else { return }
-        let minY = top.map { max($0 - origin.y, visible.minY) } ?? visible.minY
-        let maxY = bottom.map { min($0 - origin.y, visible.maxY) } ?? visible.maxY
+        let minY: CGFloat = top.map { max(CGFloat($0) - origin.y, visible.minY) } ?? visible.minY
+        let maxY: CGFloat = bottom.map { min(CGFloat($0) - origin.y, visible.maxY) } ?? visible.maxY
         guard maxY > minY else { return }
         setNeedsDisplay(CGRect(x: visible.minX, y: minY, width: visible.width, height: maxY - minY))
     }
