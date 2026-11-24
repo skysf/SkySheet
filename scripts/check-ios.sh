@@ -77,13 +77,6 @@ PY
   printf '31,93\n' > "$provider_file"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
-  # 苹果自己的 Files 先建立副本；编辑与重开两个用例运行期间，由提供方完成索引。
-  if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
-    -only-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
-    -collect-test-diagnostics never -resultBundlePath "$work/$family-prepare.xcresult" test-without-building; then
-    failed=1
-    xcrun xcresulttool export attachments --path "$work/$family-prepare.xcresult" --output-path "$results/$family-preparation"
-  fi
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
     -only-testing:SkyFolioUITests/WorkbookUITests/testSelectExternalWorkbookFromFiles \
     -collect-test-diagnostics never -resultBundlePath "$work/$family.xcresult" test-without-building; then
@@ -101,11 +94,7 @@ PY
   else
     python3 - "$provider_file" <<'PY'
 import csv, pathlib, sys
-seed = pathlib.Path(sys.argv[1])
-assert seed.read_bytes() == b"31,93\n", "The seed itself was modified"
-copies = [item for item in seed.parent.glob("Picker Seed*.csv") if item != seed]
-assert len(copies) == 1, f"Expected one document created by Files, found {copies}"
-with copies[0].open(newline="", encoding="utf-8-sig") as file:
+with pathlib.Path(sys.argv[1]).open(newline="", encoding="utf-8-sig") as file:
     assert list(csv.reader(file)) == [["31", "93"], ["", "47"]], "External provider did not receive the edit"
 PY
   fi

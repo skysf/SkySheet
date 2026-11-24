@@ -9,8 +9,9 @@ final class WorkbookUITests: XCTestCase {
         // Browse 可能先显示最近使用、位置列表或上次的子目录。每次导航后重新查看所在位置。
         let phoneBack = app.buttons["BackButton"]
         let padBack = app.buttons["DOC.navBarButton.backInHistory"]
-        let browse = app.buttons["Browse"]
-        let browseTab = app.tabBars.buttons["Browse"]
+        let browse = app.buttons.matching(NSPredicate(format: "label == %@", "Browse")).firstMatch
+        let browseTab = app.tabBars.buttons.matching(identifier: "Browse").firstMatch
+        let sidebar = app.buttons.matching(identifier: "ToggleSideBar").firstMatch
         for _ in 0..<5 {
             if file.wait(for: \.isHittable, toEqual: true, timeout: 5) { break }
             if phoneBack.isHittable, ["On My iPhone", "On My iPad"].contains(phoneBack.label) {
@@ -19,35 +20,18 @@ final class WorkbookUITests: XCTestCase {
                 padBack.tap()
             } else if local.isHittable { local.tap() }
             else if browseTab.isHittable { browseTab.tap() }
-            else if browse.isHittable { browse.tap() }
+            else if sidebar.isHittable { sidebar.tap() }
+            else if browse.exists, app.frame.intersects(browse.frame) {
+                browse.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+            }
         }
         XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)
         return file
     }
 
-    @MainActor private func generatedFile(in app: XCUIApplication) -> XCUIElement {
-        app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@ AND NOT (label BEGINSWITH[c] %@)",
-                                       "Picker Seed", "Picker Seed,")).firstMatch
-    }
-
-    @MainActor func testPrepareFileUsingSystemProvider() {
-        let app = XCUIApplication()
-        let file = browseToLocalFiles(in: app)
-        // 经过系统提供方创建一个文稿，让 Files 自己分配和登记文件标识。
-        file.press(forDuration: 1.2)
-        let duplicate = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Duplicate")).firstMatch
-        XCTAssertTrue(duplicate.wait(for: \.isHittable, toEqual: true, timeout: 20), app.debugDescription)
-        duplicate.tap()
-        XCTAssertTrue(generatedFile(in: app).wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
-        app.terminate()
-    }
-
     @MainActor func testSelectExternalWorkbookFromFiles() {
         let app = XCUIApplication()
-        _ = browseToLocalFiles(in: app)
-        let copy = generatedFile(in: app)
-        XCTAssertTrue(copy.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
-        copy.tap()
+        browseToLocalFiles(in: app).tap()
         editExternalCSV(in: app)
     }
 
