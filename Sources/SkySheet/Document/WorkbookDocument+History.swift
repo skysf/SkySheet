@@ -10,10 +10,16 @@ extension WorkbookDocument {
         beforeUnconfirmedAI = nil
     }
 
-    func saveStep(_ title: String) {
-        guard let session, let url = fileURL, let writer = autosaveWriter, url == writer.url else { return }
+    func saveStep(_ title: String, aiRound: UUID? = nil) {
+        guard let session, let url = fileURL, var writer = autosaveWriter else { return }
+        if url.standardizedFileURL != writer.url.standardizedFileURL {
+            finishAutosave()
+            writer = WorkbookAutosave(url: url, bytes: writer.lastFileBytes, format: csvFormat,
+                                      history: WorkbookHistory(file: url), presenter: self)
+            autosaveWriter = writer
+        }
         let change = WorkbookAutosave.Change(title, workbook: session.workbook, source: source, baseline: baseline,
-                                             writesOriginal: beforeUnconfirmedAI == nil)
+                                             writesOriginal: beforeUnconfirmedAI == nil, aiRound: aiRound)
         latestEdit = change.id
         session.saveStatus = String(localized: "Saving…")
         writer.submit(change) { [weak self] receipt in self?.accept(receipt) }
@@ -57,8 +63,9 @@ extension WorkbookDocument {
                 return
             }
             let choices = NSPopUpButton(frame: NSRect(x: 0, y: 0, width: 360, height: 28))
-            for version in versions {
-                choices.menu?.addItem(withTitle: "\(version.date.formatted(date: .abbreviated, time: .standard))  ·  \(version.title)",
+            for (index, version) in versions.enumerated() {
+                let title = WorkbookHistory.restoreLabel(at: index, in: versions)
+                choices.menu?.addItem(withTitle: "\(version.date.formatted(date: .abbreviated, time: .standard))  ·  \(title)",
                                       action: nil, keyEquivalent: "")
             }
             choices.selectItem(at: min(1, versions.count - 1))

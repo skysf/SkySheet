@@ -25,6 +25,7 @@ final class AISession {
     static let roundIdleSeconds = 30.0
 
     private(set) var phase: Phase = .idle
+    @ObservationIgnored private(set) var roundID = UUID()
     /// 横幅、署名上的客户端名（人认得的写法，如 "Claude Code"）。
     private(set) var clientName = "AI"
     /// AI 在 add_sheet 里自报的模型名；同一个客户端后面的调用沿用（设计 9.3 节第 5 条）。
@@ -58,6 +59,7 @@ final class AISession {
     /// 要改一个工作簿之前调：没在一轮里就开一轮（上一轮的高亮清掉）；这一轮第一次改这个工作簿就先存一份快照。
     func beginChange(in session: SheetSession) {
         if phase != .working {
+            roundID = UUID()
             for case let weak in sessions.values { weak.session?.aiTouched = [:] }
             snapshots = [:]
             rounds = [:]

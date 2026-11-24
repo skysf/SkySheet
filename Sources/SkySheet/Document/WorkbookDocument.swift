@@ -34,6 +34,8 @@ final class WorkbookDocument: NSDocument {
     var autosaveWriter: WorkbookAutosave?
     var latestEdit: UUID?
     var lastSaveIssue: (any Error)?
+    nonisolated static let aiConfirmationKey = "ConfirmAIWorkbookWrites"
+    var savePreferences: UserDefaults = .standard
     var beforeUnconfirmedAI: Workbook?
     /// 从恢复副本打开的：原来那个文件。存的时候默认存回它旁边。
     var recoveredFrom: URL?
@@ -58,9 +60,15 @@ final class WorkbookDocument: NSDocument {
         if let fileURL { attachAutosave(url: fileURL, loaded: loaded) }
         session.didEdit = { [weak self] title, author, before in
             guard let self else { return }
-            if case .ai = author, beforeUnconfirmedAI == nil { beforeUnconfirmedAI = before }
-            if let beforeUnconfirmedAI, self.session?.workbook == beforeUnconfirmedAI { self.beforeUnconfirmedAI = nil }
-            saveStep(title)
+            let needsConfirmation = savePreferences.bool(forKey: Self.aiConfirmationKey)
+            if !needsConfirmation { beforeUnconfirmedAI = nil }
+            if case .ai = author {
+                if needsConfirmation, beforeUnconfirmedAI == nil { beforeUnconfirmedAI = before }
+                saveStep(title, aiRound: AISession.shared.roundID)
+            } else {
+                if let beforeUnconfirmedAI, self.session?.workbook == beforeUnconfirmedAI { self.beforeUnconfirmedAI = nil }
+                saveStep(title)
+            }
         }
         addWindowController(WorkbookWindowController(session: session))
     }

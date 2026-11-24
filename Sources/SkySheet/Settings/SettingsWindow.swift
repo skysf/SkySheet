@@ -30,6 +30,7 @@ final class SettingsWindowController: NSWindowController {
 }
 
 struct SettingsView: View {
+    @AppStorage(WorkbookDocument.aiConfirmationKey) private var confirmAIWrites = false
     private var code: ClaudeCodeSetup { ClaudeCodeSetup.shared }
     private var desktop: ClaudeDesktopSetup { ClaudeDesktopSetup.shared }
 
@@ -40,6 +41,7 @@ struct SettingsView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+                Toggle(String(localized: "Require ⌘S to apply AI edits to the file"), isOn: $confirmAIWrites)
                 if AIHelper.url == nil {
                     Text("This copy of SkySheet has no AI helper inside, so AI apps cannot connect to it.")
                         .font(.caption)

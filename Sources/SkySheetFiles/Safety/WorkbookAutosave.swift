@@ -17,12 +17,15 @@ public final class WorkbookAutosave: @unchecked Sendable {
         public let source: XLSXSource?
         public let baseline: Workbook?
         public let writesOriginal: Bool
-        public init(_ title: String, workbook: Workbook, source: XLSXSource?, baseline: Workbook?, writesOriginal: Bool = true) {
+        public let aiRound: UUID?
+        public init(_ title: String, workbook: Workbook, source: XLSXSource?, baseline: Workbook?,
+                    writesOriginal: Bool = true, aiRound: UUID? = nil) {
             self.title = title
             self.workbook = workbook
             self.source = source
             self.baseline = baseline
             self.writesOriginal = writesOriginal
+            self.aiRound = aiRound
         }
     }
 
@@ -87,6 +90,9 @@ public final class WorkbookAutosave: @unchecked Sendable {
         }
     }
 
+    /// Finder 移动已打开的文稿时沿用上一次确认过的内容，不能把新路径上的外部修改认成自己的基准。
+    public var lastFileBytes: Data { queue.sync { expectedBytes } }
+
     private func processPending() -> Receipt {
         let requested = pending.last!.id
         var receipt = Receipt(id: requested, modificationDate: nil, error: CocoaError(.fileWriteUnknown))
@@ -109,7 +115,8 @@ public final class WorkbookAutosave: @unchecked Sendable {
                     try CSVWriter.verify(bytes, written: csv)
                     return bytes
                 }
-                try history.record(id: change.id, title: change.title, xlsx: xlsx, diskBytes: change.writesOriginal ? try? output.get() : nil,
+                try history.record(id: change.id, title: change.title, aiRound: change.aiRound,
+                                   xlsx: xlsx, diskBytes: change.writesOriginal ? try? output.get() : nil,
                                    opened: opened, fileName: url.lastPathComponent)
                 opened = nil
                 recorded = true
@@ -137,7 +144,8 @@ public final class WorkbookAutosave: @unchecked Sendable {
         var error: NSError?
         var result: Result<Date?, Error> = .failure(CocoaError(.fileWriteUnknown))
         let coordinator = NSFileCoordinator(filePresenter: presenter)
-        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &error) { destination in
+        let isLink = try url.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == true
+        coordinator.coordinate(writingItemAt: isLink ? url.resolvingSymlinksInPath() : url, options: .forReplacing, error: &error) { destination in
             result = Result {
                 // 在同一次协调里比原字节、备份和原子替换，修改时间一样的外部写入也能发现。
                 guard try Data(contentsOf: destination) == expectedBytes else { throw Issue.externalChange }

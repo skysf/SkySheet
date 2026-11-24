@@ -42,6 +42,7 @@ struct WorkbookGrid: View {
                         header("", width: Self.gutter, height: Self.header)
                             .offset(x: max(0, viewport.minX), y: max(0, viewport.minY))
                     }
+                    .frame(width: grid.totalWidth + Self.gutter, height: grid.totalHeight + Self.header, alignment: .topLeading)
                 }
         }
         .scrollPosition($position)

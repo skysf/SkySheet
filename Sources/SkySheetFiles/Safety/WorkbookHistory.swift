@@ -8,6 +8,7 @@ public struct WorkbookHistory: Sendable {
         public let id: UUID
         public let date: Date
         public let title: String
+        public let aiRound: UUID?
         fileprivate let fileName: String
         fileprivate let digest: String
         fileprivate let parts: [String]
@@ -27,6 +28,13 @@ public struct WorkbookHistory: Sendable {
 
     public func versions() throws -> [Version] {
         try manifests().map { try JSONDecoder().decode(Version.self, from: Data(contentsOf: $0)) }
+    }
+
+    /// 列表按新到旧排列。给一串连续的 AI 操作之前的版本加标签，用户插入自己的编辑就另起一段。
+    public static func restoreLabel(at index: Int, in versions: [Version]) -> String {
+        let title = versions[index].title
+        guard index > 0, let round = versions[index - 1].aiRound, versions[index].aiRound != round else { return title }
+        return String(localized: "Before AI edits · \(title)")
     }
 
     /// CSV 本身保存第一张表的值。在同一台设备上，文件仍是当时那份时，还原历史里的公式、样式和其余工作表。
@@ -50,7 +58,7 @@ public struct WorkbookHistory: Sendable {
 
     /// 第一次编辑时也记下打开时的版本。已打开的版本正好是上次落盘的那一步，就接着它写。
     /// 同一步重试沿用 UUID；多个窗口或进程写到同一份历史时，在目录级协调区里分配顺序。
-    func record(id: UUID, title: String, xlsx: Data, diskBytes: Data?, opened: Data?, fileName: String) throws {
+    func record(id: UUID, title: String, aiRound: UUID?, xlsx: Data, diskBytes: Data?, opened: Data?, fileName: String) throws {
         let fm = FileManager.default
         try fm.createDirectory(at: parts, withIntermediateDirectories: true)
         var coordination: NSError?
@@ -60,7 +68,7 @@ public struct WorkbookHistory: Sendable {
                 let existing = try manifests()
                 if existing.contains(where: { $0.lastPathComponent.hasSuffix(id.uuidString + ".json") }) { return }
                 var number = existing.first.flatMap { Int($0.lastPathComponent.prefix(16)) } ?? 0
-                func append(_ id: UUID, _ title: String, _ bytes: Data, _ name: String, _ diskHash: String?) throws {
+                func append(_ id: UUID, _ title: String, _ round: UUID?, _ bytes: Data, _ name: String, _ diskHash: String?) throws {
                     let ranges = name.lowercased().hasSuffix(".xlsx")
                         ? try ZipArchive(data: bytes).storageRanges : [0..<bytes.count]
                     let hashes = try ranges.map { range in
@@ -70,7 +78,7 @@ public struct WorkbookHistory: Sendable {
                         if !fm.fileExists(atPath: url.path) { try part.write(to: url, options: .atomic) }
                         return hash
                     }
-                    let item = Version(id: id, date: Date(), title: title, fileName: name,
+                    let item = Version(id: id, date: Date(), title: title, aiRound: round, fileName: name,
                                        digest: Self.digest(bytes), parts: hashes, diskDigest: diskHash)
                     number += 1
                     let name = String(format: "%016lld-", Int64(number)) + id.uuidString + ".json"
@@ -80,10 +88,10 @@ public struct WorkbookHistory: Sendable {
                     let hash = Self.digest(opened)
                     let previous = try existing.first.map { try JSONDecoder().decode(Version.self, from: Data(contentsOf: $0)) }
                     if previous?.diskDigest != hash {
-                        try append(UUID(), String(localized: "Opened Version"), opened, fileName, hash)
+                        try append(UUID(), String(localized: "Opened Version"), nil, opened, fileName, hash)
                     }
                 }
-                try append(id, title, xlsx, "Version.xlsx", diskBytes.map(Self.digest))
+                try append(id, title, aiRound, xlsx, "Version.xlsx", diskBytes.map(Self.digest))
             }
         }
         if let coordination { throw coordination }
