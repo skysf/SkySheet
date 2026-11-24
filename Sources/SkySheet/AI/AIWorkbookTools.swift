@@ -73,10 +73,10 @@ enum AIWorkbookTools {
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
         guard FileManager.default.fileExists(atPath: url.path) else { throw AIToolError("There is no file at \(url.path).") }
         guard ["xlsx", "csv", "tsv", "txt"].contains(url.pathExtension.lowercased()) else {
-            throw AIToolError("SkySheet opens .xlsx, .csv and .tsv files; \(url.lastPathComponent) is not one of them.")
+            throw AIToolError("SkyFolio opens .xlsx, .csv and .tsv files; \(url.lastPathComponent) is not one of them.")
         }
         let (opened, _) = try await NSDocumentController.shared.openDocument(withContentsOf: url, display: true)
-        guard let document = opened as? WorkbookDocument else { throw AIToolError("SkySheet could not open that file.") }
+        guard let document = opened as? WorkbookDocument else { throw AIToolError("SkyFolio could not open that file.") }
         AIWorkbooks.makeCurrent(document)
         return .ok(summary(document, current: true))
     }
@@ -104,7 +104,7 @@ enum AIWorkbookTools {
         let path = try arguments.requiredString("path")
         let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
         guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw AIToolError("There is already a file at \(url.path). SkySheet never overwrites files for AI; pick a new name.")
+            throw AIToolError("There is already a file at \(url.path). Choose a new name for the copy.")
         }
         let folder = url.deletingLastPathComponent()
         var isFolder: ObjCBool = false
@@ -138,6 +138,6 @@ enum AIWorkbookTools {
         // moveItem 碰到已经有的文件会失败：写的这一会儿别人放了一个同名文件，也不会被盖掉。
         try FileManager.default.moveItem(at: temporary, to: url)
         return .ok(["saved_to": .string(url.path), "sheets": .array(savedSheets.map { .string($0) }),
-                    "note": "The user's own file is unchanged; only Cmd+S in SkySheet writes to it."])
+                    "note": "The copy was saved. The open workbook continues using its original location and autosave settings."])
     }
 }

@@ -62,7 +62,7 @@ public enum MCPBridge {
     }
 
     /// 小程序得先把 App 拉起来才连得上时，结果前面那一句：之前打开的工作簿都不在了（App 被退出过）。
-    public static let relaunchNote = "Note: SkySheet was not running, so it was just started. Workbooks opened before "
+    public static let relaunchNote = "Note: SkyFolio was not running, so it was just started. Workbooks opened before "
         + "are no longer open: call get_status, and open_file again before using earlier sheets."
 
     /// 小程序拉起 App 时带的参数：App 看到它就不弹「打开」面板，恢复副本的提示也等用户自己切到 SkySheet 再问

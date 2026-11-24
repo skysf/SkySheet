@@ -25,11 +25,11 @@ final class AIToolRouter {
             // 重启的是对面那个客户端（Claude Code 或 Claude 桌面版），它才会换上新的小程序。
             let app = request.client.flatMap { $0.isEmpty ? nil : AIAuthorship.brand(ofClient: $0) } ?? "their AI app"
             return MCPBridge.textResult(
-                "This SkySheet and its AI helper come from different versions. Ask the user to restart \(app).",
+                "This SkyFolio and its AI helper come from different versions. Ask the user to restart \(app).",
                 isError: true)
         }
         guard let tool = MCPToolName(rawValue: request.tool) else {
-            return MCPBridge.textResult("This SkySheet does not have the tool \(request.tool). Ask the user to update SkySheet.",
+            return MCPBridge.textResult("This SkyFolio does not have the tool \(request.tool). Ask the user to update SkyFolio.",
                                         isError: true)
         }
         AISession.shared.noteCall(client: request.client)
@@ -53,7 +53,7 @@ final class AIToolRouter {
             return MCPBridge.textResult(error.errorDescription.map { $0 + (error.failureReason.map { " \($0)" } ?? "") }
                                         ?? "\(error)", isError: true)
         } catch {
-            return MCPBridge.textResult("SkySheet could not do that: \(error.localizedDescription)", isError: true)
+            return MCPBridge.textResult("SkyFolio could not do that: \(error.localizedDescription)", isError: true)
         }
     }
 

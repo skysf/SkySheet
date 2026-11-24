@@ -7,8 +7,8 @@
 #
 # 用法：
 #   gh workflow run build-app.yml -f version=x.y.z
-#   gh run download <run id> -n SkySheet-x.y.z-arm64-adhoc -D <新目录>   # 得到 SkySheet-x.y.z-arm64-adhoc.zip
-#   ditto -x -k <zip> <新目录>                                            # 解出 SkySheet.app，再在本机签名
+#   gh run download <run id> -n SkyFolio-x.y.z-arm64-adhoc -D <新目录>   # 得到 SkyFolio-x.y.z-arm64-adhoc.zip
+#   ditto -x -k <zip> <新目录>                                            # 解出 SkyFolio.app，再在本机签名
 name: build-app
 
 on:
@@ -57,10 +57,12 @@ jobs:
       # 打包脚本只管组装；这里核对装出来的东西齐不齐，缺了就别上传。
       - name: Check app structure
         run: |
-          APP=dist/SkySheet.app
+          APP=dist/SkyFolio.app
           PLIST="${APP}/Contents/Info.plist"
           fail() { echo "✗ $1" >&2; exit 1; }
-          [ -x "${APP}/Contents/MacOS/SkySheet" ] || fail "缺 Contents/MacOS/SkySheet"
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "${PLIST}")" = "SkyFolio" ] || fail "显示名有误"
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${PLIST}")" = "ai.skylu.skyfolio.preview" ] || fail "预览版标识有误"
+          [ -x "${APP}/Contents/MacOS/SkyFolio" ] || fail "缺 Contents/MacOS/SkyFolio"
           [ -x "${APP}/Contents/Helpers/skysheet-mcp" ] || fail "缺 Contents/Helpers/skysheet-mcp"
           PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST}")"
           [ "${PLIST_VERSION}" = "${VERSION}" ] || fail "Info.plist 的版本号是 ${PLIST_VERSION}，不是 ${VERSION}"
@@ -70,7 +72,7 @@ jobs:
           ICON="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${PLIST}")"
           [ -s "${APP}/Contents/Resources/${ICON}.icns" ] || fail "缺图标 Contents/Resources/${ICON}.icns"
           # 只支持 M 芯片：两个可执行文件都得是 arm64。lipo -archs 一次只收一个文件。
-          for BIN in "${APP}/Contents/MacOS/SkySheet" "${APP}/Contents/Helpers/skysheet-mcp"; do
+          for BIN in "${APP}/Contents/MacOS/SkyFolio" "${APP}/Contents/Helpers/skysheet-mcp"; do
             ARCHS="$(lipo -archs "${BIN}")"
             [ "${ARCHS}" = "arm64" ] || fail "${BIN} 的架构是 ${ARCHS}，不是 arm64"
           done
@@ -82,12 +84,12 @@ jobs:
       # 用 ditto 打 zip：upload-artifact 不保留文件权限，直接传 .app 下回来可执行位就没了；ditto 的 zip 带着权限，
       # 本机用 ditto -x -k 解开就是原样的 App 包。
       - name: Zip app
-        run: ditto -c -k --keepParent dist/SkySheet.app "dist/SkySheet-${VERSION}-arm64-adhoc.zip"
+        run: ditto -c -k --keepParent dist/SkyFolio.app "dist/SkyFolio-${VERSION}-arm64-adhoc.zip"
 
       - uses: actions/upload-artifact@v4
         with:
-          name: SkySheet-${{ env.VERSION }}-arm64-adhoc
-          path: dist/SkySheet-${{ env.VERSION }}-arm64-adhoc.zip
+          name: SkyFolio-${{ env.VERSION }}-arm64-adhoc
+          path: dist/SkyFolio-${{ env.VERSION }}-arm64-adhoc.zip
           if-no-files-found: error
           retention-days: 7
           # 已经是 zip，再压一遍只费时间。

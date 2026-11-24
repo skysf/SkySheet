@@ -232,7 +232,7 @@ enum AIReadTools {
             if case .number(let number) = value { payload["text"] = .string(ValueFormatter.general(number)) }
             return .ok(.object(payload))
         case .unsupported(let reason):
-            throw AIToolError("SkySheet can't calculate this formula: \(reason).")
+            throw AIToolError("SkyFolio can't calculate this formula: \(reason).")
         }
     }
 
@@ -257,7 +257,8 @@ enum AIReadTools {
                 """)
         }
         let folder = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("ai.skylu.skysheet/exports", isDirectory: true)
+            .appendingPathComponent(SafetyFolders.applicationSupport.lastPathComponent, isDirectory: true)
+            .appendingPathComponent("exports", isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")

@@ -148,9 +148,9 @@ extension XLSXError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .passwordProtected:
-            String(localized: "This workbook is password-protected. SkySheet can't open protected files yet.")
+            String(localized: "This workbook is password-protected. SkyFolio can't open protected files yet.")
         case .legacyExcelFormat:
-            String(localized: "This is an old-style .xls file. SkySheet opens .xlsx and .csv files; save it as .xlsx first.")
+            String(localized: "This is an old-style .xls file. SkyFolio opens .xlsx and .csv files; save it as .xlsx first.")
         case .zip, .missingPart, .malformedXML:
             String(localized: "This file is damaged or isn't an .xlsx workbook.")
         }
@@ -168,6 +168,6 @@ extension XLSXError: LocalizedError {
 
 extension CSVError: LocalizedError {
     public var errorDescription: String? {
-        String(localized: "SkySheet couldn't read the text in this file. It reads UTF-8, UTF-16 and GB18030 (GBK).")
+        String(localized: "SkyFolio couldn't read the text in this file. It reads UTF-8, UTF-16 and GB18030 (GBK).")
     }
 }

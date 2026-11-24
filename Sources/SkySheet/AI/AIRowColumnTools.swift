@@ -99,7 +99,7 @@ enum AIRowColumnTools {
         let sheet = context.workbook.sheets[index]
         if let lock = context.document.structureLock(forSheet: sheet.id) {
             throw AIToolError("""
-                Rows and columns can't be inserted or deleted in \(sheet.name): \(lock.reason), which SkySheet keeps but \
+                Rows and columns can't be inserted or deleted in \(sheet.name): \(lock.reason), which SkyFolio keeps but \
                 can't move. Copy it with add_sheet copy_from (the copy leaves those out) and change the copy.
                 """)
         }
@@ -139,9 +139,9 @@ enum AIRowColumnTools {
         case .wouldPushContentOffSheet:
             "There is no room: inserting would push cells with content off the end of the sheet."
         case .unreadableFormula(let sheet, let cell):
-            "SkySheet can't read the formula in \(sheet)!\(cell.a1), so it couldn't keep its references right. Nothing changed."
+            "SkyFolio can't read the formula in \(sheet)!\(cell.a1), so it couldn't keep its references right. Nothing changed."
         case .unreadableName(let name):
-            "SkySheet can't read the defined name \(name), so it couldn't keep its references right. Nothing changed."
+            "SkyFolio can't read the defined name \(name), so it couldn't keep its references right. Nothing changed."
         case .splitsArrayFormula(let range):
             "That would split the array formula in \(range.a1). Nothing changed."
         }

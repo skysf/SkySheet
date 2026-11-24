@@ -72,10 +72,10 @@ final class ClaudeDesktopSetup {
         pending = connecting
         message = connecting
             ? String(localized: """
-                Added to Claude's settings. Quit Claude (⌘Q) and open it again to finish. Keep SkySheet open until \
-                Claude has quit: Claude can overwrite its settings while it runs, and SkySheet adds itself back as Claude quits.
+                Added to Claude's settings. Quit Claude (⌘Q) and open it again to finish. Keep SkyFolio open until \
+                Claude has quit: Claude can overwrite its settings while it runs, and SkyFolio adds itself back as Claude quits.
                 """)
-            : String(localized: "Removed from Claude's settings. Quit Claude (⌘Q) to finish, and keep SkySheet open until it has quit.")
+            : String(localized: "Removed from Claude's settings. Quit Claude (⌘Q) to finish, and keep SkyFolio open until it has quit.")
     }
 
     /// Claude 退出了：这次运行里点过连接或断开，就照要的结果再写一遍（它开着时可能拿内存里的那份把文件盖掉了）。
@@ -110,8 +110,8 @@ final class ClaudeDesktopSetup {
 
     private static var connected: String {
         String(localized: """
-            Connected. Open Claude to use SkySheet in its chats. It asks before each SkySheet tool until you choose \
-            Always allow, in the prompt or for all of SkySheet's tools at once in Claude's Connectors settings.
+            Connected. Open Claude to use SkyFolio in its chats. It asks before each SkyFolio tool until you choose \
+            Always allow, in the prompt or for all of SkyFolio's tools at once in Claude's Connectors settings.
             """)
     }
 }

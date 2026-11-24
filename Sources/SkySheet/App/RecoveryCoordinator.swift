@@ -118,8 +118,8 @@ final class RecoveryCoordinator {
         guard !entries.isEmpty else { return }
         let alert = NSAlert()
         alert.messageText = entries.count == 1
-            ? String(localized: "SkySheet quit before “\(entries[0].displayName)” was saved.")
-            : String(localized: "SkySheet quit before \(entries.count) documents were saved.")
+            ? String(localized: "SkyFolio quit before “\(entries[0].displayName)” was saved.")
+            : String(localized: "SkyFolio quit before \(entries.count) documents were saved.")
         alert.informativeText = String(localized: """
             Restore the unsaved changes? Restored documents open in new windows; the original files haven't been changed.
             """)

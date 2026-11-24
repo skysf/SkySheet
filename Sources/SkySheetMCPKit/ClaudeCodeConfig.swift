@@ -13,11 +13,11 @@ public enum ClaudeCodeConfig {
     public static let allowRule = "mcp__\(AIClientConfig.serverName)"
 
     private static let notJSON = AIClientConfig.FormatError(
-        message: "The settings file is not valid JSON, so SkySheet left it alone.")
+        message: "The settings file is not valid JSON, so SkyFolio left it alone.")
     private static let permissionsNotObject = AIClientConfig.FormatError(
-        message: "\"permissions\" in the settings file is not an object, so SkySheet left it alone.")
+        message: "\"permissions\" in the settings file is not an object, so SkyFolio left it alone.")
     private static let allowNotList = AIClientConfig.FormatError(
-        message: "\"permissions.allow\" in the settings file is not a list, so SkySheet left it alone.")
+        message: "\"permissions.allow\" in the settings file is not a list, so SkyFolio left it alone.")
 
     public static func allows(in data: Data?) -> Bool {
         guard let text = try? AIClientConfig.scan(data, invalid: notJSON),
@@ -56,7 +56,7 @@ public enum ClaudeCodeConfig {
             guard let rules = allow.value.elements else { throw allowNotList }
             guard let index = rules.firstIndex(where: { $0.string == allowRule }) else { break }
             guard let next = JSONText(text.removingElement(at: index, of: allow.value)) else {
-                throw AIClientConfig.FormatError(message: "SkySheet could not write the settings file.")
+                throw AIClientConfig.FormatError(message: "SkyFolio could not write the settings file.")
             }
             text = next
             changed = true
@@ -67,7 +67,7 @@ public enum ClaudeCodeConfig {
     /// 找不到 claude 命令行时，「复制一段话」贴给 Claude Code，让它自己装。
     public static func setupPrompt(helper: String) -> String {
         """
-        Please connect the SkySheet spreadsheet app to Claude Code: run this command in the terminal, add \
+        Please connect the SkyFolio spreadsheet app to Claude Code: run this command in the terminal, add \
         "\(allowRule)" to permissions.allow in ~/.claude/settings.json so its tools run without asking, then tell me \
         to start a new session.
 

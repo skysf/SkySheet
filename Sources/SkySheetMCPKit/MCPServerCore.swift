@@ -51,7 +51,7 @@ public final class MCPServerCore: @unchecked Sendable {
     }
 
     private var serverInfo: JSONValue {
-        ["name": .string(Self.serverName), "title": "SkySheet", "version": .string(serverVersion)]
+        ["name": .string(Self.serverName), "title": "SkyFolio", "version": .string(serverVersion)]
     }
 
     // MARK: 分派

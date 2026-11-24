@@ -18,9 +18,9 @@ public enum ClaudeDesktopConfig {
     }
 
     private static let notJSON = AIClientConfig.FormatError(
-        message: "Claude's config file is not valid JSON, so SkySheet left it alone.")
+        message: "Claude's config file is not valid JSON, so SkyFolio left it alone.")
     private static let serversNotObject = AIClientConfig.FormatError(
-        message: "\"mcpServers\" in Claude's config file is not an object, so SkySheet left it alone.")
+        message: "\"mcpServers\" in Claude's config file is not an object, so SkyFolio left it alone.")
 
     /// 让 skysheet 这一项启动 `helper`。没有就加在 mcpServers 末尾（没有 mcpServers 就补上）；指着别的小程序（App 挪过
     /// 位置）就只换掉 command 那个字符串，这一项里别的（env 之类）留着。已经是它返回 nil：不用写。
@@ -52,7 +52,7 @@ public enum ClaudeDesktopConfig {
             guard let members = servers.value.members else { throw serversNotObject }
             guard let index = members.lastIndex(where: { $0.key == AIClientConfig.serverName }) else { break }
             guard let next = JSONText(text.removingMember(at: index, of: servers.value)) else {
-                throw AIClientConfig.FormatError(message: "SkySheet could not write Claude's config file.")
+                throw AIClientConfig.FormatError(message: "SkyFolio could not write Claude's config file.")
             }
             text = next
             changed = true

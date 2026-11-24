@@ -32,11 +32,11 @@ final class AIBridgeServer: @unchecked Sendable {
             let fd = try MCPUnixSocket.listen(path: path)
             socketPath = path
             let thread = Thread { [weak self] in self?.acceptLoop(fd) }
-            thread.name = "SkySheet AI bridge"
+            thread.name = "SkyFolio AI bridge"
             thread.start()
         } catch {
             // 听不起来（比如同一个 App 开了两份）：AI 连不上而已，App 其余功能照常。
-            FileHandle.standardError.write(Data("SkySheet AI bridge: \(error)\n".utf8))
+            FileHandle.standardError.write(Data("SkyFolio AI bridge: \(error)\n".utf8))
         }
     }
 
@@ -55,7 +55,7 @@ final class AIBridgeServer: @unchecked Sendable {
                 continue
             }
             let thread = Thread { [weak self] in self?.serve(client) }
-            thread.name = "SkySheet AI call"
+            thread.name = "SkyFolio AI call"
             thread.start()
         }
     }
@@ -70,7 +70,7 @@ final class AIBridgeServer: @unchecked Sendable {
             response = MCPBridge.Response(id: request.id, result: result)
         } else {
             response = MCPBridge.Response(id: "", result: MCPBridge.textResult(
-                "SkySheet could not read the request from its AI helper. "
+                "SkyFolio could not read the request from its AI helper. "
                     + "Ask the user to restart their AI app (Claude or Claude Code).",
                 isError: true))
         }
@@ -87,7 +87,7 @@ final class AIBridgeServer: @unchecked Sendable {
             done.signal()
         }
         done.wait()
-        return box.value ?? MCPBridge.textResult("SkySheet did not finish the call.", isError: true)
+        return box.value ?? MCPBridge.textResult("SkyFolio did not finish the call.", isError: true)
     }
 }
 

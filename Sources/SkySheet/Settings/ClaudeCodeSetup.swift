@@ -63,12 +63,12 @@ final class ClaudeCodeSetup {
         do {
             try AIClientConfig.update(at: settingsPath, ClaudeCodeConfig.allowing(in:))
             message = String(localized: """
-                Connected. Start a new Claude Code session so it picks up SkySheet; it will use SkySheet's tools without asking.
+                Connected. Start a new Claude Code session so it picks up SkyFolio; it will use SkyFolio's tools without asking.
                 """)
         } catch let error as AIClientConfig.FormatError {
-            message = String(localized: "Connected, but SkySheet could not update Claude Code's settings: \(error.message)")
+            message = String(localized: "Connected, but SkyFolio could not update Claude Code's settings: \(error.message)")
         } catch {
-            message = String(localized: "Connected, but SkySheet could not update Claude Code's settings: \(error.localizedDescription)")
+            message = String(localized: "Connected, but SkyFolio could not update Claude Code's settings: \(error.localizedDescription)")
         }
     }
 

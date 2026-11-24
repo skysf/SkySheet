@@ -7,7 +7,7 @@ import SkySheetCore
 enum MainMenu {
     static func build() -> NSMenu {
         let main = NSMenu()
-        let appName = "SkySheet"
+        let appName = "SkyFolio"
         main.addItem(submenu(appName, [
             item(String(localized: "About \(appName)"), #selector(NSApplication.orderFrontStandardAboutPanel(_:))),
             .separator(),

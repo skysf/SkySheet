@@ -154,7 +154,7 @@ extension WorkbookDocument {
         alert.messageText = String(localized: "“\(fileURL.lastPathComponent)” was changed by another app after you opened it.")
         alert.informativeText = String(localized: """
             Save As keeps both versions: yours goes to a new file. Overwrite replaces the other app's changes with yours \
-            (SkySheet backs up the current file first). Reload discards your unsaved changes and shows the file as it is now.
+            (SkyFolio backs up the current file first). Reload discards your unsaved changes and shows the file as it is now.
             """)
         alert.addButton(withTitle: String(localized: "Save As…"))
         alert.addButton(withTitle: String(localized: "Overwrite"))
@@ -263,7 +263,7 @@ enum SaveSafetyError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .backupFailed(let name, _):
-            String(localized: "SkySheet couldn't back up “\(name)”, so it didn't save over it.")
+            String(localized: "SkyFolio couldn't back up “\(name)”, so it didn't save over it.")
         }
     }
 
@@ -279,18 +279,18 @@ extension XLSXWriteError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .strictFormat:
-            String(localized: "SkySheet can't save changes into a Strict Open XML workbook yet. The file wasn't changed.")
+            String(localized: "SkyFolio can't save changes into a Strict Open XML workbook yet. The file wasn't changed.")
         case .unreadablePart(let part):
-            String(localized: "Part of the original file couldn't be read (\(part)), so SkySheet didn't save over it.")
+            String(localized: "Part of the original file couldn't be read (\(part)), so SkyFolio didn't save over it.")
         case .existingStylesChanged:
-            String(localized: "SkySheet ran into an internal problem with cell styles and didn't save. The file wasn't changed.")
+            String(localized: "SkyFolio ran into an internal problem with cell styles and didn't save. The file wasn't changed.")
         case .sharedFormulaMasterChanged(let sheet, let cell, let master):
             String(localized: """
-                SkySheet didn't save: on “\(sheet)”, \(cell) uses the shared formula in \(master), which was changed, \
-                and SkySheet can't work out \(cell)'s own formula. The file wasn't changed.
+                SkyFolio didn't save: on “\(sheet)”, \(cell) uses the shared formula in \(master), which was changed, \
+                and SkyFolio can't work out \(cell)'s own formula. The file wasn't changed.
                 """)
         case .zip:
-            String(localized: "SkySheet couldn't put the file together. The file wasn't changed.")
+            String(localized: "SkyFolio couldn't put the file together. The file wasn't changed.")
         case .verificationFailed:
             String(localized: "The saved copy didn't match what's in the window, so the original file was left unchanged.")
         }

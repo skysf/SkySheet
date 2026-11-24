@@ -56,6 +56,10 @@ public enum SafetyFolders {
         #if os(iOS)
         return base.appendingPathComponent("ai.skylu.skyfolio", isDirectory: true)
         #else
+        // 单独安装的预览版拥有自己的恢复副本和历史，正式版本照旧使用现有目录。
+        if Bundle.main.bundleURL.pathExtension == "app", let identifier = Bundle.main.bundleIdentifier {
+            return base.appendingPathComponent(identifier, isDirectory: true)
+        }
         return base.appendingPathComponent("ai.skylu.skysheet", isDirectory: true)
         #endif
     }
