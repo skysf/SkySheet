@@ -11,26 +11,9 @@ final class WorkbookUITests: XCTestCase {
         }
         app.buttons["open-workbook"].tap()
         // 文件在模拟器本机的 Files 文档提供方，使用正式的系统选择器。
-        let service = XCUIApplication(bundleIdentifier: "com.apple.DocumentManager.DocumentManagerService")
-        func item(_ name: String, in process: XCUIApplication) -> XCUIElement {
-            process.descendants(matching: .any).matching(NSPredicate(format: "label BEGINSWITH[c] %@", name)).firstMatch
-        }
-        var file = item("Arithmetic", in: app)
-        if !file.waitForExistence(timeout: 5) {
-            file = item("Arithmetic", in: service)
-            if !file.exists {
-                // 部分系统先展示「最近项目」，从「浏览」进入应用的本地文稿文件夹。
-                for label in ["Browse", "On My", "SkyFolio"] {
-                    for container in [app, service] {
-                        let control = item(label, in: container)
-                        if control.exists && control.isHittable { control.tap(); break }
-                    }
-                    let match = [app, service].map { item("Arithmetic", in: $0) }.first { $0.exists }
-                    if let match { file = match; break }
-                }
-            }
-        }
-        XCTAssertTrue(file.waitForExistence(timeout: 8), "\(app.debugDescription)\n\(service.debugDescription)")
+        let file = app.cells.matching(NSPredicate(format: "identifier == %@ OR label BEGINSWITH[c] %@",
+                                                  "Arithmetic, xlsx", "Arithmetic, xlsx,")).firstMatch
+        XCTAssertTrue(file.waitForExistence(timeout: 20), app.debugDescription)
         file.tap()
         let input = app.textFields["formula-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 15))

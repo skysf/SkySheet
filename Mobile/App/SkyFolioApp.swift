@@ -46,6 +46,7 @@ struct WorkbookLibrary: View {
             .disabled(opening != nil)
             .overlay { if opening != nil { ProgressView(String(localized: "Opening…")).padding().background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12)) } }
         }
+        .accessibilityHidden(picker)
         .sheet(isPresented: $picker) {
             WorkbookPicker { url in
                 picker = false
