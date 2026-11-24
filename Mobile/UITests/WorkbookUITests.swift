@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 
 final class WorkbookUITests: XCTestCase {
     @MainActor func testBrowseFilesAndOpenCSV() {
@@ -11,9 +12,13 @@ final class WorkbookUITests: XCTestCase {
             .matching(NSPredicate(format: "identifier == %@ OR identifier BEGINSWITH %@", "Browse View (Picker)", "DOC.")).firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 60), app.debugDescription)
         let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Picker Seed,")).firstMatch
-        if !file.waitForExistence(timeout: 5) {
+        let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
+        if UIDevice.current.userInterfaceIdiom == .pad {
+            // iPad 保留侧边栏。点明确的位置，避免误用短暂出现在转场里的文件。
+            XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 35), app.debugDescription)
+            local.tap()
+        } else if !file.wait(for: \.isHittable, toEqual: true, timeout: 5) {
             let back = app.buttons["BackButton"]
-            let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
             if back.isHittable, ["On My iPhone", "On My iPad"].contains(back.label) {
                 back.tap()
             } else if local.isHittable {
@@ -22,8 +27,10 @@ final class WorkbookUITests: XCTestCase {
                 let browse = app.buttons["Browse"]
                 XCTAssertTrue(browse.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
                 browse.tap()
-                XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
-                local.tap()
+                if !file.wait(for: \.isHittable, toEqual: true, timeout: 5) {
+                    XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
+                    local.tap()
+                }
             }
         }
         XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)

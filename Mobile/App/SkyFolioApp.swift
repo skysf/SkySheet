@@ -54,7 +54,6 @@ struct WorkbookLibrary: View {
             case .failure(let error): problem = error.localizedDescription
             }
         }
-        .fileDialogDefaultDirectory(.documentsDirectory)
         .onAppear { refresh() }
         .onOpenURL { url in if url.isFileURL { open(url) } }
         .onChange(of: phase) { _, next in
