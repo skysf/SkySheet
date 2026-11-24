@@ -37,19 +37,10 @@ extension SheetSession {
         var changed = workbook
         try change(&changed)
         guard changed != workbook else { return }
-        // 文件里 SkySheet 写不回去的公式占着的格子（算不出来的共享公式组、模拟运算表），内容不能改：整个不做，
-        // 说为什么（PR #17 第一轮审查第 3–5 条）。AI 的改动在 AIContext.change 里先拒绝了，到不了这里。
-        if let locked = changed.lockedFormulaChange(since: workbook) {
+        if let locked = changed.finishEditing(since: workbook, author: author, cache: recalcCache) {
             refusedChange?(locked)
             return
         }
-        // 内容被改写过的格子，文件里的 `<f>` 记录作废，以后不会再对上（PR #17 第二轮审查第 2 条）。AI 的改动也从这里过；
-        // ⌘Z 撤销不经这里，换回的是改之前的那一份，记录跟着内容一起回来。整轮撤销经这里换回快照，锁住的格子这一轮里
-        // 改不了，记录不受影响（retireReplacedFormulas，最后一次复查）。
-        changed.retireReplacedFormulas(since: workbook)
-        let edited = Self.editedSheets(changed, comparedTo: workbook)
-        Recalculator.recalculate(&changed, options: RecalcOptions(cache: recalcCache))
-        Self.sign(&changed, sheets: edited, author: author)
         replaceWorkbook(changed)
         // 关窗要同步结束这一步；放在差异检查之后，避免空分组让干净文档出现保存确认。
         if groupUndo {
@@ -57,24 +48,7 @@ extension SheetSession {
         } else {
             registerUndo(restoring: before, actionName)
         }
-    }
-
-    /// 内容被直接改到的 sheet（编号）。在重算之前比：没碰到的公式格子这时还是原来的值。
-    private static func editedSheets(_ new: Workbook, comparedTo old: Workbook) -> Set<Int> {
-        let previous = Dictionary(old.sheets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
-        return Set(new.sheets.filter { sheet in
-            guard let before = previous[sheet.id] else { return false }
-            return !sheet.hasSameContent(as: before) || sheet.name != before.name
-        }.map(\.id))
-    }
-
-    private static func sign(_ workbook: inout Workbook, sheets: Set<Int>, author: AIAuthorship.Mark.Author) {
-        let now = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
-        for index in workbook.sheets.indices where sheets.contains(workbook.sheets[index].id) {
-            guard var authorship = workbook.sheets[index].role.authorship else { continue }
-            authorship.lastChanged = AIAuthorship.Mark(author, date: now)
-            workbook.sheets[index].role = .ai(authorship)
-        }
+        didEdit?(actionName, author)
     }
 
     /// 换一整本（apply、撤销、重新载入都走这里）：样式变了重建样式表，看的 sheet 还在不在。
@@ -102,6 +76,8 @@ extension SheetSession {
                 session.sheetIndex = min(snapshot.sheetIndex, session.workbook.sheets.count - 1)
                 session.selection = snapshot.selection
                 session.registerUndo(restoring: current, actionName)
+                let label = session.undoManager?.isRedoing == true ? String(localized: "Redo \(actionName)") : String(localized: "Undo \(actionName)")
+                session.didEdit?(label, .user)
             }
         }
         undoManager.setActionName(actionName)
@@ -172,25 +148,7 @@ extension SheetSession {
         // 方向键每次移动都会读公式栏；一次取同一本，避免为格子、样式和日期系统反复复制大值、登记观测。
         let book = workbook
         guard let cell = book.sheets[sheetIndex].cells[address] else { return "" }
-        return Self.rawText(cell, styles: book.styles, dateSystem: book.dateSystem)
-    }
-
-    /// 公式显示原文；日期显示成日期；别的数字显示全精度（不按格式四舍五入），和 Excel 的公式栏一样。
-    static func rawText(_ cell: Cell, styles: SkySheetCore.StyleTable, dateSystem: DateSystem) -> String {
-        if let formula = cell.formula { return "=" + formula.source }
-        switch cell.value {
-        case .empty: return ""
-        case .text(let text):
-            // 像数字、公式的文字前面加 '，再输入一遍还是文字（和 Excel 一样）。
-            return text.isEmpty || CellInput.parse(text) == .value(.text(text)) ? text : "'" + text
-        case .bool(let flag): return flag ? "TRUE" : "FALSE"
-        case .error(let error): return error.code
-        case .number(let number):
-            let code = styles.formatCode(forStyle: cell.styleIndex)
-            guard ValueFormatter.isCalendarDateFormat(code, for: number) else { return ValueFormatter.general(number) }
-            let dateCode = DecimalMath.isInteger(number) ? "yyyy/m/d" : "yyyy/m/d h:mm:ss"
-            return ValueFormatter.format(cell.value, code: dateCode, dateSystem: dateSystem).text
-        }
+        return CellInput.editingText(cell, styles: book.styles, dateSystem: book.dateSystem)
     }
 
     // MARK: - 清除、复制、粘贴

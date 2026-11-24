@@ -43,6 +43,8 @@ final class SheetSession {
     var resizePreview: ResizePreview?
     /// 文档的撤销管理器，窗口建好时接上。
     @ObservationIgnored weak var undoManager: UndoManager?
+    @ObservationIgnored var didEdit: (@MainActor (String, AIAuthorship.Mark.Author) -> Void)?
+    var saveStatus: String?
     /// 这张 sheet（按编号）为什么不能插删行列，能就是 nil（设计第 11 条，StructureLock）。文档建窗口时接上；
     /// 没接（截图模式）就是都能。
     @ObservationIgnored var structureLock: (@MainActor (_ sheetID: Int) -> StructureLock?)?

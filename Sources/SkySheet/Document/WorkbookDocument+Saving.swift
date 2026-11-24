@@ -4,7 +4,7 @@ import SkySheetFiles
 import UniformTypeIdentifiers
 
 /// 保存：设计第十节的六道保险里落在文档上的几道。
-/// 1. 只有 ⌘S 写回原文件：autosavesInPlace 是 false，也不开自动保存。
+/// 1. 按操作自动保存与历史见 WorkbookDocument+History；这里处理显式保存和另存。
 /// 3. 先写临时文件（NSDocument 的安全保存），读回来核对（SaveVerifier / CSVWriter.verify），全对才替换原文件；
 ///    任何一步失败都报错，原文件不动。
 /// 4. 第一次覆盖前备份原文件（BackupStore）；另存时盖掉一个已有的文件，也先备份它。
@@ -25,6 +25,7 @@ extension WorkbookDocument {
     override func save(withDelegate delegate: Any?, didSave didSaveSelector: Selector?,
                        contextInfo: UnsafeMutableRawPointer?) {
         session?.commitEditing()
+        finishAutosave()
         checkExternalChange { proceed in
             if proceed {
                 super.save(withDelegate: delegate, didSave: didSaveSelector, contextInfo: contextInfo)
@@ -38,6 +39,7 @@ extension WorkbookDocument {
     override func save(to url: URL, ofType typeName: String, for saveOperation: NSDocument.SaveOperationType,
                        completionHandler: @escaping (Error?) -> Void) {
         session?.commitEditing()
+        finishAutosave()
         checkSheetsFitCSV(url, typeName) { proceed in
             guard proceed else { return completionHandler(CocoaError(.userCancelled)) }
             do {
@@ -100,6 +102,9 @@ extension WorkbookDocument {
         source = pending.source
         csvFormat = pending.csvFormat
         baseline = pending.workbook
+        if let url = fileURL, let disk = try? LoadedWorkbook(contentsOf: url, typeName: fileType) {
+            attachAutosave(url: url, loaded: disk)
+        }
         if operation == .saveAsOperation {
             // 另存出来的新文件是我们自己刚写的，不用再备份；以后存的就是它。
             backedUp = true
@@ -128,7 +133,7 @@ extension WorkbookDocument {
     private func checkExternalChange(then next: @escaping (Bool) -> Void) {
         guard let fileURL, let known = fileModificationDate,
               let onDisk = try? fileURL.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate,
-              abs(onDisk.timeIntervalSince(known)) > 0.001,
+              (abs(onDisk.timeIntervalSince(known)) > 0.001 || lastSaveIssue is WorkbookAutosave.Issue),
               let window = windowForSheet else { return next(true) }
         let alert = NSAlert()
         alert.alertStyle = .warning
