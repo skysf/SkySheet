@@ -1,9 +1,8 @@
 import XCTest
 
 final class WorkbookUITests: XCTestCase {
-    @MainActor func testBrowseFilesAndOpenCSV() {
+    @MainActor private func browseToLocalFiles(in app: XCUIApplication) -> XCUIElement {
         continueAfterFailure = false
-        let app = XCUIApplication()
         app.launch()
         app.buttons["open-workbook"].tap()
         // iPad 上 Files 作为另一个进程加载，刚弹出时仍只能查到后面的 SkyFolio。
@@ -26,13 +25,30 @@ final class WorkbookUITests: XCTestCase {
             else if browse.isHittable { browse.tap() }
         }
         XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)
+        return file
+    }
+
+    @MainActor private func generatedFile(in app: XCUIApplication) -> XCUIElement {
+        app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@ AND NOT (label BEGINSWITH[c] %@)",
+                                       "Picker Seed", "Picker Seed,")).firstMatch
+    }
+
+    @MainActor func testPrepareFileUsingSystemProvider() {
+        let app = XCUIApplication()
+        let file = browseToLocalFiles(in: app)
         // 经过系统提供方创建一个文稿，让 Files 自己分配和登记文件标识。
         file.press(forDuration: 1.2)
         let duplicate = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Duplicate")).firstMatch
         XCTAssertTrue(duplicate.wait(for: \.isHittable, toEqual: true, timeout: 20), app.debugDescription)
         duplicate.tap()
-        let copy = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@ AND NOT (label BEGINSWITH[c] %@)",
-                                                  "Picker Seed", "Picker Seed,")).firstMatch
+        XCTAssertTrue(generatedFile(in: app).wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
+        app.terminate()
+    }
+
+    @MainActor func testSelectExternalWorkbookFromFiles() {
+        let app = XCUIApplication()
+        _ = browseToLocalFiles(in: app)
+        let copy = generatedFile(in: app)
         XCTAssertTrue(copy.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
         copy.tap()
         editExternalCSV(in: app)

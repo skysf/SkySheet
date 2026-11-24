@@ -18,6 +18,10 @@ on:
         description: "App version, x.y.z (digits only)"
         required: true
         type: string
+      files_matrix:
+        description: "Run Files compatibility checks on isolated standard runners"
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -29,6 +33,7 @@ defaults:
 jobs:
   build-app:
     name: build-app
+    if: ${{ !inputs.files_matrix }}
     runs-on: macos-26
     timeout-minutes: 30
     env:
@@ -92,3 +97,42 @@ jobs:
           retention-days: 7
           # 已经是 zip，再压一遍只费时间。
           compression-level: 0
+
+  files:
+    if: ${{ inputs.files_matrix }}
+    name: ${{ matrix.host }} / ${{ matrix.family }} / iOS ${{ matrix.runtime }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        include:
+          - { host: macos-26, family: iPhone, runtime: "26.2" }
+          - { host: macos-26, family: iPad, runtime: "26.5" }
+          - { host: macos-15, family: iPad, runtime: "26.2" }
+          - { host: macos-15, family: iPhone, runtime: "18.6" }
+          - { host: macos-15, family: iPad, runtime: "18.6" }
+    steps:
+      - uses: actions/checkout@v4
+      - name: Inspect host and installed runtimes
+        run: |
+          if [[ "${{ matrix.host }}" == macos-15 ]]; then
+            echo 'DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer' >> "$GITHUB_ENV"
+          fi
+          sw_vers
+          mdutil -s /System/Volumes/Data || true
+          df -h .
+      - name: Exercise Files, editing and history
+        env:
+          SKYFOLIO_RESULTS: ${{ runner.temp }}/SkyFolio-Mobile
+          SKYFOLIO_SIM_RUNTIME: ${{ matrix.runtime }}
+          SKYFOLIO_SIM_FAMILY: ${{ matrix.family }}
+        run: scripts/check-ios.sh
+      - uses: actions/upload-artifact@v4
+        if: ${{ !cancelled() }}
+        with:
+          name: Files-${{ matrix.host }}-${{ matrix.family }}-${{ matrix.runtime }}
+          path: ${{ runner.temp }}/SkyFolio-Mobile
+          if-no-files-found: ignore
+          retention-days: 7
