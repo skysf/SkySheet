@@ -42,6 +42,9 @@ public struct DOSDateTime: Equatable, Hashable, Sendable {
         let c = gregorian.dateComponents([.year, .month, .day, .hour, .minute, .second], from: value)
         let year = min(max((c.year ?? 1980) - 1980, 0), 127)
         date = UInt16(year << 9 | (c.month ?? 1) << 5 | (c.day ?? 1))
-        time = UInt16((c.hour ?? 0) << 11 | (c.minute ?? 0) << 5 | (c.second ?? 0) / 2)
+        let hours = (c.hour ?? 0) << 11
+        let minutes = (c.minute ?? 0) << 5
+        let twoSecondIntervals = (c.second ?? 0) / 2
+        time = UInt16(hours | minutes | twoSecondIntervals)
     }
 }
