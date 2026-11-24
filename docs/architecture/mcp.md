@@ -52,8 +52,8 @@ Claude Code ──MCP（stdio，一行一条 JSON）──▶ skysheet-mcp ─�
 5. **署名**：AI 建的 sheet 记客户端名（握手里的，可靠）和模型名（add_sheet 的 `model`，自报），页签紫色、小标写品牌；
    直接改到 AI 的 sheet 记「最后是谁改的」（只算直接改，跟着重算变了值的不算）。存在 `docProps/custom.xml` 的
    `SkySheet.AI.<sheetId>`，紧凑 JSON ≤ 255 个字符，保存核对也比它。
-6. **从不覆盖文件**：save_copy 目标已经有就拒绝；写临时文件、读回来核对、`moveItem` 挪过去（碰到同名会失败，不会盖掉）。
-   AI 改的只在内存里，用户按 ⌘S 才进文件（第十节第 1 条）。
+6. **另存副本**：save_copy 目标已经有就拒绝；写临时文件、读回来核对、`moveItem` 挪过去（碰到同名会失败，不会盖掉）。
+   文档按操作保留版本，默认自动写回。用户可在 Mac 设置中要求先确认 AI 改动；有待确认的 AI 改动时，混合编辑保存在本机历史里，⌘S 一并写回。AI 权限仍由工作表角色决定（设计第十节）。
 7. **结果给数字给全**：值按正确舍入的 Double 给（`DecimalMath.double` 按十进制文字解析；`NSDecimalNumber.doubleValue`
    会把 8673.94 变成 8673.939999999999）。表格块的合计行（有 SUM 公式的最后一行）不算数据，不进统计、不进 SQL 表。
 8. **SQL 只读**：每次现建内存库、装表、`PRAGMA query_only`，只许一条语句、`sqlite3_stmt_readonly`，最多跑 3 秒、回 500 行。

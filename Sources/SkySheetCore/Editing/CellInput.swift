@@ -74,3 +74,23 @@ public enum CellInput: Equatable, Sendable {
     }
 
 }
+
+extension CellInput {
+    /// 公式显示原文；日期显示成日期；别的数字显示全精度（不按格式四舍五入），和 Excel 的公式栏一样。
+    public static func editingText(_ cell: Cell, styles: StyleTable, dateSystem: DateSystem) -> String {
+        if let formula = cell.formula { return "=" + formula.source }
+        switch cell.value {
+        case .empty: return ""
+        case .text(let text):
+            // 像数字、公式的文字前面加 '，再输入一遍还是文字（和 Excel 一样）。
+            return text.isEmpty || CellInput.parse(text) == .value(.text(text)) ? text : "'" + text
+        case .bool(let flag): return flag ? "TRUE" : "FALSE"
+        case .error(let error): return error.code
+        case .number(let number):
+            let code = styles.formatCode(forStyle: cell.styleIndex)
+            guard ValueFormatter.isCalendarDateFormat(code, for: number) else { return ValueFormatter.general(number) }
+            let dateCode = DecimalMath.isInteger(number) ? "yyyy/m/d" : "yyyy/m/d h:mm:ss"
+            return ValueFormatter.format(cell.value, code: dateCode, dateSystem: dateSystem).text
+        }
+    }
+}

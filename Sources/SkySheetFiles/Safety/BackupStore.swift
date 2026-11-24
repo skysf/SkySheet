@@ -53,7 +53,11 @@ public enum SafetyFolders {
     public static var applicationSupport: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
             ?? URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent("Library/Application Support")
+        #if os(iOS)
+        return base.appendingPathComponent("ai.skylu.skyfolio", isDirectory: true)
+        #else
         return base.appendingPathComponent("ai.skylu.skysheet", isDirectory: true)
+        #endif
     }
 
     public static var backups: URL { applicationSupport.appendingPathComponent("Backups", isDirectory: true) }

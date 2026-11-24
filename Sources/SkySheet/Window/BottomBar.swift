@@ -37,6 +37,10 @@ struct BottomBar: View {
                 .padding(.horizontal, 6)
             }
             Spacer(minLength: 12)
+            if let status = session.saveStatus {
+                Text(status).font(.caption).foregroundStyle(FolioTheme.secondaryInk.color)
+                    .lineLimit(1).help(status).padding(.trailing, 8)
+            }
             Text(summary)
                 .font(.system(size: 11))
                 .monospacedDigit()

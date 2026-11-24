@@ -26,6 +26,7 @@ enum MainMenu {
             item(String(localized: "Close"), #selector(NSWindow.performClose(_:)), key: "w"),
             item(String(localized: "Save"), #selector(NSDocument.save(_:)), key: "s"),
             item(String(localized: "Save As…"), #selector(NSDocument.saveAs(_:)), key: "s", modifiers: [.command, .shift]),
+            item(String(localized: "Version History…"), #selector(WorkbookDocument.showVersionHistory(_:))),
             item(String(localized: "Revert to Saved"), #selector(NSDocument.revertToSaved(_:))),
         ]))
         main.addItem(submenu(String(localized: "Edit"), [

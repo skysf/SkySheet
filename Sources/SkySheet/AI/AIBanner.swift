@@ -19,7 +19,7 @@ struct AIBanner: View {
                     ProgressView()
                         .controlSize(.small)
                 } else {
-                    Text("\(ai.clientName) made \(ai.changeCount) changes. Nothing is saved until you press ⌘S.")
+                    Text(String(localized: "\(ai.clientName) made \(ai.changeCount) changes."))
                 }
                 Spacer(minLength: 8)
                 Button("Undo This Round") { roundRefused = ai.undoRound(in: session) == .userChanged }

@@ -114,3 +114,33 @@ extension Workbook {
         }
     }
 }
+
+extension Workbook {
+    /// 三端对同一次编辑做相同的锁定检查、重算和署名；调用方在副本上执行，拒绝时丢弃副本。
+    public mutating func finishEditing(since before: Workbook, author: AIAuthorship.Mark.Author, cache: RecalcCache) -> LockedFormulaChange? {
+        if let locked = lockedFormulaChange(since: before) { return locked }
+        retireReplacedFormulas(since: before)
+        let edited = Self.editedSheets(self, comparedTo: before)
+        Recalculator.recalculate(&self, options: RecalcOptions(cache: cache))
+        Self.sign(&self, sheets: edited, author: author)
+        return nil
+    }
+
+    /// 内容被直接改到的 sheet（编号）。在重算之前比：没碰到的公式格子这时还是原来的值。
+    private static func editedSheets(_ new: Workbook, comparedTo old: Workbook) -> Set<Int> {
+        let previous = Dictionary(old.sheets.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        return Set(new.sheets.filter { sheet in
+            guard let before = previous[sheet.id] else { return false }
+            return !sheet.hasSameContent(as: before) || sheet.name != before.name
+        }.map(\.id))
+    }
+
+    private static func sign(_ workbook: inout Workbook, sheets: Set<Int>, author: AIAuthorship.Mark.Author) {
+        let now = Date(timeIntervalSince1970: Date().timeIntervalSince1970.rounded(.down))
+        for index in workbook.sheets.indices where sheets.contains(workbook.sheets[index].id) {
+            guard var authorship = workbook.sheets[index].role.authorship else { continue }
+            authorship.lastChanged = AIAuthorship.Mark(author, date: now)
+            workbook.sheets[index].role = .ai(authorship)
+        }
+    }
+}

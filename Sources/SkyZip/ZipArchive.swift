@@ -8,12 +8,14 @@ public struct ZipArchive: Sendable {
     /// 条目，顺序和中央目录里一致（保存时照这个顺序写回）。
     public let entries: [ZipEntry]
     private let bytes: [UInt8]
+    private let directoryOffset: Int
     // ZIP 名称按字节区分；直接用标准库字节键，底层 ZIP 模块不依赖表格模型。
     private let indexByName: [[UInt8]: Int]
 
     public init(data: Data) throws(ZipError) {
         let reader = LittleEndianBytes([UInt8](data))
         let end = try Self.endRecord(in: reader)
+        directoryOffset = end.directoryOffset
         var entries: [ZipEntry] = []
         entries.reserveCapacity(end.entryCount)
         var offset = end.directoryOffset
@@ -34,6 +36,13 @@ public struct ZipArchive: Sendable {
 
     public func entry(named name: String) -> ZipEntry? {
         indexByName[Array(name.utf8)].map { entries[$0] }
+    }
+
+    /// 文件版本历史按 ZIP 的部件分块。保留文件头、数据描述符和中央目录，拼起来逐字节还原原文件。
+    public var storageRanges: [Range<Int>] {
+        let offsets = Set(([0, directoryOffset, bytes.count] + entries.map(\.localHeaderOffset))
+            .filter { (0...bytes.count).contains($0) }).sorted()
+        return zip(offsets, offsets.dropFirst()).map { $0..<$1 }
     }
 
     /// 取一个条目解压后的内容，并核对 CRC。
