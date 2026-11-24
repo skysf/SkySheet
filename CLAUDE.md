@@ -10,7 +10,7 @@
 - M4 完成（MCP v0.3.0，第一个真正可用的版本；v0.3.1 修了连接时整份重排 settings.json），M5 打磨中。里程碑见设计第十三节；每完成一个就改这一行。
 - 作者选择朱红文档袋图标，目标是日后在 App Store 分发 Mac、iPad 和 iPhone 版。三端图标取同一母图，配色在 `SkyFolioTheme`。iPhone 和 iPad 共用 `Mobile/SkyFolio.xcodeproj` 里的应用目标。CI 用 `scripts/check-ios.sh` 构建并运行模拟器，本机只需命令行工具。
 - 三端共用按操作自动保存和本机历史。写回前先验证、存历史、检查外部改动并备份。重开文档后仍可恢复某一步。Mac 上 AI 在获准工作表的改动默认写回，可整轮撤销。
-- Mac 正式包使用 `ai.skylu.skyfolio` 和 `skyfolio-mcp`。作者选择在本机干净安装，先验证新版和 Codex 连接，再移除旧 SkySheet 及专属数据。仓库改名另行处理。
+- 本机已干净安装 Mac 版 SkyFolio 0.3.10，正式标识为 `ai.skylu.skyfolio`。Codex 通过 `skyfolio-mcp` 连接新版。旧 SkySheet 及专属数据已移入废纸篓。仓库改名另行处理。
 - **还没做完的事都记在 `docs/plans/remaining-work.md`**。
   - 开工前先读一遍。
   - 第一次回复作者时，用两三句话提醒他还剩什么没做。
