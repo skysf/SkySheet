@@ -1,11 +1,4 @@
-# 每个 PR（以及合进 main 之后）跑全部自检：scripts/check-all.sh，和本机跑的是同一个，只是拆到两台机器上。
-# main 禁止直推、必须走 PR，汇总 job 名叫 check-all，是 main 的保护规则要求必须通过的那一项（设计第十一节）。
-#
-# 两台 macOS 并行：core（编译、SkySheetChecks、SampleData 守卫）和 ui（UI 自检，自己编一份在 .build/ui-checks）。
-# 作者 2026-11-16 定：本机不再跑全量自检，CI 多用几台。仓库是公开的，GitHub 托管的 macOS runner 免费，
-# 但免费档同时最多 5 台 macOS，整个账号共用，SrtFlow 的 CI 也在用。所以一个 PR 一轮最多占 2 台；
-# SkySheetChecks 不再分片（要改自检程序本身，省几十秒，还多占 SrtFlow 的名额）。
-# 汇总的 check-all 跑在 ubuntu 上，不占 macOS 名额。
+# 两台 macOS 同时跑 Mac 自检和移动端 UI。check-all 是 main 保护规则要求的汇总项。
 name: checks
 
 on:
@@ -13,7 +6,6 @@ on:
   push:
     branches: [main]
 
-# 同一个 PR 推了新提交，旧的那一轮直接取消，别占着 macOS 机器。main 上的每一次都跑完。
 concurrency:
   group: checks-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -22,75 +14,72 @@ permissions:
   contents: read
 
 jobs:
-  core:
-    name: core
-    # 和本机的工具链（macOS 26、Swift 6.x）保持一致。
-    runs-on: macos-26
-    timeout-minutes: 20
+  verify:
+    name: ${{ matrix.suite }}
+    runs-on: ${{ matrix.host }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: core
+            host: macos-26
+            cache: .build
+            family: iPad
+            runtime: "26.5"
+          - suite: ui
+            host: macos-15
+            cache: .build/ui-checks
+            family: iPhone
+            runtime: "18.6"
     steps:
       - uses: actions/checkout@v4
 
-      - name: Toolchain versions (diagnostics)
+      - name: Select Xcode for iOS 18.6
+        if: matrix.host == 'macos-15'
+        run: echo 'DEVELOPER_DIR=/Applications/Xcode_26.3.app/Contents/Developer' >> "$GITHUB_ENV"
+
+      - name: Toolchain versions
         run: |
           sw_vers
           swift --version
+          xcodebuild -version
 
-      # core 只编 .build 下的 debug 产物；ui 的那份在 .build/ui-checks，各用各的 key，互不覆盖。
       - name: Cache SwiftPM build products
         uses: actions/cache@v4
         with:
-          path: .build
-          key: swiftpm-core-${{ runner.os }}-${{ hashFiles('Package.swift') }}
-          restore-keys: swiftpm-core-${{ runner.os }}-
+          path: ${{ matrix.cache }}
+          key: swiftpm-${{ matrix.suite }}-${{ matrix.host }}-${{ hashFiles('Package.swift') }}
+          restore-keys: swiftpm-${{ matrix.suite }}-${{ matrix.host }}-
 
-      - name: Run core checks
-        run: scripts/check-all.sh core
+      - name: Run Mac checks
+        run: scripts/check-all.sh "${{ matrix.suite }}"
 
-      # iPhone 和 iPad 使用同一套 SDK。在已有的 core 机器编译真机和模拟器目标，保持两个 macOS job 的上限。
-      - name: Build shared workbook and theme for iOS
+      - name: Build SkyFolio and verify Files, autosave and version history
+        env:
+          SKYFOLIO_SIM_FAMILY: ${{ matrix.family }}
+          SKYFOLIO_SIM_RUNTIME: ${{ matrix.runtime }}
+          SKYFOLIO_RESULTS: ${{ runner.temp }}/SkyFolio-Mobile
         run: scripts/check-ios.sh
 
-  ui:
-    name: ui
-    runs-on: macos-26
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Toolchain versions (diagnostics)
-        run: |
-          sw_vers
-          swift --version
-
-      - name: Cache SwiftPM build products
-        uses: actions/cache@v4
+      - name: Upload simulator app and test screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
         with:
-          path: .build/ui-checks
-          key: swiftpm-ui-${{ runner.os }}-${{ hashFiles('Package.swift') }}
-          restore-keys: swiftpm-ui-${{ runner.os }}-
+          name: SkyFolio-Mobile-${{ matrix.family }}
+          path: ${{ runner.temp }}/SkyFolio-Mobile
+          if-no-files-found: ignore
 
-      - name: Run UI checks
-        run: scripts/check-all.sh ui
-
-  # 保护规则只认这一个名字。always()：前面任何一个失败、被取消、被跳过，它也照样跑、照样判红；
-  # 要是它自己被跳过，GitHub 把「跳过」当成通过，就成了假绿。所以只有两边都是 success 才算过。
   check-all:
     name: check-all
-    needs: [core, ui]
+    needs: verify
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Require core and ui to succeed
+      - name: Require both Mac and mobile configurations to succeed
         env:
-          CORE_RESULT: ${{ needs.core.result }}
-          UI_RESULT: ${{ needs.ui.result }}
+          RESULT: ${{ needs.verify.result }}
         run: |
-          echo "core: ${CORE_RESULT}"
-          echo "ui:   ${UI_RESULT}"
-          if [ "${CORE_RESULT}" = "success" ] && [ "${UI_RESULT}" = "success" ]; then
-            echo "✓ core 和 ui 都通过"
-          else
-            echo "✗ core 和 ui 必须都是 success（failure、cancelled、skipped 都不算过）" >&2
-            exit 1
-          fi
+          echo "Mac and mobile checks finished with $RESULT"
+          test "$RESULT" = success

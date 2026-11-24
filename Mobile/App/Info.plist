@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>CFBundleDocumentTypes</key><array><dict>
+        <key>CFBundleTypeName</key><string>Workbook</string>
+        <key>CFBundleTypeRole</key><string>Editor</string>
+        <key>LSHandlerRank</key><string>Alternate</string>
+        <key>LSItemContentTypes</key><array>
+            <string>org.openxmlformats.spreadsheetml.sheet</string>
+            <string>public.comma-separated-values-text</string>
+            <string>public.tab-separated-values-text</string>
+        </array>
+    </dict></array>
+    <key>UTImportedTypeDeclarations</key><array><dict>
+        <key>UTTypeIdentifier</key><string>org.openxmlformats.spreadsheetml.sheet</string>
+        <key>UTTypeDescription</key><string>Excel Workbook</string>
+        <key>UTTypeConformsTo</key><array><string>public.spreadsheet</string></array>
+        <key>UTTypeTagSpecification</key><dict>
+            <key>public.filename-extension</key><array><string>xlsx</string></array>
+            <key>public.mime-type</key><string>application/vnd.openxmlformats-officedocument.spreadsheetml.sheet</string>
+        </dict>
+    </dict></array>
+    <key>LSSupportsOpeningDocumentsInPlace</key><true/>
+    <key>UIFileSharingEnabled</key><true/>
+    <key>UISupportedInterfaceOrientations</key><array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key><array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+    </array>
+</dict></plist>
