@@ -1,9 +1,9 @@
 import Foundation
 
-// MARK: - Claude 桌面版的配置里关于 skysheet 的那一项（纯值，自检测得着；设计 9.5 节、第 17 条）
+// MARK: - Claude 桌面版的配置里关于 skyfolio 的那一项（纯值，自检测得着；设计 9.5 节、第 17 条）
 //
-// `~/Library/Application Support/Claude/claude_desktop_config.json` 的 `mcpServers.skysheet`：桌面版的普通聊天启动哪一份
-// skysheet-mcp（它的 Code 页跑的是 Claude Code，用 Claude Code 自己的配置）。官方就是让用户改这个文件，没有命令行。
+// `~/Library/Application Support/Claude/claude_desktop_config.json` 的 `mcpServers.skyfolio`：桌面版的普通聊天启动哪一份
+// skyfolio-mcp（它的 Code 页跑的是 Claude Code，用 Claude Code 自己的配置）。官方就是让用户改这个文件，没有命令行。
 // 只动这一项，按原文插进、换掉或删掉（JSONText），别的原样留着；文件格式不对就报错、一个字节都不写。
 //
 // **它开着的时候，改了会被它盖掉**：桌面版启动时把整个文件读进内存，之后每次存自己的偏好（开 Code 会话、切窗格……
@@ -22,7 +22,7 @@ public enum ClaudeDesktopConfig {
     private static let serversNotObject = AIClientConfig.FormatError(
         message: "\"mcpServers\" in Claude's config file is not an object, so SkyFolio left it alone.")
 
-    /// 让 skysheet 这一项启动 `helper`。没有就加在 mcpServers 末尾（没有 mcpServers 就补上）；指着别的小程序（App 挪过
+    /// 让 skyfolio 这一项启动 `helper`。没有就加在 mcpServers 末尾（没有 mcpServers 就补上）；指着别的小程序（App 挪过
     /// 位置）就只换掉 command 那个字符串，这一项里别的（env 之类）留着。已经是它返回 nil：不用写。
     public static func connecting(helper: String, in data: Data?) throws(AIClientConfig.FormatError) -> Data? {
         let name = AIClientConfig.serverName
@@ -44,7 +44,7 @@ public enum ClaudeDesktopConfig {
         return path == helper ? nil : text.replacingValue(command.value, with: .string(helper), in: command)
     }
 
-    /// 去掉 skysheet 这一项（写了几次去几次），只删它和它的逗号；mcpServers 空了留着 `{}`。没有返回 nil：不用写。
+    /// 去掉 skyfolio 这一项（写了几次去几次），只删它和它的逗号；mcpServers 空了留着 `{}`。没有返回 nil：不用写。
     public static func disconnecting(in data: Data?) throws(AIClientConfig.FormatError) -> Data? {
         guard var text = try AIClientConfig.scan(data, invalid: notJSON) else { return nil }
         var changed = false

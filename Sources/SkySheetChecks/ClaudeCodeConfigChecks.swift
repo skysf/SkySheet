@@ -7,15 +7,15 @@ import SkySheetMCPKit
 @MainActor
 func claudeCodeConfigChecks() {
     group("claude code: reading the config") {
-        let config = Data(#"{"mcpServers":{"skysheet":{"command":"/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp"},"other":{"command":"x"}},"theme":"dark"}"#.utf8)
-        checkEqual(AIClientConfig.command(in: config), "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+        let config = Data(#"{"mcpServers":{"skyfolio":{"command":"/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp"},"other":{"command":"x"}},"theme":"dark"}"#.utf8)
+        checkEqual(AIClientConfig.command(in: config), "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                    "reads which helper Claude Code starts")
         checkEqual(AIClientConfig.command(in: Data("{}".utf8)), nil, "not connected")
-        check(ClaudeCodeConfig.allows(in: Data(#"{"permissions":{"allow":["Bash(ls:*)","mcp__skysheet"]}}"#.utf8)), "allowed")
-        check(!ClaudeCodeConfig.allows(in: Data(#"{"permissions":{"allow":["mcp__skysheet__get_status"]}}"#.utf8)),
+        check(ClaudeCodeConfig.allows(in: Data(#"{"permissions":{"allow":["Bash(ls:*)","mcp__skyfolio"]}}"#.utf8)), "allowed")
+        check(!ClaudeCodeConfig.allows(in: Data(#"{"permissions":{"allow":["mcp__skyfolio__get_status"]}}"#.utf8)),
               "only the exact rule counts")
         check(!ClaudeCodeConfig.allows(in: nil), "no settings file")
-        check(ClaudeCodeConfig.setupPrompt(helper: "/x/skysheet-mcp").contains("claude mcp add --scope user skysheet -- \"/x/skysheet-mcp\""),
+        check(ClaudeCodeConfig.setupPrompt(helper: "/x/skyfolio-mcp").contains("claude mcp add --scope user skyfolio -- \"/x/skyfolio-mcp\""),
               "the copy-paste prompt has the command")
     }
 
@@ -48,7 +48,7 @@ func claudeCodeConfigChecks() {
                 "allow": [
                   "Bash(ls:*)",
                   "mcp__srtflow",
-                  "mcp__skysheet"
+                  "mcp__skyfolio"
                 ],
                 "defaultMode": "auto"
               },
@@ -73,7 +73,7 @@ func claudeCodeConfigChecks() {
             {
               "permissions": {
                 "allow": [
-                  "mcp__skysheet"
+                  "mcp__skyfolio"
                 ],
                 "defaultMode": "auto"
               }
@@ -93,7 +93,7 @@ func claudeCodeConfigChecks() {
               "permissions": {
                 "defaultMode": "auto",
                 "allow": [
-                  "mcp__skysheet"
+                  "mcp__skyfolio"
                 ]
               }
             }
@@ -108,15 +108,15 @@ func claudeCodeConfigChecks() {
               "model" : "opus",
               "permissions" : {
                 "allow" : [
-                  "mcp__skysheet"
+                  "mcp__skyfolio"
                 ]
               }
             }
             """, "missing permissions follow the file's colons")
         checkEdit(ClaudeCodeConfig.allowing(in:), "{\r\n\t\"model\": \"opus\"\r\n}\r\n",
-                  "{\r\n\t\"model\": \"opus\",\r\n\t\"permissions\": {\r\n\t\t\"allow\": [\r\n\t\t\t\"mcp__skysheet\"\r\n\t\t]\r\n\t}\r\n}\r\n",
+                  "{\r\n\t\"model\": \"opus\",\r\n\t\"permissions\": {\r\n\t\t\"allow\": [\r\n\t\t\t\"mcp__skyfolio\"\r\n\t\t]\r\n\t}\r\n}\r\n",
                   "tabs and CRLF are kept")
-        let fresh = "{\n  \"permissions\": {\n    \"allow\": [\n      \"mcp__skysheet\"\n    ]\n  }\n}"
+        let fresh = "{\n  \"permissions\": {\n    \"allow\": [\n      \"mcp__skyfolio\"\n    ]\n  }\n}"
         checkEdit(ClaudeCodeConfig.allowing(in:), nil, fresh + "\n", "a missing file is written the way Claude Code would")
         checkEdit(ClaudeCodeConfig.allowing(in:), "{}\n", fresh + "\n", "an empty object too")
         checkEdit(ClaudeCodeConfig.disallowing(in:), nil, nil, "no file: nothing to remove")
@@ -124,39 +124,39 @@ func claudeCodeConfigChecks() {
 
     group("claude code: one-line settings") {
         checkEdit(ClaudeCodeConfig.allowing(in:), #"{"model":"opus"}"#,
-                  #"{"model":"opus","permissions":{"allow":["mcp__skysheet"]}}"#, "compact files stay compact")
+                  #"{"model":"opus","permissions":{"allow":["mcp__skyfolio"]}}"#, "compact files stay compact")
         checkEdit(ClaudeCodeConfig.allowing(in:), #"{"permissions": {"allow": ["Bash(ls:*)"]}}"#,
-                  #"{"permissions": {"allow": ["Bash(ls:*)", "mcp__skysheet"]}}"#, "spaced files stay spaced")
+                  #"{"permissions": {"allow": ["Bash(ls:*)", "mcp__skyfolio"]}}"#, "spaced files stay spaced")
         checkEdit(ClaudeCodeConfig.allowing(in:), #"{"note": "Grüße 🙂", "permissions": {"allow": []}}"#,
-                  #"{"note": "Grüße 🙂", "permissions": {"allow": ["mcp__skysheet"]}}"#, "positions count bytes, not characters")
-        checkEdit(ClaudeCodeConfig.disallowing(in:), #"{"permissions": {"allow": ["a", "mcp__skysheet", "b"]}}"#,
+                  #"{"note": "Grüße 🙂", "permissions": {"allow": ["mcp__skyfolio"]}}"#, "positions count bytes, not characters")
+        checkEdit(ClaudeCodeConfig.disallowing(in:), #"{"permissions": {"allow": ["a", "mcp__skyfolio", "b"]}}"#,
                   #"{"permissions": {"allow": ["a", "b"]}}"#, "removed from the middle")
-        checkEdit(ClaudeCodeConfig.disallowing(in:), #"{"permissions": {"allow": ["mcp__skysheet", "a"]}}"#,
+        checkEdit(ClaudeCodeConfig.disallowing(in:), #"{"permissions": {"allow": ["mcp__skyfolio", "a"]}}"#,
                   #"{"permissions": {"allow": ["a"]}}"#, "removed from the front")
-        checkEdit(ClaudeCodeConfig.disallowing(in:), #"{"permissions":{"allow":["mcp__skysheet","a","mcp__skysheet"]}}"#,
+        checkEdit(ClaudeCodeConfig.disallowing(in:), #"{"permissions":{"allow":["mcp__skyfolio","a","mcp__skyfolio"]}}"#,
                   #"{"permissions":{"allow":["a"]}}"#, "every copy is removed")
         // 转义写法也认得（s = s，_ = _）。
-        let escaped = #"{"permissions":{"allow":["mcp__skysheet"]}}"#
+        let escaped = #"{"permissions":{"allow":["mcp__skyfolio"]}}"#
         check(ClaudeCodeConfig.allows(in: Data(escaped.utf8)), "escaped rule is recognized")
         checkEdit(ClaudeCodeConfig.allowing(in:), escaped, nil, "escaped rule counts as present")
         checkEdit(ClaudeCodeConfig.disallowing(in:), escaped, #"{"permissions":{"allow":[]}}"#, "escaped rule is removed")
         // 同一个键写了两次：JavaScript 认最后一个，改的也是最后一个。
         checkEdit(ClaudeCodeConfig.allowing(in:), #"{"permissions":{"allow":["a"]},"permissions":{"allow":["b"]}}"#,
-                  #"{"permissions":{"allow":["a"]},"permissions":{"allow":["b","mcp__skysheet"]}}"#, "the last duplicate wins")
+                  #"{"permissions":{"allow":["a"]},"permissions":{"allow":["b","mcp__skyfolio"]}}"#, "the last duplicate wins")
     }
 
     group("claude code: malformed settings are left alone") {
         checkRefused(ClaudeCodeConfig.allowing(in:), #"{"permissions":{"allow":"everything"}}"#, "not a list")
         checkRefused(ClaudeCodeConfig.allowing(in:), #"{"permissions":{"allow":["a",1]}}"#, "not a list")
-        checkRefused(ClaudeCodeConfig.disallowing(in:), #"{"permissions":{"allow":"mcp__skysheet"}}"#, "not a list")
-        checkRefused(ClaudeCodeConfig.allowing(in:), #"{"permissions":["mcp__skysheet"]}"#, "not an object")
+        checkRefused(ClaudeCodeConfig.disallowing(in:), #"{"permissions":{"allow":"mcp__skyfolio"}}"#, "not a list")
+        checkRefused(ClaudeCodeConfig.allowing(in:), #"{"permissions":["mcp__skyfolio"]}"#, "not an object")
         checkRefused(ClaudeCodeConfig.allowing(in:), "{not json", "not valid JSON")
-        checkRefused(ClaudeCodeConfig.allowing(in:), #"["mcp__skysheet"]"#, "not valid JSON")
+        checkRefused(ClaudeCodeConfig.allowing(in:), #"["mcp__skyfolio"]"#, "not valid JSON")
         checkRefused(ClaudeCodeConfig.allowing(in:), "{\n  // a comment\n  \"model\": \"opus\"\n}\n", "not valid JSON")
     }
 
     group("claude code: the settings file on disk") {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("skysheet-settings-check-\(getpid())")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("skyfolio-settings-check-\(getpid())")
         try? FileManager.default.removeItem(at: folder)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -164,7 +164,7 @@ func claudeCodeConfigChecks() {
         let missing = folder.appendingPathComponent("new/settings.json").path
         try AIClientConfig.update(at: missing, ClaudeCodeConfig.allowing(in:))
         check(ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: missing)), "a missing file is created")
-        check(!FileManager.default.fileExists(atPath: missing + ".skysheet-backup"), "nothing to back up")
+        check(!FileManager.default.fileExists(atPath: missing + ".skyfolio-backup"), "nothing to back up")
 
         // 断开只删这一条：连接时补上的空 allow 列表留着，所以拿本来就有列表的文件验「一个字节不差」。
         let path = folder.appendingPathComponent("settings.json").path
@@ -173,13 +173,13 @@ func claudeCodeConfigChecks() {
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: path)
         try AIClientConfig.update(at: path, ClaudeCodeConfig.allowing(in:))
         check(ClaudeCodeConfig.allows(in: FileManager.default.contents(atPath: path)), "rule written")
-        checkEqual(FileManager.default.contents(atPath: path + ".skysheet-backup"), original, "the original is backed up first")
+        checkEqual(FileManager.default.contents(atPath: path + ".skyfolio-backup"), original, "the original is backed up first")
         checkEqual(attribute(.posixPermissions, path) as? Int, 0o600, "file permissions kept")
-        checkEqual(attribute(.posixPermissions, path + ".skysheet-backup") as? Int, 0o600,
+        checkEqual(attribute(.posixPermissions, path + ".skyfolio-backup") as? Int, 0o600,
                    "the backup is no easier to read than the file")
         try AIClientConfig.update(at: path, ClaudeCodeConfig.disallowing(in:))
         checkEqual(FileManager.default.contents(atPath: path), original, "disconnecting restores the file byte for byte")
-        checkEqual(FileManager.default.contents(atPath: path + ".skysheet-backup"), original, "the backup keeps the first original")
+        checkEqual(FileManager.default.contents(atPath: path + ".skyfolio-backup"), original, "the backup keeps the first original")
         let written = attribute(.modificationDate, path) as? Date
         try AIClientConfig.update(at: path, ClaudeCodeConfig.disallowing(in:))
         checkEqual(attribute(.modificationDate, path) as? Date, written, "nothing to change: the file is not touched")

@@ -9,7 +9,7 @@
 	<key>CFBundleExecutable</key>
 	<string>SkyFolio</string>
 	<key>CFBundleIdentifier</key>
-	<string>ai.skylu.skyfolio.preview</string>
+	<string>ai.skylu.skyfolio</string>
 	<key>CFBundleIconFile</key>
 	<string>SkyFolio</string>
 	<key>CFBundleInfoDictionaryVersion</key>
@@ -24,7 +24,7 @@
 	<key>CFBundleVersion</key>
 	<string>1</string>
 	<!-- 打包时间（UTC，ISO 8601），也由 build-app.sh 写进去：get_status 报给 AI，用户问「是什么时候的」当场答。 -->
-	<key>SkySheetBuildDate</key>
+	<key>SkyFolioBuildDate</key>
 	<string></string>
 	<key>LSMinimumSystemVersion</key>
 	<string>15.0</string>

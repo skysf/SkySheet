@@ -19,11 +19,11 @@ struct AppConnection {
     let appVersion: String
     let mayLaunch: Bool
 
-    /// 从小程序自己的位置找到它所在的 App：`SkySheet.app/Contents/Helpers/skysheet-mcp`。
+    /// 从小程序自己的位置找到它所在的 App：`SkyFolio.app/Contents/Helpers/skyfolio-mcp`。
     static func locate(environment: [String: String] = ProcessInfo.processInfo.environment) -> AppConnection {
         let appURL = environment["SKYSHEET_MCP_APP"].map { URL(fileURLWithPath: $0) } ?? enclosingApp()
         let bundle = appURL.flatMap { Bundle(url: $0) }
-        let bundleID = bundle?.bundleIdentifier ?? "ai.skylu.skysheet"
+        let bundleID = bundle?.bundleIdentifier ?? "ai.skylu.skyfolio"
         let version = MCPBridge.appVersion(of: bundle)
         return AppConnection(
             appURL: appURL,
@@ -37,7 +37,7 @@ struct AppConnection {
     private static func enclosingApp() -> URL? {
         guard let executable = Bundle.main.executableURL?.resolvingSymlinksInPath() else { return nil }
         var url = executable.deletingLastPathComponent()
-        // 最多往上找四层：Helpers → Contents → SkySheet.app。
+        // 最多往上找四层：Helpers → Contents → SkyFolio.app。
         for _ in 0..<4 {
             if url.pathExtension == "app" { return url }
             url = url.deletingLastPathComponent()

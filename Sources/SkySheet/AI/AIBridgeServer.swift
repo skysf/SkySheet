@@ -1,7 +1,7 @@
 import Foundation
 import SkySheetMCPKit
 
-// MARK: - App 这一头的通道：收 skysheet-mcp 转来的工具调用（设计 9.1 节，从 SrtFlow 搬来）
+// MARK: - App 这一头的通道：收 skyfolio-mcp 转来的工具调用（设计 9.1 节，从 SrtFlow 搬来）
 //
 // 管什么：App 启动时在自己的 Unix socket 上听（路径按 bundle id 算，见 `MCPBridge.socketPath`）；
 // 每条连接读一行请求、交给主线程上的 `AIToolRouter`、把结果写回去。
@@ -27,7 +27,7 @@ final class AIBridgeServer: @unchecked Sendable {
         // SKYSHEET_MCP_SOCKET：开发时让编出来的 App 在别的 socket 上听，和装着、开着的那一份互不相干，好拿小程序真调一遍
         // （小程序认同一个变量，docs/architecture/mcp.md 第五节）。
         let path = ProcessInfo.processInfo.environment["SKYSHEET_MCP_SOCKET"]
-            ?? MCPBridge.socketPath(bundleIdentifier: Bundle.main.bundleIdentifier ?? "ai.skylu.skysheet")
+            ?? MCPBridge.socketPath(bundleIdentifier: Bundle.main.bundleIdentifier ?? "ai.skylu.skyfolio")
         do {
             let fd = try MCPUnixSocket.listen(path: path)
             socketPath = path

@@ -2,14 +2,14 @@ import AppKit
 import Observation
 import SkySheetMCPKit
 
-/// 「连接 Claude 桌面版」（设计 9.5 节、第 17 条）：往 claude_desktop_config.json 的 mcpServers 里加 skysheet（按原文只动
-/// 这一项，第一次改之前备份；`ClaudeDesktopConfig`、`AIClientConfig.update`），桌面版的普通聊天下次启动就能用 SkySheet。
+/// 「连接 Claude 桌面版」（设计 9.5 节、第 17 条）：往 claude_desktop_config.json 的 mcpServers 里加 skyfolio（按原文只动
+/// 这一项，第一次改之前备份；`ClaudeDesktopConfig`、`AIClientConfig.update`），桌面版的普通聊天下次启动就能用 SkyFolio。
 /// 它的 Code 页跑的是 Claude Code，走 ClaudeCodeSetup 那一行。
 ///
 /// 它开着的时候会拿内存里的那份把文件整份盖掉（见 ClaudeDesktopConfig）：所以点的时候它开着，就记下要的结果，在它退出
-/// 那一刻再写一遍（那时没人盖了），提示用户退出再打开 Claude。SkySheet 先退出的话这一步就没人做了：提示里说了要开着；
+/// 那一刻再写一遍（那时没人盖了），提示用户退出再打开 Claude。SkyFolio 先退出的话这一步就没人做了：提示里说了要开着；
 /// 真被盖掉了，设置里显示没连上，再点一次就好。
-/// 「总是允许」存在它自己那里，SkySheet 写不了：连上以后的提示里告诉用户在哪点。
+/// 「总是允许」存在它自己那里，SkyFolio 写不了：连上以后的提示里告诉用户在哪点。
 @MainActor
 @Observable
 final class ClaudeDesktopSetup {

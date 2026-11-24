@@ -61,18 +61,18 @@ jobs:
           PLIST="${APP}/Contents/Info.plist"
           fail() { echo "✗ $1" >&2; exit 1; }
           [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleDisplayName' "${PLIST}")" = "SkyFolio" ] || fail "显示名有误"
-          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${PLIST}")" = "ai.skylu.skyfolio.preview" ] || fail "预览版标识有误"
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "${PLIST}")" = "ai.skylu.skyfolio" ] || fail "正式版标识有误"
           [ -x "${APP}/Contents/MacOS/SkyFolio" ] || fail "缺 Contents/MacOS/SkyFolio"
-          [ -x "${APP}/Contents/Helpers/skysheet-mcp" ] || fail "缺 Contents/Helpers/skysheet-mcp"
+          [ -x "${APP}/Contents/Helpers/skyfolio-mcp" ] || fail "缺 Contents/Helpers/skyfolio-mcp"
           PLIST_VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "${PLIST}")"
           [ "${PLIST_VERSION}" = "${VERSION}" ] || fail "Info.plist 的版本号是 ${PLIST_VERSION}，不是 ${VERSION}"
           # Info.plist 里占位的版本号就是 0.0.0，所以再看打包时间：有值说明 build-app.sh 真的写过 Info.plist。
-          BUILD_DATE="$(/usr/libexec/PlistBuddy -c 'Print :SkySheetBuildDate' "${PLIST}")"
-          [ -n "${BUILD_DATE}" ] || fail "Info.plist 的 SkySheetBuildDate 是空的"
+          BUILD_DATE="$(/usr/libexec/PlistBuddy -c 'Print :SkyFolioBuildDate' "${PLIST}")"
+          [ -n "${BUILD_DATE}" ] || fail "Info.plist 的 SkyFolioBuildDate 是空的"
           ICON="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIconFile' "${PLIST}")"
           [ -s "${APP}/Contents/Resources/${ICON}.icns" ] || fail "缺图标 Contents/Resources/${ICON}.icns"
           # 只支持 M 芯片：两个可执行文件都得是 arm64。lipo -archs 一次只收一个文件。
-          for BIN in "${APP}/Contents/MacOS/SkyFolio" "${APP}/Contents/Helpers/skysheet-mcp"; do
+          for BIN in "${APP}/Contents/MacOS/SkyFolio" "${APP}/Contents/Helpers/skyfolio-mcp"; do
             ARCHS="$(lipo -archs "${BIN}")"
             [ "${ARCHS}" = "arm64" ] || fail "${BIN} 的架构是 ${ARCHS}，不是 arm64"
           done

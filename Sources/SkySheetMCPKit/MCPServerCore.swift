@@ -39,7 +39,7 @@ public final class MCPServerCore: @unchecked Sendable {
     public static let modernVersions = ["2026-07-28"]
     public static var supportedVersions: [String] { modernVersions + legacyVersions }
 
-    public static let serverName = "skysheet"
+    public static let serverName = "skyfolio"
 
     private let serverVersion: String
     private let lock = NSLock()

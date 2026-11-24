@@ -3,9 +3,9 @@ import Observation
 import SkySheetMCPKit
 
 /// 「连接 Claude Code」（设计 9.5 节，照 SrtFlow 的 AIClientSetup；Claude 桌面版是另一家，见 ClaudeDesktopSetup）：
-/// 跑 `claude mcp add --scope user skysheet -- <包里的 skysheet-mcp>`，再往 ~/.claude/settings.json 的 permissions.allow 里加
-/// `mcp__skysheet`（按原文只插这一条，第一次改之前备份；`AIClientConfig.update`）。找不到 claude 命令行就给「复制一段话」。
-/// 状态有五种：没装 Claude Code / 没连接 / 已连接 / 连着但每次都会问（没放行）/ 连着另一份 SkySheet（App 挪过位置）。
+/// 跑 `claude mcp add --scope user skyfolio -- <包里的 skyfolio-mcp>`，再往 ~/.claude/settings.json 的 permissions.allow 里加
+/// `mcp__skyfolio`（按原文只插这一条，第一次改之前备份；`AIClientConfig.update`）。找不到 claude 命令行就给「复制一段话」。
+/// 状态有五种：没装 Claude Code / 没连接 / 已连接 / 连着但每次都会问（没放行）/ 连着另一份 SkyFolio（App 挪过位置）。
 @MainActor
 @Observable
 final class ClaudeCodeSetup {

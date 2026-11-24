@@ -35,7 +35,7 @@ fi
 echo "==> swift build -c release（arm64）"
 swift build -c release --arch arm64 --product "${SWIFT_PRODUCT}"
 # Claude Code 启动的 MCP 小程序，放进 Contents/Helpers（设计第三节、9.1 节）。
-swift build -c release --arch arm64 --product skysheet-mcp
+swift build -c release --arch arm64 --product skyfolio-mcp
 BUILD_DIR="$(swift build -c release --arch arm64 --show-bin-path)"
 
 APP="${DIST}/${APP_NAME}.app"
@@ -45,11 +45,11 @@ mkdir -p "${APP}/Contents/MacOS" "${APP}/Contents/Resources"
 cp "${BUILD_DIR}/${SWIFT_PRODUCT}" "${APP}/Contents/MacOS/${APP_NAME}"
 strip -xS "${APP}/Contents/MacOS/${APP_NAME}" 2>/dev/null || true
 
-echo "==> 内置 skysheet-mcp"
+echo "==> 内置 skyfolio-mcp"
 mkdir -p "${APP}/Contents/Helpers"
-cp "${BUILD_DIR}/skysheet-mcp" "${APP}/Contents/Helpers/skysheet-mcp"
-strip -xS "${APP}/Contents/Helpers/skysheet-mcp" 2>/dev/null || true
-chmod +x "${APP}/Contents/Helpers/skysheet-mcp"
+cp "${BUILD_DIR}/skyfolio-mcp" "${APP}/Contents/Helpers/skyfolio-mcp"
+strip -xS "${APP}/Contents/Helpers/skyfolio-mcp" 2>/dev/null || true
+chmod +x "${APP}/Contents/Helpers/skyfolio-mcp"
 
 # SwiftPM 的资源包（以后加中文翻译的 .lproj 会在这里）：内容铺进 Contents/Resources，Bundle.main 才找得到。
 RESOURCES="${BUILD_DIR}/${SWIFT_PRODUCT}_${SWIFT_PRODUCT}.bundle"
@@ -63,7 +63,7 @@ rm -f "${APP}/Contents/Resources/Info.plist"
 cp packaging/Info.plist "${APP}/Contents/Info.plist"
 /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${VERSION}" "${APP}/Contents/Info.plist"
 # 打包时间：用户问 AI「SkyFolio 是什么时候的」，get_status 当场答，不用上网找。
-/usr/libexec/PlistBuddy -c "Set :SkySheetBuildDate $(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APP}/Contents/Info.plist"
+/usr/libexec/PlistBuddy -c "Set :SkyFolioBuildDate $(date -u +%Y-%m-%dT%H:%M:%SZ)" "${APP}/Contents/Info.plist"
 
 echo "==> 生成图标"
 ICON_WORK="$(mktemp -d)"

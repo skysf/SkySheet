@@ -1,4 +1,4 @@
-# SkySheet
+# SkyFolio
 
 一个给 AI 用的轻量 macOS 表格工具：打开 xlsx / csv 看数据，让 Claude Code 通过 MCP 读表、计算贷款和理财的数，
 把结果写进新的 sheet，原始数据永远不动。
@@ -9,7 +9,7 @@ Mac 上 AI 在获准的工作表中所做的改动默认也自动保存。历史
 
 CSV 和 TSV 交给其他软件时带第一张表的值。本机历史另外保留公式、样式和其他工作表，需要把这些内容带到另一台设备时可以另存为 xlsx。
 
-Claude Code 通过 MCP（`skysheet`，14 个工具）读表、跑 SQL、
+Claude Code 通过 MCP（`skyfolio`，14 个工具）读表、跑 SQL、
 算公式，把结果写进紫色页签的新 sheet，原始 sheet 对它只读。设置（⌘,）里点「Connect」就连上 Claude Code，
 Claude 桌面版的聊天那一行同样一点（重启一次 Claude）。
 设计见 [docs/plans/2026-10-08-skysheet-design.md](docs/plans/2026-10-08-skysheet-design.md)。
@@ -23,4 +23,4 @@ Claude 桌面版的聊天那一行同样一点（重启一次 Claude）。
 A lightweight macOS spreadsheet built for AI: open an xlsx or csv file, let Claude Code read and compute through MCP,
 and get the results in new sheets while the original sheets stay read-only to AI. Edits autosave with local version
 history, backups and read-back verification. The same workbook engine powers SkyFolio on iPhone and iPad. Claude Code or the Claude desktop
-app's chats connect through MCP (`skysheet`, 14 tools; Settings → Connect).
+app's chats connect through MCP (`skyfolio`, 14 tools; Settings → Connect).

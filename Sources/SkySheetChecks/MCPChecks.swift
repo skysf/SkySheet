@@ -2,7 +2,7 @@ import Foundation
 import SkySheetCore
 import SkySheetMCPKit
 
-/// 小程序（skysheet-mcp）说的 MCP 对不对（设计第十二节第 6 条，照搬 SrtFlow 的检查）：真的把它当子进程起起来，
+/// 小程序（skyfolio-mcp）说的 MCP 对不对（设计第十二节第 6 条，照搬 SrtFlow 的检查）：真的把它当子进程起起来，
 /// 从 stdin 喂消息、读 stdout，旁边起一个假 App 在临时 socket 上听，看工具调用有没有原样转过去、回答有没有原样回来。
 /// 两代客户端都验。外加给模型看的文字：总说明和每个工具的说明都在 2,048 个字符以内、没有汉字、目录里有每个工具名。
 @MainActor
@@ -56,14 +56,16 @@ func mcpChecks() {
                 .write(to: app.appendingPathComponent("Contents/Info.plist"))
             return Bundle(url: app)
         }
-        let built = try packaged(["CFBundleShortVersionString": "9.8.7", "SkySheetBuildDate": "2026-10-14T05:30:00Z"])
+        let built = try packaged(["CFBundleShortVersionString": "9.8.7", "SkyFolioBuildDate": "2026-10-14T05:30:00Z"])
         checkEqual(MCPBridge.appVersion(of: built), "9.8.7", "the packaged version is read from Info.plist")
         checkEqual(MCPBridge.appBuildDate(of: built), "2026-10-14T05:30:00Z", "so is the build date")
-        checkEqual(MCPBridge.appBuildDate(of: try packaged(["SkySheetBuildDate": ""])), nil, "the template's empty placeholder")
+        let legacy = try packaged(["SkySheetBuildDate": "2026-10-14T05:30:00Z"])
+        checkEqual(MCPBridge.appBuildDate(of: legacy), "2026-10-14T05:30:00Z", "legacy bundle metadata is readable")
+        checkEqual(MCPBridge.appBuildDate(of: try packaged(["SkyFolioBuildDate": ""])), nil, "the template's empty placeholder")
     }
 
     guard let helper = helperURL() else {
-        group("mcp: helper") { fail("skysheet-mcp is not next to SkySheetChecks; build with swift build first") }
+        group("mcp: helper") { fail("skyfolio-mcp is not next to SkySheetChecks; build with swift build first") }
         return
     }
     let app: FakeApp
@@ -87,7 +89,7 @@ func mcpChecks() {
         ])
         let initialize = reply(messages, id: 1)?["result"]
         checkEqual(initialize?["protocolVersion"]?.stringValue, "2025-06-18", "a known legacy version is echoed")
-        checkEqual(initialize?["serverInfo"]?["name"]?.stringValue, "skysheet", "server name")
+        checkEqual(initialize?["serverInfo"]?["name"]?.stringValue, "skyfolio", "server name")
         checkEqual(initialize?["instructions"]?.stringValue, MCPInstructions.text, "instructions sent")
         let tools = reply(messages, id: 2)?["result"]?["tools"]?.arrayValue ?? []
         checkEqual(tools.compactMap { $0["name"]?.stringValue }, MCPToolName.allCases.map(\.rawValue), "tools/list order")
@@ -136,7 +138,7 @@ func mcpChecks() {
 /// 自检程序和小程序编在同一个文件夹里（swift build 一起编）。
 private func helperURL() -> URL? {
     guard let checks = Bundle.main.executableURL else { return nil }
-    let url = checks.deletingLastPathComponent().appendingPathComponent("skysheet-mcp")
+    let url = checks.deletingLastPathComponent().appendingPathComponent("skyfolio-mcp")
     return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
 }
 

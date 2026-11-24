@@ -1,11 +1,11 @@
 import Foundation
 import SkySheetMCPKit
 
-/// 连接 Claude 桌面版时改它的 claude_desktop_config.json（设计 9.5 节）：只插进、换掉或删掉 skysheet 那一项，别的字节
+/// 连接 Claude 桌面版时改它的 claude_desktop_config.json（设计 9.5 节）：只插进、换掉或删掉 skyfolio 那一项，别的字节
 /// 一个不动（文件里大半是桌面版自己的偏好）；格式不对一个字节都不写；备份的权限跟着原文件（它只许自己读）。
 @MainActor
 func claudeDesktopConfigChecks() {
-    let helper = "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp"
+    let helper = "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp"
     let connect = { (data: Data?) throws(AIClientConfig.FormatError) -> Data? in
         try ClaudeDesktopConfig.connecting(helper: helper, in: data)
     }
@@ -36,8 +36,8 @@ func claudeDesktopConfigChecks() {
                 "keepAwakeEnabled": true
               },
               "mcpServers": {
-                "skysheet": {
-                  "command": "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": []
                 }
               }
@@ -64,7 +64,7 @@ func claudeDesktopConfigChecks() {
               }
             }
             """
-        let withSkySheet = """
+        let withSkyFolio = """
             {
               "mcpServers": {
                 "other": {
@@ -73,8 +73,8 @@ func claudeDesktopConfigChecks() {
                     "--stdio"
                   ]
                 },
-                "skysheet": {
-                  "command": "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": []
                 }
               },
@@ -83,8 +83,8 @@ func claudeDesktopConfigChecks() {
               }
             }
             """
-        checkEdit(connect, others, withSkySheet, "joins the other servers")
-        checkEdit(disconnect, withSkySheet, others, "disconnecting gives back the same bytes")
+        checkEdit(connect, others, withSkyFolio, "joins the other servers")
+        checkEdit(disconnect, withSkyFolio, others, "disconnecting gives back the same bytes")
 
         let empty = """
             {
@@ -97,8 +97,8 @@ func claudeDesktopConfigChecks() {
         let filled = """
             {
               "mcpServers": {
-                "skysheet": {
-                  "command": "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": []
                 }
               },
@@ -113,8 +113,8 @@ func claudeDesktopConfigChecks() {
         let fresh = """
             {
               "mcpServers": {
-                "skysheet": {
-                  "command": "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": []
                 }
               }
@@ -124,13 +124,13 @@ func claudeDesktopConfigChecks() {
         checkEdit(connect, "{}", fresh, "an empty object too")
     }
 
-    group("claude desktop: another copy of SkySheet") {
+    group("claude desktop: another copy of SkyFolio") {
         // App 挪过位置：只换 command，用户加的 env 留着。
         checkEdit(connect, """
             {
               "mcpServers": {
-                "skysheet": {
-                  "command": "/Users/me/Downloads/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Users/me/Downloads/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": [],
                   "env": {
                     "DEBUG": "1"
@@ -141,8 +141,8 @@ func claudeDesktopConfigChecks() {
             """, """
             {
               "mcpServers": {
-                "skysheet": {
-                  "command": "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": [],
                   "env": {
                     "DEBUG": "1"
@@ -155,27 +155,27 @@ func claudeDesktopConfigChecks() {
         let replaced = """
             {
               "mcpServers": {
-                "skysheet": {
-                  "command": "/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp",
+                "skyfolio": {
+                  "command": "/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp",
                   "args": []
                 }
               }
             }
             """
-        checkEdit(connect, "{\n  \"mcpServers\": {\n    \"skysheet\": \"broken\"\n  }\n}", replaced, "a broken entry is rewritten")
-        checkEdit(connect, "{\n  \"mcpServers\": {\n    \"skysheet\": {}\n  }\n}", replaced, "an entry without a command too")
+        checkEdit(connect, "{\n  \"mcpServers\": {\n    \"skyfolio\": \"broken\"\n  }\n}", replaced, "a broken entry is rewritten")
+        checkEdit(connect, "{\n  \"mcpServers\": {\n    \"skyfolio\": {}\n  }\n}", replaced, "an entry without a command too")
     }
 
     group("claude desktop: one-line configs") {
         checkEdit(connect, #"{"mcpServers":{"other":{"command":"x"}}}"#,
-                  #"{"mcpServers":{"other":{"command":"x"},"skysheet":{"command":"/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp","args":[]}}}"#,
+                  #"{"mcpServers":{"other":{"command":"x"},"skyfolio":{"command":"/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp","args":[]}}}"#,
                   "compact files stay compact")
-        checkEdit(disconnect, #"{"mcpServers": {"skysheet": {"command": "a"}, "other": {"command": "x"}}}"#,
+        checkEdit(disconnect, #"{"mcpServers": {"skyfolio": {"command": "a"}, "other": {"command": "x"}}}"#,
                   #"{"mcpServers": {"other": {"command": "x"}}}"#, "removed from the front")
-        checkEdit(disconnect, #"{"mcpServers":{"skysheet":{"command":"a"},"x":{"command":"b"},"skysheet":{"command":"c"}}}"#,
+        checkEdit(disconnect, #"{"mcpServers":{"skyfolio":{"command":"a"},"x":{"command":"b"},"skyfolio":{"command":"c"}}}"#,
                   #"{"mcpServers":{"x":{"command":"b"}}}"#, "every copy is removed")
         // 同一个键写了两次：JavaScript 认最后一个，看的、改的也是最后一个。
-        checkEdit(connect, #"{"mcpServers":{"skysheet":{"command":"old"},"skysheet":{"command":"/Applications/SkySheet.app/Contents/Helpers/skysheet-mcp"}}}"#,
+        checkEdit(connect, #"{"mcpServers":{"skyfolio":{"command":"old"},"skyfolio":{"command":"/Applications/SkyFolio.app/Contents/Helpers/skyfolio-mcp"}}}"#,
                   nil, "the last duplicate decides")
     }
 
@@ -184,12 +184,12 @@ func claudeDesktopConfigChecks() {
         checkRefused(connect, "[]", "not valid JSON")
         checkRefused(connect, "{\n  // a comment\n  \"mcpServers\": {}\n}", "not valid JSON")
         checkRefused(connect, #"{"mcpServers":[]}"#, "not an object")
-        checkRefused(connect, #"{"mcpServers":"skysheet"}"#, "not an object")
-        checkRefused(disconnect, #"{"mcpServers":["skysheet"]}"#, "not an object")
+        checkRefused(connect, #"{"mcpServers":"skyfolio"}"#, "not an object")
+        checkRefused(disconnect, #"{"mcpServers":["skyfolio"]}"#, "not an object")
     }
 
     group("claude desktop: the config file on disk") {
-        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("skysheet-desktop-check-\(getpid())")
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("skyfolio-desktop-check-\(getpid())")
         try? FileManager.default.removeItem(at: folder)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -204,8 +204,8 @@ func claudeDesktopConfigChecks() {
         try AIClientConfig.update(at: path, connect)
         checkEqual(AIClientConfig.command(in: FileManager.default.contents(atPath: path)), helper, "entry written")
         checkEqual(attribute(.posixPermissions, path) as? Int, 0o600, "file permissions kept")
-        checkEqual(FileManager.default.contents(atPath: path + ".skysheet-backup"), original, "the original is backed up first")
-        checkEqual(attribute(.posixPermissions, path + ".skysheet-backup") as? Int, 0o600, "the backup is private too")
+        checkEqual(FileManager.default.contents(atPath: path + ".skyfolio-backup"), original, "the original is backed up first")
+        checkEqual(attribute(.posixPermissions, path + ".skyfolio-backup") as? Int, 0o600, "the backup is private too")
         let written = attribute(.modificationDate, path) as? Date
         try AIClientConfig.update(at: path, connect)
         checkEqual(attribute(.modificationDate, path) as? Date, written, "connecting twice does not touch the file")

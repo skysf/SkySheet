@@ -1,10 +1,10 @@
 import Foundation
 
-// MARK: - Claude Code 的配置文件里关于 skysheet 的那几处（纯值，自检测得着；设计 9.5 节，从 SrtFlow 的 AIClientConfigFiles 搬来）
+// MARK: - Claude Code 的配置文件里关于 skyfolio 的那几处（纯值，自检测得着；设计 9.5 节，从 SrtFlow 的 AIClientConfigFiles 搬来）
 //
-// - `~/.claude.json` 的 `mcpServers.skysheet.command`（`AIClientConfig.command`）：连的是哪一份 skysheet-mcp。**只读**：
+// - `~/.claude.json` 的 `mcpServers.skyfolio.command`（`AIClientConfig.command`）：连的是哪一份 skyfolio-mcp。**只读**：
 //   正在跑的 Claude Code 会整份重写它，直接改会被冲掉，所以连接走它自己的命令行 `claude mcp add`。
-// - `~/.claude/settings.json` 的 `permissions.allow` 里加 `mcp__skysheet`：放行 SkySheet 的全部工具，不用每个都点一次
+// - `~/.claude/settings.json` 的 `permissions.allow` 里加 `mcp__skyfolio`：放行 SkyFolio 的全部工具，不用每个都点一次
 //   「允许」。只动这一条，别的原样留着：**按原文插进或删掉这一条（JSONText），不整份解析再写回**（v0.3.0 整份重写过，
 //   键被排序、空格全变）。文件格式不对就报错、一个字节都不写。改文件走 `AIClientConfig.update`。
 

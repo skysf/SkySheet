@@ -17,7 +17,7 @@ enum AIClientStatus: Equatable {
 /// 包里的那个小程序：AI 客户端启动的就是它。`swift run` 直接跑的开发版里没有它。
 enum AIHelper {
     static var url: URL? {
-        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/skysheet-mcp")
+        let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/skyfolio-mcp")
         return FileManager.default.isExecutableFile(atPath: url.path) ? url : nil
     }
 }

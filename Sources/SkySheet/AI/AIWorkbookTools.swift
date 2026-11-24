@@ -9,12 +9,16 @@ import SkySheetMCPKit
 enum AIWorkbookTools {
     static func status() -> AIToolResult {
         let documents = AIWorkbooks.open
-        guard !documents.isEmpty else {
-            return .ok(["skysheet": app, "workbooks": [],
-                        "next_step": "No workbook is open. Ask the user which file to use, then call open_file."])
+        let info = app
+        // 旧客户端按 skysheet 取版本，新客户端使用与文稿类型无关的 app 键。
+        var result: [String: JSONValue] = ["app": info, "skysheet": info, "workbooks": []]
+        if documents.isEmpty {
+            result["next_step"] = "No workbook is open. Ask the user which file to use, then call open_file."
+        } else {
+            let current = try? AIWorkbooks.context(AIToolArguments([:])).document
+            result["workbooks"] = .array(documents.map { summary($0, current: $0 === current) })
         }
-        let current = try? AIWorkbooks.context(AIToolArguments([:])).document
-        return .ok(["skysheet": app, "workbooks": .array(documents.map { summary($0, current: $0 === current) })])
+        return .ok(.object(result))
     }
 
     /// 这个 SkySheet 是哪一版、什么时候打的包。模型看不到握手里 serverInfo 的版本：用户问「SkySheet 是什么版本、

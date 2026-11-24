@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 给组装好的 SkySheet.app 签名（build-app.sh 只经这一处签，设计第十一节）。
 #
-# 先签 Contents/Helpers 里的可执行文件（M4 起有 skysheet-mcp）、再签外层：顺序反了外层签名立即失效。
+# 先签 Contents/Helpers 里的可执行文件（M4 起有 skyfolio-mcp）、再签外层：顺序反了外层签名立即失效。
 #
 # 用哪把签：
 # - 有发布用的签名身份（scripts/signing/create-identity.sh 建在 ~/.config/skylu/signing/）就用它。签名的
