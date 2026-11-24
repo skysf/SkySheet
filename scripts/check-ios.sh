@@ -10,6 +10,12 @@ xcodebuild "${settings[@]}" -destination 'generic/platform=iOS' CODE_SIGNING_ALL
 xcodebuild "${settings[@]}" -destination 'generic/platform=iOS Simulator' build-for-testing
 app="$work/build/Build/Products/Debug-iphonesimulator/SkyFolio.app"
 ditto -c -k --keepParent "$app" "$results/SkyFolio-Simulator.zip"
+source_app="$work/Picker Samples.app"
+mkdir -p "$source_app"
+cp Mobile/UITests/FileSource/Info.plist "$source_app/Info.plist"
+xcrun --sdk iphonesimulator swiftc -sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+  -target arm64-apple-ios18.0-simulator -module-name SkyFolioTestSource \
+  Mobile/UITests/FileSource/main.swift -o "$source_app/FileSource"
 
 xcrun simctl list devices available --json > "$work/devices.json"
 python3 - "$work/devices.json" "${SKYFOLIO_SIM_RUNTIME:-}" "${SKYFOLIO_SIM_FAMILY:-}" > "$work/selected" <<'PY'
@@ -50,8 +56,9 @@ while read -r family hardware runtime <&3; do
   device="$(xcrun simctl create "SkyFolio checks $family" "$hardware" "$runtime")"
   xcrun simctl bootstatus "$device" -b
   xcrun simctl install "$device" "$app"
+  xcrun simctl install "$device" "$source_app"
   container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
-  # 在系统 Files 自己的「我的 iPhone / iPad」放样本，和 SkyFolio 的 Documents 分开。
+  source_app_data="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio.tests.filesource data)"
   xcrun simctl launch "$device" com.apple.DocumentsApp
   # 这个共享目录在部分 runtime 属于提供方扩展，Files 主应用的 get_app_container 查不到。
   source_container="$(python3 - "$container" <<'PY'
@@ -72,12 +79,9 @@ for _ in range(30):
 sys.exit(f"Local File Provider group unavailable. Found {sorted(providers)}")
 PY
 )"
-  provider_file="$source_container/File Provider Storage/Picker Seed.csv"
-  mkdir -p "$(dirname "$provider_file")"
-  printf '31,93\n' > "$provider_file"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
-  # 苹果自己的 Files 先建立副本；编辑与重开两个用例运行期间，由提供方完成索引。
+  # 让另一个应用用系统的导出面板创建文稿，再从 SkyFolio 的打开面板选择它。
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
     -only-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
     -collect-test-diagnostics never -resultBundlePath "$work/$family-prepare.xcresult" test-without-building; then
@@ -96,16 +100,17 @@ for version in sorted(history.glob("*/*.json")):
     print("Simulator history", version.parent.name, json.loads(version.read_bytes())["title"])
 PY
     xcrun simctl spawn "$device" log show --last 12m --info --style compact \
-      --predicate '(subsystem BEGINSWITH "com.apple.FileProvider" OR subsystem BEGINSWITH "com.apple.DocumentManager") AND (messageType == error OR eventMessage CONTAINS[c] "pick" OR eventMessage CONTAINS[c] "materializ")' \
+      --predicate 'subsystem == "ai.skylu.skyfolio" OR ((subsystem BEGINSWITH "com.apple.FileProvider" OR subsystem BEGINSWITH "com.apple.DocumentManager") AND (messageType == error OR eventMessage CONTAINS[c] "pick" OR eventMessage CONTAINS[c] "materializ"))' \
       > "$results/$family-files.log" || true
   else
-    python3 - "$provider_file" <<'PY'
+    python3 - "$source_app_data" "$source_container/File Provider Storage" <<'PY'
 import csv, pathlib, sys
-seed = pathlib.Path(sys.argv[1])
-assert seed.read_bytes() == b"31,93\n", "The seed itself was modified"
-copies = [item for item in seed.parent.glob("Picker Seed*.csv") if item != seed]
-assert len(copies) == 1, f"Expected one document created by Files, found {copies}"
-with copies[0].open(newline="", encoding="utf-8-sig") as file:
+source = pathlib.Path(sys.argv[1])
+assert (source / "tmp/Exported Workbook.csv").read_bytes() == b"31,93\n"
+external = {path.resolve() for folder in (source / "Documents", pathlib.Path(sys.argv[2]))
+            for path in folder.rglob("Exported Workbook.csv")}
+assert len(external) == 1, f"Expected one external document created by Files, found {external}"
+with external.pop().open(newline="", encoding="utf-8-sig") as file:
     assert list(csv.reader(file)) == [["31", "93"], ["", "47"]], "External provider did not receive the edit"
 PY
   fi

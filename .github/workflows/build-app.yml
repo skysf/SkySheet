@@ -108,9 +108,8 @@ jobs:
       max-parallel: 5
       matrix:
         include:
-          - { host: macos-15, family: iPad, runtime: "26.2" }
-          - { host: macos-15, family: iPhone, runtime: "18.6" }
-          - { host: macos-15, family: iPad, runtime: "18.6" }
+          - { host: macos-26, family: iPhone, runtime: "26.2" }
+          - { host: macos-26, family: iPad, runtime: "26.5" }
     steps:
       - uses: actions/checkout@v4
       - name: Inspect host and installed runtimes

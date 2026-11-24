@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import OSLog
 import SkyFolioTheme
 import SkySheetFiles
 
@@ -9,6 +10,7 @@ struct SkyFolioApp: App {
 }
 
 struct WorkbookLibrary: View {
+    private static let log = Logger(subsystem: "ai.skylu.skyfolio", category: "Documents")
     @Environment(\.scenePhase) private var phase
     @State private var book: MobileWorkbook?
     @State private var localFiles: [URL] = []
@@ -49,9 +51,14 @@ struct WorkbookLibrary: View {
         // 部分文件提供方只报 public.data，能否读由所选文件的扩展名和实际解析共同确定。
         .fileImporter(isPresented: $picker, allowedContentTypes: [.data]) { result in
             switch result {
-            case .success(let url): open(url)
+            case .success(let url):
+                Self.log.info("Files delivered a document URL")
+                open(url)
             case .failure(let error) where (error as? CocoaError)?.code == .userCancelled: break
-            case .failure(let error): problem = error.localizedDescription
+            case .failure(let error):
+                let failure = error as NSError
+                Self.log.error("Files selection failed: \(failure.domain, privacy: .public) \(failure.code)")
+                problem = error.localizedDescription
             }
         }
         .onAppear { refresh() }
@@ -90,7 +97,11 @@ struct WorkbookLibrary: View {
             do {
                 let loaded = try await MobileWorkbook.open(access)
                 if opening == request { book = loaded }
-            } catch { if opening == request { problem = error.localizedDescription } }
+            } catch {
+                let failure = error as NSError
+                Self.log.error("Opening delivered file failed: \(failure.domain, privacy: .public) \(failure.code)")
+                if opening == request { problem = error.localizedDescription }
+            }
         }
     }
 }
