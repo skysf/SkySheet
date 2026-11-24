@@ -6,8 +6,20 @@ final class WorkbookUITests: XCTestCase {
         let source = XCUIApplication(bundleIdentifier: "ai.skylu.skyfolio.tests.filesource")
         source.launch()
         source.buttons["export-sample"].tap()
+        let appFolder = source.buttons["Picker Samples, Actions Menu"]
+        XCTAssertTrue(appFolder.waitForExistence(timeout: 60), source.debugDescription)
+        let back = source.buttons["BackButton"]
+        if back.isHittable, ["On My iPhone", "On My iPad"].contains(back.label) {
+            back.tap()
+        } else {
+            let local = source.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
+            XCTAssertTrue(local.wait(for: \.isHittable, toEqual: true, timeout: 30), source.debugDescription)
+            local.tap()
+        }
+        XCTAssertTrue(appFolder.waitForNonExistence(timeout: 30), source.debugDescription)
         let save = source.buttons["Save"]
         XCTAssertTrue(save.wait(for: \.isHittable, toEqual: true, timeout: 45), source.debugDescription)
+        XCTAssertTrue(save.wait(for: \.isEnabled, toEqual: true, timeout: 45), source.debugDescription)
         save.tap()
         XCTAssertTrue(source.buttons["export-sample"].wait(for: \.label, toEqual: "Exported", timeout: 45), source.debugDescription)
         source.terminate()

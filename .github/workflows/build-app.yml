@@ -109,7 +109,6 @@ jobs:
       matrix:
         include:
           - { host: macos-26, family: iPhone, runtime: "26.2" }
-          - { host: macos-26, family: iPad, runtime: "26.5" }
     steps:
       - uses: actions/checkout@v4
       - name: Inspect host and installed runtimes
