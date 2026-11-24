@@ -10,7 +10,7 @@ final class WorkbookUITests: XCTestCase {
         let picker = app.descendants(matching: .any)
             .matching(NSPredicate(format: "identifier == %@ OR identifier BEGINSWITH %@", "Browse View (Picker)", "DOC.")).firstMatch
         XCTAssertTrue(picker.waitForExistence(timeout: 60), app.debugDescription)
-        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "From Files")).firstMatch
+        let file = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@", "Picker Seed,")).firstMatch
         if !file.waitForExistence(timeout: 5) {
             let back = app.buttons["BackButton"]
             let local = app.cells.matching(NSPredicate(format: "label IN %@", ["On My iPhone", "On My iPad"])).firstMatch
@@ -27,7 +27,15 @@ final class WorkbookUITests: XCTestCase {
             }
         }
         XCTAssertTrue(file.wait(for: \.isHittable, toEqual: true, timeout: 40), app.debugDescription)
-        file.tap()
+        // 经过系统提供方创建一个文稿，让 Files 自己分配和登记文件标识。
+        file.press(forDuration: 1.2)
+        let duplicate = app.descendants(matching: .any).matching(NSPredicate(format: "label == %@", "Duplicate")).firstMatch
+        XCTAssertTrue(duplicate.wait(for: \.isHittable, toEqual: true, timeout: 20), app.debugDescription)
+        duplicate.tap()
+        let copy = app.cells.matching(NSPredicate(format: "label BEGINSWITH[c] %@ AND NOT (label BEGINSWITH[c] %@)",
+                                                  "Picker Seed", "Picker Seed,")).firstMatch
+        XCTAssertTrue(copy.wait(for: \.isHittable, toEqual: true, timeout: 30), app.debugDescription)
+        copy.tap()
         editExternalCSV(in: app)
     }
 

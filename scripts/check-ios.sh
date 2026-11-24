@@ -59,7 +59,7 @@ for _ in range(30):
 sys.exit(f"Local File Provider group unavailable. Found {sorted(providers)}")
 PY
 )"
-  provider_file="$source_container/File Provider Storage/From Files.csv"
+  provider_file="$source_container/File Provider Storage/Picker Seed.csv"
   mkdir -p "$(dirname "$provider_file")"
   printf '31,93\n' > "$provider_file"
   mkdir -p "$container/Documents"
@@ -79,8 +79,12 @@ PY
       > "$results/$family-files.log" || true
   else
     python3 - "$provider_file" <<'PY'
-import csv, sys
-with open(sys.argv[1], newline="", encoding="utf-8-sig") as file:
+import csv, pathlib, sys
+seed = pathlib.Path(sys.argv[1])
+assert seed.read_bytes() == b"31,93\n", "The seed itself was modified"
+copies = [item for item in seed.parent.glob("Picker Seed*.csv") if item != seed]
+assert len(copies) == 1, f"Expected one document created by Files, found {copies}"
+with copies[0].open(newline="", encoding="utf-8-sig") as file:
     assert list(csv.reader(file)) == [["31", "93"], ["", "47"]], "External provider did not receive the edit"
 PY
   fi
