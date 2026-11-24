@@ -32,7 +32,9 @@ func sharedWorkbookChecks() {
         checkEqual(try LoadedWorkbook(contentsOf: url).workbook.sheets[0].cells[address]?.value, .number(17), "restored workbook on disk")
         checkEqual(try history.versions().count, 4, "restoring also keeps later steps")
         checkEqual(backups.backups(of: url).count, 1, "one backup per open session")
-        checkEqual(try Data(contentsOf: backups.backups(of: url)[0]), opened.originalData, "exact original backup")
+        if let backup = backups.backups(of: url).first {
+            checkEqual(try Data(contentsOf: backup), opened.originalData, "exact original backup")
+        }
         let external = Data("externally replaced".utf8)
         try external.write(to: url, options: .atomic)
         writer.submit(.init("Concurrent edit", workbook: workbook, source: opened.source, baseline: opened.workbook)) { _ in }

@@ -68,7 +68,8 @@ public final class WorkbookAutosave: @unchecked Sendable {
     }
 
     private func processPending() -> Receipt {
-        var receipt: Receipt!
+        let requested = pending.last!.id
+        var receipt = Receipt(id: requested, modificationDate: nil, error: CocoaError(.fileWriteUnknown))
         while let change = pending.first {
             var recorded = false
             do {
@@ -79,22 +80,23 @@ public final class WorkbookAutosave: @unchecked Sendable {
                 try result.data.write(to: temp)
                 let xlsx = try Data(contentsOf: temp)
                 _ = try SaveVerifier.verify(xlsx, written: result, workbook: workbook, source: change.source)
-                var bytes = xlsx
-                if let csvFormat {
+                let output: Result<Data, Error> = Result {
+                    guard let csvFormat else { return xlsx }
                     guard let sheet = workbook.sheets.first else { throw CocoaError(.fileWriteUnknown) }
                     let csv = try CSVWriter.write(sheet, styles: workbook.styles, dateSystem: workbook.dateSystem, format: csvFormat)
                     try csv.data.write(to: temp)
-                    bytes = try Data(contentsOf: temp)
+                    let bytes = try Data(contentsOf: temp)
                     try CSVWriter.verify(bytes, written: csv)
+                    return bytes
                 }
-                try history.record(id: change.id, title: change.title, xlsx: xlsx, diskBytes: bytes,
+                try history.record(id: change.id, title: change.title, xlsx: xlsx, diskBytes: try? output.get(),
                                    opened: opened, fileName: url.lastPathComponent)
                 opened = nil
                 recorded = true
-                let date = try replace(with: bytes)
+                let date = try replace(with: output.get())
                 receipt = Receipt(id: change.id, modificationDate: date, error: nil)
             } catch {
-                receipt = Receipt(id: change.id, modificationDate: nil, error: error)
+                receipt = Receipt(id: requested, modificationDate: nil, error: error)
             }
             if recorded { pending.removeFirst() } else { break }
         }

@@ -26,7 +26,7 @@ jobs:
     name: core
     # 和本机的工具链（macOS 26、Swift 6.x）保持一致。
     runs-on: macos-26
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
 
@@ -47,8 +47,18 @@ jobs:
         run: scripts/check-all.sh core
 
       # iPhone 和 iPad 使用同一套 SDK。在已有的 core 机器编译真机和模拟器目标，保持两个 macOS job 的上限。
-      - name: Build shared workbook and theme for iOS
+      - name: Build SkyFolio and test editing on iPhone and iPad
+        env:
+          SKYFOLIO_RESULTS: ${{ runner.temp }}/SkyFolio-Mobile
         run: scripts/check-ios.sh
+
+      - name: Upload simulator app and test screenshots
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: SkyFolio-Mobile
+          path: ${{ runner.temp }}/SkyFolio-Mobile
+          if-no-files-found: ignore
 
   ui:
     name: ui
