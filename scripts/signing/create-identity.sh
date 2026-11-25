@@ -4,7 +4,7 @@
 # 作者所有个人工具共用这一把（设计第 4 条）。
 #
 # 只在没有的时候建，已经有了就拒绝：换一把证书，签出来的 App 在系统里都算「另一个 App」，给过的权限全部作废一次。
-# 换机器时把整个 ~/.config/skylu/signing/ 拷过去，别在新机器上重新建（CLAUDE.md 第 5 条）。
+# 换机器时把整个 ~/.config/skylu/signing/ 拷过去，别在新机器上重新建（AGENTS.md 硬规矩第 5 条）。
 #
 # 建好之后自己签一个小程序验一遍：designated requirement 必须是「certificate leaf = 这把证书」，不是 cdhash。
 # 仓库还没钉证书（packaging/signing-identity.sha1 里只有注释）时顺手写进去；钉着的是别的证书就只提醒、不改。

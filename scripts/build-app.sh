@@ -31,7 +31,7 @@ if [ -z "${VERSION:-}" ]; then
   fi
 fi
 
-# 一律 --arch arm64：这台 M1 的终端跑在 Rosetta 下，不带就编成 x86_64（CLAUDE.md）。
+# 一律 --arch arm64：这台 M1 的终端跑在 Rosetta 下，不带就编成 x86_64（AGENTS.md）。
 echo "==> swift build -c release（arm64）"
 swift build -c release --arch arm64 --product "${SWIFT_PRODUCT}"
 # Claude Code 启动的 MCP 小程序，放进 Contents/Helpers（设计第三节、9.1 节）。

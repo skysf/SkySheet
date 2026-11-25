@@ -23,7 +23,7 @@ if [ "$#" -eq 1 ]; then
   MODE="$1"
 fi
 
-# 这台 M1 的终端跑在 Rosetta 下，不带 --arch arm64 会编成 x86_64（CLAUDE.md）。CI 的机器本来就是 arm64，带上也一样。
+# 这台 M1 的终端跑在 Rosetta 下，不带 --arch arm64 会编成 x86_64（AGENTS.md）。CI 的机器本来就是 arm64，带上也一样。
 ARCH=(--arch arm64)
 FAILED=""
 
