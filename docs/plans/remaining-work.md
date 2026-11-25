@@ -172,6 +172,6 @@ M6 改名 SkyFolio → M7 Markdown 只读和共用底层 → M8 Word 只读 → 
 每一步交付什么、怎么验收，见 `docs/plans/2026-11-15-skyfolio-word-markdown.md` 第十节。还没排期的有：
 - Word 换 docx-preview；
 - PPT；
-- 公证：Apple 开发者账号和 Developer ID 证书 2026-11-25 已备好，可以开始做，现状见 `AGENTS.md`；
+- 发布签名：商店外的 Mac 版用 Developer ID 并公证，App Store 用 Apple Distribution（作者 2026-11-26 定），都还没做；要改什么见 `AGENTS.md`「Apple 开发者账号和签名」；
 - Word 表格的专门导入工具；
 - 中文界面。

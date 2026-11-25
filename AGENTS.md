@@ -12,8 +12,8 @@
 - M4 完成（MCP v0.3.0，第一个真正可用的版本；v0.3.1 修了连接时整份重排 settings.json），M5 打磨中。里程碑见设计第十三节；每完成一个就改这一行。
 - 作者选择朱红文档袋图标，目标是日后在 App Store 分发 Mac、iPad 和 iPhone 版。三端图标取同一母图，配色在 `SkyFolioTheme`。iPhone 和 iPad 共用 `Mobile/SkyFolio.xcodeproj` 里的应用目标。CI 用 `scripts/check-ios.sh` 构建并运行模拟器，本机只需命令行工具。
 - 三端共用按操作自动保存和本机历史。写回前先验证、存历史、检查外部改动并备份。重开文档后仍可恢复某一步。Mac 上 AI 在获准工作表的改动默认写回，可整轮撤销。
-- 本机装的是 Mac 版 SkyFolio 0.3.11（2026-11-26，PR #24），正式标识为 `ai.skylu.skyfolio`。这一版起 MCP 的 `save_copy` 传 `replace=true` 可以覆盖已有文件，装好后用 MCP 端到端验收过。Codex 通过 `skyfolio-mcp` 连接。仓库改名另行处理。
-- Apple 开发者账号和 Developer ID 证书已备好（2026-11-25），可以开始做签名和公证，见文末「Apple 开发者账号和签名」。
+- 本机装的是 Mac 版 SkyFolio 0.3.11（2026-11-26，PR #24），正式标识为 `ai.skylu.skyfolio`。这一版起 MCP 的 `save_copy` 传 `replace=true` 可以覆盖已有文件，装好后用 MCP 端到端验收过；它仍是「Skylu Signing」签的，只能本机用。Codex 通过 `skyfolio-mcp` 连接。仓库改名另行处理。
+- **发布渠道**（作者 2026-11-26 定）：Mac 版先在商店外发 DMG，用 Developer ID 签名并公证；iPhone、iPad 上 App Store，Mac 等沙盒改造后也上，上商店用 Apple Distribution 证书。都还没做，见文末「Apple 开发者账号和签名」。
 - **还没做完的事都记在 `docs/plans/remaining-work.md`**。
   - 开工前先读一遍。
   - 第一次回复作者时，用两三句话提醒他还剩什么没做。
@@ -29,13 +29,15 @@
   后台 UI 自检用 `nice -n 10 scripts/check-ui.sh [editing|copy-limit|theme|format|appearance|locale|drawing|ai]`，不给套件就全跑。
   在 `Sources/SkySheetChecks/UI/` 加断言，再到唯一套件入口 `UI/main.swift` 注册；SPM 换入口编译同一份 App 源文件，
   不启动文档恢复或 MCP、不接系统剪贴板。
-- 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`（签名证书「Skylu Signing」在 `~/.config/skylu/signing/`）。
+- 打包：`VERSION=x.y.z scripts/build-app.sh`，产物在 `dist/`。用哪把证书签见硬规矩第 5 条；`sign-app.sh` 改成 Developer ID 之前，
+  签的仍是「Skylu Signing」（私钥在 `~/.config/skylu/signing/`）。
   本机不编的做法（`.github/workflows/build-app.yml`，只能手动触发）：
   1. 在要打包的分支运行 `gh workflow run build-app.yml --ref <分支> -f version=x.y.z`；
   2. 跑完 `gh run download <run id> -n SkyFolio-x.y.z-arm64-adhoc -D 新目录` 拿到 zip，`ditto -x -k <zip> 新目录` 解开；
   3. 本机 `scripts/signing/sign-app.sh <解出的 SkyFolio.app>` 签名。CI 的包用 ad-hoc 签名，项目证书和私钥保存在本机；
-  4. 签完核对 `codesign --verify --deep --strict <App>`，`codesign -dvv <App>` 的 Authority 是「Skylu Signing」。
-  CI 不传 DMG（里面是 ad-hoc 签的包，不能给人）；发版的 DMG 照旧本机 `build-app.sh` 出（设计第十一节）。
+  4. 签完核对 `codesign --verify --deep --strict <App>`，`codesign -dvv <App>` 的 Authority 应是
+     `Developer ID Application: TIANYU LU (26TVX3S9FR)`（脚本改好之前是「Skylu Signing」）。要发给别人的包还要公证，见文末。
+  CI 不传 DMG（里面是 ad-hoc 签的包，不能给人）；发版的 DMG 照旧本机 `build-app.sh` 出，签名和公证都在本机做（设计第十一节）。
 - 看显示效果：`.build/arm64-apple-macosx/debug/SkySheet --snapshot-input 文件 --snapshot-output 图.png [--select K60] [--zoom 1.5] [--appearance aqua|dark]`，
   把整个窗口画成 PNG（设计 8.2 节）。改了表格的画法就截一张看。截图、测速只写新文件，输出路径已经有东西就拒绝。
 - 测速（设计 8.2 节「性能」）：`swift build -c release --arch arm64 --product SkySheet` 以后
@@ -61,8 +63,9 @@
 3. 不认识的东西原样保留：xlsx 里读不懂的部件和元素、公式原文、文件里的缓存值，一律不改、不丢。
 4. 不通过包管理器引第三方库（`Package.swift` 没有 `dependencies`）。别人的开源代码只能按设计第 7 条复制进 `ThirdParty/<项目名>/`：
    许可证和 AGPL-3.0 兼容，带原许可证和 `SOURCE.md`（出处、提交、改了什么），从此当自己的代码维护。
-5. 签名只经 `scripts/signing/sign-app.sh`。永远不重建「Skylu Signing」证书；私钥在 `~/.config/skylu/signing/`，
-   这台机器上没有就停下来问作者。
+5. 签名只经 `scripts/signing/` 里的脚本（现在只有 `sign-app.sh`）。证书按发布渠道选（作者 2026-11-26 定，见文末）：
+   商店外的 Mac 版用 Developer ID 并公证，上 App Store 用 Apple Distribution。签名和公证只在本机做，私钥和凭据不进 CI、
+   不进仓库。证书永远不重建（包括旧的「Skylu Signing」），这台机器上没有就停下来问作者。
 6. MCP：小程序的 stdout 只写 MCP 消息；工具清单只有一份（`SkySheetMCPKit`）；给模型看的文字只用英文，总说明不超过
    2,048 个字符。
 7. main 禁止直推：开分支、提 PR，CI 绿了再合。
@@ -78,19 +81,40 @@
   写法从那里搬，按设计删减。
 - 文档：`docs/plans/` 放方案和拍板，`docs/architecture/` 放长期约束（随模块落地补：`mcp.md`），`docs/testing/` 放真机清单。
 
-## Apple 开发者账号和签名（2026-11-25）
+## Apple 开发者账号和签名
 
-账号和 Developer ID 证书已经备好，可以开始做 Developer ID 签名和公证。这件事还没动手：
-- 现在打的包仍用自签名的「Skylu Signing」（硬规矩第 5 条）。
-- 新方案第 13 条「先不公证」还没改。
-- 公证要改哪些地方，见新方案 8.1 节末尾。
+发布渠道和用哪把证书（作者 2026-11-26 定）：
+- **Mac 版，商店外**（DMG，先做这个，好发给别人）：Developer ID 签名并公证。本机自用的包也用它，免得换来换去，
+  系统给过的文件夹权限又要重给。
+- **App Store**：iPhone、iPad 上 App Store；Mac 等沙盒改造后再上。上商店用 Apple Distribution 证书和 App Store 描述文件，
+  传到 App Store Connect 审核。Developer ID 不能用来上商店，商店的包也不用公证。
+- 不再用自签名的「Skylu Signing」发版；新方案第 13 条「先不公证」作废。
+
+Mac 为什么先走商店外：Mac App Store 要求 App Sandbox。AI 按路径打开文件、MCP 的 socket、连接 Claude Code 时改它的配置，
+在沙盒里都得重做（`remaining-work.md` 第四节也记着「商店签名、Mac 沙盒里的文件访问和 AI 连接仍待验证」）。
+
+还没做完的（做完一项就改这里）：
+- 商店外的 Mac 版：
+  - `scripts/signing/sign-app.sh` 还只会用「Skylu Signing」签。要换成 Developer ID，加 `--options runtime`（强化运行时）
+    和 `--timestamp`；仓库钉着的证书 SHA-1（`packaging/signing-identity.sha1`）也要跟着换，不然脚本会拒签。
+  - 打包后公证：`xcrun notarytool submit <zip 或 dmg> --keychain-profile skylu-notary --wait`，再用 `xcrun stapler staple`
+    把票据钉在 App 和 DMG 上。`spctl --assess --type execute <App>` 显示 accepted 才算好。
+  - 要改的地方见新方案 8.1 节末尾；新方案第 13 条和设计第十一节跟着改。
+  - 装上第一个 Developer ID 签的包以后，系统给过的文件夹权限（「文稿」「下载」等）要再给一次：权限按签名记，签名换了。
+  - 改好之前打的包仍是「Skylu Signing」签的，只能本机用：`spctl --assess` 是 rejected，发给别人会被 macOS 拦下。
+- App Store：
+  - 本机还没有 Apple Distribution 证书，也没有 SkyFolio 的 App Store 描述文件（本机那几个描述文件都是别的旧 App 的，早已过期）。
+  - 本机没有 Xcode，iPhone、iPad 的包怎么归档、签名、上传还没定。
 
 现状：
 - **账号**：Apple Developer Program 已续费，个人账号。Team ID `26TVX3S9FR`，团队名 TIANYU LU。
 - **签名身份**：`Developer ID Application: TIANYU LU (26TVX3S9FR)`，在 login 钥匙串里。
   - SHA-1 `1EC5EDA20BE8A7584E1744525669A3AFE69F8841`，2027-12-25 到期。
   - `security find-identity -v -p codesigning` 显示 1 valid（2026-11-25 核对过）。
-- **本机**：没有 Xcode，只有命令行工具。证书链需要的 Developer ID G2 中间证书已经手动装好。
+- **公证凭据**：钥匙串里的 notarytool profile，2026-11-26 用 `notarytool history` 核对过，两份都能用。
+  - `skylu-notary`：团队 API Key，默认用它。
+  - `notary-26TVX3S9FR`：App 专用密码，作者别的项目建的，备用。改或重置 Apple ID 密码时它会作废。
+- **本机**：没有 Xcode，只有命令行工具（`notarytool`、`stapler` 都有）。证书链需要的 Developer ID G2 中间证书已经手动装好。
 - **第一次用这把私钥签名会弹钥匙串授权窗口**，要作者点 Always Allow。
   - 第一次签之前先告诉作者。
   - 窗口没人点，codesign 就一直停在那里等。
