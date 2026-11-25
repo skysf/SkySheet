@@ -52,7 +52,7 @@ public struct MCPToolDefinition: Sendable {
     public var inputSchema: JSONValue
     /// 只读：不改工作簿、不写用户的文件（客户端据此决定要不要每次都问用户；设计 9.1 节第 5 条）。
     public var readOnly: Bool
-    /// 会删掉东西（删 AI 的 sheet）。SkySheet 从不覆盖文件，所以「写新文件」的工具不算。
+    /// 会删掉或盖掉东西：删 AI 的 sheet，save_copy 用 replace=true 覆盖已有文件（2026-11-25 起）。只写新文件不算。
     public var destructive: Bool
 
     public init(_ name: MCPToolName, title: String, description: String, input: JSONValue = MCPSchema.object([:]),
