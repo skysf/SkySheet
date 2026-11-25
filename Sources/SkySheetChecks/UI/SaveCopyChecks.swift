@@ -25,12 +25,12 @@ func saveCopyReplaceChecks() {
             try FileManager.default.copyItem(at: fixtureURL("IronCalc/arithmetic.xlsx"), to: url)
             return url
         }
-        func attach(_ doc: WorkbookDocument, _ url: URL) {
+        @MainActor func attach(_ doc: WorkbookDocument, _ url: URL) {
             guard let loaded = doc.loaded else { return fail("no loaded workbook for \(url.lastPathComponent)") }
             doc.attachAutosave(url: url, loaded: loaded, history: WorkbookHistory(file: url, root: historyRoot),
                                backups: documentBackups)
         }
-        func open(_ url: URL) throws -> WorkbookDocument {
+        @MainActor func open(_ url: URL) throws -> WorkbookDocument {
             let doc = WorkbookDocument()
             doc.savePreferences = UserDefaults(suiteName: "SkyFolioChecks.\(UUID().uuidString)")!
             doc.fileURL = url
@@ -41,16 +41,16 @@ func saveCopyReplaceChecks() {
             NSDocumentController.shared.addDocument(doc)
             return doc
         }
-        func type(_ text: String, in doc: WorkbookDocument) {
+        @MainActor func type(_ text: String, in doc: WorkbookDocument) {
             guard let session = doc.session else { return fail("no session") }
             session.select(a1)
             session.beginEditing(.typing, text: text)
             session.commitEditing(groupUndo: true)
             doc.finishAutosave()
         }
-        func call(_ arguments: JSONValue) throws -> AIToolResult { try AIWorkbookTools.saveCopy(AIToolArguments(arguments)) }
+        @MainActor func call(_ arguments: JSONValue) throws -> AIToolResult { try AIWorkbookTools.saveCopy(AIToolArguments(arguments)) }
         /// 工具必须拒绝；回拒绝的话。
-        func refused(_ what: String, _ arguments: JSONValue) -> String {
+        @MainActor func refused(_ what: String, _ arguments: JSONValue) -> String {
             do {
                 _ = try call(arguments)
                 fail("\(what): went through")
