@@ -5,7 +5,7 @@
 > - 第一次回复作者时，用两三句话提醒他还剩哪些事没做，先说第一节「要作者做的」。
 > - 做完一项就从这里删掉，提交说明里写上 PR 号；新发现、这次不修的问题也记到这里。
 >
-> 最后更新：2026-11-25。
+> 最后更新：2026-11-26。
 
 ## 现在在哪
 
@@ -21,6 +21,8 @@
 - iPhone 和 iPad 已在 PR #21 合并。iOS 18.6 的两种尺寸和 iPadOS 26.5 均通过了 XLSX 编辑、自动保存、重开、恢复版本，以及从 App 内「文件」选外部 CSV 和系统传入 CSV 后写回原件。测试在 App 进程之外读回磁盘核对。iOS 26.2 的 iPhone 也曾完整通过一次，26.2 和 26.5 的模拟器均出现过系统未能交付所选文稿。本地 Files 和 iCloud Drive 仍待真机验收。
 - 本机已干净安装签名版 **SkyFolio 0.3.10**（PR #23），使用朱红文档袋图标和正式标识 `ai.skylu.skyfolio`。Codex 的 `skyfolio` 连接已读到安装版及样表。旧 App、旧版专属数据和预览安装包已移入废纸篓。
 - 0.3.10 修好 AI 整轮撤回已写入原件后，关窗仍询问保存的问题。真机实测中，XLSX 公式两次自动写回，结果为 21 和 27，整轮撤回后直接关窗，磁盘保留五步历史。另在 CSV 的 A1 输入 77 后直接关窗，重开原文件，经 Codex 读回 77。
+- 本机现在装的是 **SkyFolio 0.3.11**（PR #24，2026-11-26）：MCP 的 `save_copy` 加了 `replace=true`，可以覆盖已有文件，包括工作簿自己的文件（作者报告 FUN-001）。CI 编包、本机 `sign-app.sh` 签名后装进 `/Applications`，旧的 0.3.10 在废纸篓。
+  装好后只用 MCP 在样表的临时副本上走了 17 项验收：不带 `replace` 或传 `false` 都拒绝且文件不动；`replace=true` 覆盖别的文件和存回自己的路径都成功，重开读回写入的值；外部改过文件后再覆盖回冲突，外部的版本留着。
 - 已经合进 main 的：
   - 大表卡顿（PR #10）；
   - 2026-11-15 五组只读排查（读文件、保存、公式、AI 和 MCP、界面）里紧急、重要的问题：公式（PR #12）、界面（PR #14）、AI 和 MCP（PR #15）、读文件保存和恢复（PR #17）。
@@ -66,6 +68,7 @@
 
 ### AI、MCP 和连接 Claude 的设置
 
+- **`save_copy` 的 `replace=true` 盖不了读不出来的 .xlsx**（0 字节的占位文件、加了密码的工作簿）。覆盖前要把原文件记进历史，`WorkbookHistory` 按 zip 部件切 .xlsx，切不开就整步失败，回「not overwritten」。不丢数据，只是盖不了。修法可以是切不开的原文件整份存。PR #24 读代码发现，没实测。
 - **配置文件读取失败被当成「不存在」**（`AIClientConfig.swift`）。配置文件没有读权限、但目录可写时，点 Connect 可能用最小配置覆盖掉用户的其他设置，而且不备份。应该只在确实不存在时新建。
 - **配置文件被并发修改时丢更新**（同上）。SkySheet 读完配置以后，Claude 或编辑器又改了它，SkySheet 写回时会盖掉这次修改。应该在写回前再读一次比对。
 - **sheet 名首尾的空格被去掉**（`AIWorkbooks.swift`）。两张表分别叫 `Data` 和 ` Data ` 时，可能读写到另一张。
@@ -142,6 +145,15 @@ PR #17（2026-11-16、17）修读文件、保存、恢复时留下的。都是�
   `WorkbookDocument.aiConfirmationKey` 和 `beforeUnconfirmedAI` 那一套，以及 `docs/architecture/mcp.md` 第 6 条的说明一起删。
 
 - **编辑中的公式引用了被删除的表**。AI 删表后又建了同名表，用户一提交，公式会读新表。main 也是这样（PR #14 审查发现）。
+
+### CI
+
+- **移动端 UI 测试偶发失败，拖慢每个 PR**。2026-11-25 四轮完整 CI 里有三轮各挂一条，都和改动无关：
+  - iPad `testEditReopenAndRestore`：点 B1 以后输入框还是 A1 的内容；
+  - iPhone `testSelectExternalWorkbookFromFiles`：40 秒没等到系统交付所选文件；
+  - iPad 启动 App 超时（"Timed out while launching application via Xcode"）。
+  每次都要整项重跑十几分钟。可以给 `scripts/check-ios.sh` 的 `xcodebuild` 加 `-retry-tests-on-failure -test-iterations 2`，只重试失败的那条。
+- **只改 Mac 或文档的 PR 也跑模拟器**：一轮完整 CI 约 17 分钟，九成花在模拟器上，加移动端之前一轮约 3 分钟。可以只在改到 `Mobile/` 或三个共用库时才跑模拟器；`check-all` 是必需的检查，跳过时也要让它报成功。
 
 ## 三、M5 里还没做的
 
