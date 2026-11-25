@@ -51,6 +51,19 @@ extension WorkbookDocument {
         }
     }
 
+    /// AI 用 save_copy replace=true 存回本文件：等于替用户按 ⌘S，不弹窗（作者 2026-11-25：AI 改完直接存，靠历史退回）。
+    /// 等后台写完；还在等 ⌘S 的 AI 改动这时写回。写不回去（比如文件被别的程序改过）就抛出原因：文件不动，改动在历史里。
+    func writeBackNow() throws {
+        guard autosaveWriter != nil else { throw CocoaError(.fileWriteUnknown) }
+        finishAutosave()
+        if lastSaveIssue == nil, beforeUnconfirmedAI != nil || isDocumentEdited {
+            beforeUnconfirmedAI = nil
+            saveStep(String(localized: "Apply AI Changes"), aiRound: AISession.shared.roundID)
+            finishAutosave()
+        }
+        if let lastSaveIssue { throw lastSaveIssue }
+    }
+
     @objc func showVersionHistory(_ sender: Any?) {
         session?.commitEditing(groupUndo: true)
         finishAutosave()

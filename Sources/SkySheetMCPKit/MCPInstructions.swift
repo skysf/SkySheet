@@ -25,7 +25,7 @@ public enum MCPInstructions {
     results back with add_sheet from_csv or write_cells. Never open, change or save the user's .xlsx/.csv files with \
     other programs.
     - Only open files the user named or these tools returned.
-    - Edits have local version history. save_copy only writes a new file.
+    - Edits have local version history. save_copy writes a new file, or saves over one with replace=true.
     - A round of changes can be undone in one step (undo round=true).
 
     Tools by need:
