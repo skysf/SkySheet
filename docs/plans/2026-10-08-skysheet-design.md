@@ -36,7 +36,7 @@ SkySheet 是一个**给 AI 用的**轻量 macOS 表格工具：
 | 1 | 名字 | App 叫 SkySheet；bundle id `ai.skylu.skysheet`；MCP 服务名 `skysheet`；仓库 `skysf/SkySheet`（公开）。**计划（2026-11-16 定，M6 做）：改名 SkyFolio**，对外全名「SkyFolio by Skylu」；bundle id `ai.skylu.skyfolio`，MCP 服务名 `skyfolio`，仓库 `skysf/SkyFolio`；App 第一次启动时把备份、恢复副本和两家 AI 客户端配置里的 `skysheet` 条目迁过来（新方案第七节）。xlsx 里 AI 的 sheet 的标记 `SkySheet.AI.` 不改；表格引擎的模块继续叫 `SkySheet*` | Excel 是微软的商标，Numbers 是苹果的，Sheet 是普通词。skylu 是作者的个人品牌（skylu.ai）；SkyStudio 是另一个品牌，不混用。改名是因为它要开 Word、Markdown，不只是表格了。已知撞名：韩国 MUIN 公司 2026-10 发布的天文照片 Mac app「Skyfolio」（也走 GitHub Releases），安卓上 Snapwood 的「SkyFolio - OneDrive Photos」；作者知道后仍选它，全名带上品牌来区分；上 App Store 或正式推广之前，去 USPTO、EUIPO、中国商标网正式查一次。`SkySheet.AI.` 已经写进了用户的文件，改了旧文件就认不出来 |
 | 2 | 许可证 | AGPL-3.0 | 和 SrtFlow 一样；MCP 协议代码从 SrtFlow 搬来，两边一致 |
 | 3 | 平台 | 已发布的版本支持 Apple 芯片 Mac（macOS 15 起）。2026-11-24 定下三端目标，增加 iPhone、iPad，日后上架 App Store | 三端共用文件和公式引擎。移动端共用触屏交互，Mac 继续使用 AppKit |
-| 4 | 签名 | 自签名证书「Skylu Signing」，作者所有个人工具共用；不公证 | 第十一节 |
+| 4 | 签名 | 自签名证书「Skylu Signing」，作者所有个人工具共用；不公证。2026-11-26 改：SkyFolio 用 Developer ID 签名并公证 | 第十一节 |
 | 5 | 文件 | 读写 xlsx、csv。计划（2026-11-15、11-16 定）：Word（.docx，顺带 .dotx、.docm）只读，M8 做；Markdown（.md）读写，M7 先只读、M9 能改；.doc、.rtf、.odt 不做 | 作者的数据就是这两种（腾讯文档、银行导出）。2026-11-15 作者要同一个 App 开更多种文件：先 Word 和 Markdown，PPT 以后（新方案第二节） |
 | 6 | 原样保留 | 读不懂的、没改过的部分，保存时按原字节写回 | 样例里就有图片和合并单元格，丢了就是毁数据 |
 | 7 | 依赖 | 不通过包管理器引用第三方库：`Package.swift` 里没有 `dependencies`，构建时不联网拉代码。允许把许可证和 AGPL-3.0 兼容的开源代码复制进仓库，放在 `ThirdParty/<项目名>/`，带原许可证和出处，一个项目一个 target；复制进来就是我们的代码，由我们维护，和自己写的一样过自检和审查（细则见本表下面）。zip 自己写（压缩用系统的 Compression），查询用系统的 SQLite3 | 作者 2026-10-08 定：不引外部库。2026-11-16 放宽：可以把别人的开源代码搬进来自己维护——代码都在仓库里，看得见、改得了，不会被上游的更新带着走，构建也不联网（新方案 11.1 节；要搬的项目见新方案第十二节） |
@@ -868,6 +868,9 @@ Tools by need:
 - 打包 `scripts/build-app.sh`：从 SrtFlow 搬，去掉 ffmpeg 那段。版本号取 git tag，正式发版用 `VERSION=x.y.z`
   显式指定；打包时间（UTC）写进 Info.plist 的 `SkySheetBuildDate`，get_status 报给 AI。产物是 `dist/SkySheet.app` 和
   `dist/SkySheet-<版本>-arm64.dmg`，DMG 里带「首次打开必读」。
+- **2026-11-26 起改用 Developer ID 签名并公证**（作者定，这样的包才能发给别人）：`sign-app.sh` 用 login 钥匙串里的
+  `Developer ID Application: TIANYU LU (26TVX3S9FR)`，开强化运行时、带时间戳；`notarize.sh` 公证、钉票据；
+  `create-identity.sh` 删了。商店外、App Store 各用哪把证书，见 AGENTS.md「Apple 开发者账号和签名」。下面是原来的做法，留作历史。
 - 签名 `scripts/signing/`（`common.sh`、`create-identity.sh`、`sign-app.sh`）：从 SrtFlow 搬，改成：
   - 证书叫「Skylu Signing」：自签名、只能签代码、20 年；
   - 私钥在仓库外的 `~/.config/skylu/signing/`（专用钥匙串和它的密码文件，目录 700、文件 600），要进 Time Machine 备份；
