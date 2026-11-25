@@ -75,6 +75,16 @@ rm -rf "${ICON_WORK}"
 echo "==> codesign"
 scripts/signing/sign-app.sh "${APP}"
 
+# 公证（AGENTS.md「Apple 开发者账号和签名」）：Developer ID 签的包才能公证，公证过的才能发给别人。
+# NOTARIZE=0 跳过：离线、只给自己试的包。先公证 App 再装进 DMG：拷出 DMG 的 App 身上带着票据，离线也认。
+NOTARIZED=0
+if [ "${NOTARIZE:-1}" != "0" ] && codesign -dvv "${APP}" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+  scripts/signing/notarize.sh "${APP}"
+  NOTARIZED=1
+else
+  echo "⚠️  没有公证（NOTARIZE=0，或不是 Developer ID 签的）：这个包只能本机用，发给别人会被 macOS 拦下。"
+fi
+
 echo "==> 生成 DMG"
 DMG_ROOT="${DIST}/dmg-root"
 rm -rf "${DMG_ROOT}"
@@ -82,7 +92,7 @@ mkdir -p "${DMG_ROOT}"
 cp -R "${APP}" "${DMG_ROOT}/"
 ln -s /Applications "${DMG_ROOT}/Applications"
 
-# 没有 Apple 公证（设计第 4 条）：从网上或 AirDrop 拿到的 DMG，第一次打开会被 macOS 拦下，要去系统设置里放行一次。
+# 公证过的包从网上或 AirDrop 拿到，第一次打开 macOS 只问一句「从互联网下载」，点「打开」就行。
 cat > "${DMG_ROOT}/首次打开必读 - Read Me First.txt" <<'READMEEOF'
 SkyFolio — 首次打开必读 / Read Me First
 =======================================
@@ -91,13 +101,8 @@ SkyFolio — 首次打开必读 / Read Me First
 
 1. 把 SkyFolio.app 拖到左边的「应用程序」文件夹，从那里打开（别直接在这个磁盘映像里双击）。
 
-2. 双击 SkyFolio。这个 App 没有做 Apple 公证（自用工具），第一次打开会被 macOS 拦下，
-   提示「无法打开」。点「完成」/「好」。
-
-3. 打开「系统设置」→「隐私与安全性」，往下翻到「安全性」那一段，会看到一行关于 SkyFolio
-   被阻止的提示，点右边的「仍要打开」，再输入密码或用触控 ID 确认。
-
-4. 回到「应用程序」里再双击 SkyFolio，这次就正常打开了。以上只需要做一次。
+2. 双击 SkyFolio。第一次打开时 macOS 会提示它是从互联网下载的，点「打开」。
+   SkyFolio 经过 Apple 公证，以后就直接打开了。
 
 用 SkyFolio 打开表格：在访达里右键 xlsx / csv 文件 →「打开方式」→ SkyFolio；或者先打开 SkyFolio，
 在「打开」面板里选文件。每次编辑提交后会自动保存，第一次覆盖之前会备份原件。可以用 File → Version History 恢复到某一步。
@@ -110,13 +115,8 @@ SkyFolio — 首次打开必读 / Read Me First
 
 1. Drag SkyFolio.app into the Applications folder and open it from there, not from this disk image.
 
-2. Double-click SkyFolio. The app is not notarised by Apple (it is a personal tool), so macOS blocks
-   the first launch and says it cannot be opened. Dismiss that dialog.
-
-3. Open System Settings → Privacy & Security, scroll down to Security, and click "Open Anyway" next to
-   the line about SkyFolio. Confirm with your password or Touch ID.
-
-4. Double-click SkyFolio again. It opens normally from now on.
+2. Double-click SkyFolio. The first time, macOS says it was downloaded from the internet; click Open.
+   SkyFolio is notarized by Apple, so later launches open directly.
 
 To open a spreadsheet: right-click an .xlsx or .csv file in Finder → Open With → SkyFolio, or start
 SkyFolio and pick a file. Edits save automatically, with a backup before the first overwrite.
@@ -130,6 +130,12 @@ DMG="${DIST}/${APP_NAME}-${VERSION}-arm64.dmg"
 rm -f "${DMG}"
 hdiutil create -volname "${APP_NAME}" -srcfolder "${DMG_ROOT}" -ov -format UDZO "${DMG}" >/dev/null
 rm -rf "${DMG_ROOT}"
+
+echo "==> 给 DMG 签名、公证"
+scripts/signing/sign-app.sh "${DMG}"
+if [ "${NOTARIZED}" = "1" ]; then
+  scripts/signing/notarize.sh "${DMG}"
+fi
 
 echo
 echo "完成："

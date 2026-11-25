@@ -1,4 +1,4 @@
-# 发布签名证书（自签名「Skylu Signing」）的 SHA-1。scripts/signing/sign-app.sh 只肯用这一把签：
-# 换证书 = 签出来的 SkySheet 在系统里都算「另一个 App」，用户给过的权限全部作废一次（设计第 4 条、第十一节）。
-# 私钥在仓库外的 ~/.config/skylu/signing/；scripts/signing/create-identity.sh 第一次建身份时把 SHA-1 写在下面。
-2068045ad0cd4a879781d8206046cc2fad51a40e
+# 发布签名证书的 SHA-1：Developer ID Application: TIANYU LU (26TVX3S9FR)，2027-12-25 到期，在 login 钥匙串里。
+# scripts/signing/sign-app.sh 只肯用这一把签（AGENTS.md 硬规矩第 5 条）。2026-11-26 起从自签名「Skylu Signing」换成它。
+# 证书到期续了新证书以后改这里：同一个 Team 的 Developer ID，系统给过的权限不作废。
+1ec5eda20be8a7584e1744525669a3afe69f8841
