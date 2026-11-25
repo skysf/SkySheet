@@ -142,7 +142,9 @@ enum MCPReadTools {
                     "replace": MCPSchema.boolean("Overwrite the file if it exists. Default false."),
                     "sheet": MCPSchema.string("For .csv: which sheet to save."),
                     "workbook": MCPSchema.workbook,
-                ], required: ["path"]))
+                ], required: ["path"]),
+                // replace=true 会盖掉已有文件（MCP 的 destructiveHint）。
+                destructive: true)
         default:
             preconditionFailure("\(tool) is not a read tool")
         }
