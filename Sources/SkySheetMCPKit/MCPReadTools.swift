@@ -1,7 +1,7 @@
 import Foundation
 
 // MARK: - 看和取的工具（不改工作簿）：get_status、open_file、describe_sheet、read_range、query、evaluate、export_sheet、
-// show、save_copy（设计 9.2 节）。open_file 和 save_copy 不改数据但会开窗口、写新文件，所以不标只读。
+// show、save_copy（设计 9.2 节）。open_file 和 save_copy 不改数据但会开窗口、写文件（save_copy replace=true 还会覆盖），所以不标只读。
 
 enum MCPReadTools {
     static func definition(for tool: MCPToolName) -> MCPToolDefinition {
@@ -127,17 +127,24 @@ enum MCPReadTools {
                 readOnly: true)
         case .saveCopy:
             return MCPToolDefinition(
-                .saveCopy, title: "Save a copy",
+                .saveCopy, title: "Save a copy or save over a file",
                 description: """
-                    Saves the workbook to a new file: .xlsx keeps every sheet; .csv holds one sheet (sheet, or the \
-                    one the user is looking at). The destination must be a new file. The open window keeps working on \
-                    the current workbook.
+                    Saves the workbook to a file: .xlsx keeps every sheet; .csv holds one sheet (sheet, or the one \
+                    the user is looking at). By default the destination must be a new file. With replace=true it \
+                    overwrites an existing file, including the workbook's own file (like pressing Cmd+S); use it to \
+                    save back to the user's file or over a file the user named. Every overwrite is a step in \
+                    SkyFolio's version history, so the user can go back. It refuses with a conflict, changing \
+                    nothing, when another app changed the file or another SkyFolio window has changes not yet in it. \
+                    The open window keeps working on its own file.
                     """,
                 input: MCPSchema.object([
-                    "path": MCPSchema.string("New file path ending in .xlsx or .csv."),
+                    "path": MCPSchema.string("Absolute file path ending in .xlsx or .csv."),
+                    "replace": MCPSchema.boolean("Overwrite the file if it exists. Default false."),
                     "sheet": MCPSchema.string("For .csv: which sheet to save."),
                     "workbook": MCPSchema.workbook,
-                ], required: ["path"]))
+                ], required: ["path"]),
+                // replace=true 会盖掉已有文件（MCP 的 destructiveHint）。
+                destructive: true)
         default:
             preconditionFailure("\(tool) is not a read tool")
         }

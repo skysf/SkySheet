@@ -3,7 +3,7 @@ import SkySheetCore
 import SkySheetFiles
 import SkySheetMCPKit
 
-// MARK: - 工作簿一级的工具：get_status、open_file、show、save_copy（设计 9.2 节）
+// MARK: - 工作簿一级的工具：get_status、open_file、show（设计 9.2 节）；save_copy 在 AIWorkbookTools+SaveCopy
 
 @MainActor
 enum AIWorkbookTools {
@@ -97,51 +97,5 @@ enum AIWorkbookTools {
         }
         context.document.windowControllers.first?.window?.orderFrontRegardless()
         return .ok(["shown": .string("\(context.workbook.sheets[index].name)!\(context.session.selection.range.label)")])
-    }
-
-    // MARK: - save_copy
-
-    /// 存一份新文件。目标已经有了就拒绝（AI 从不覆盖文件，设计 9.2 节）；和用户存一样，先写临时文件、读回来核对，
-    /// 全对才挪到目标位置。打开着的文档还是对着用户自己的文件。
-    static func saveCopy(_ arguments: AIToolArguments) throws -> AIToolResult {
-        let context = try AIWorkbooks.context(arguments)
-        let path = try arguments.requiredString("path")
-        let url = URL(fileURLWithPath: (path as NSString).expandingTildeInPath).standardizedFileURL
-        guard !FileManager.default.fileExists(atPath: url.path) else {
-            throw AIToolError("There is already a file at \(url.path). Choose a new name for the copy.")
-        }
-        let folder = url.deletingLastPathComponent()
-        var isFolder: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: folder.path, isDirectory: &isFolder), isFolder.boolValue else {
-            throw AIToolError("The folder \(folder.path) does not exist.")
-        }
-        let workbook = context.workbook
-        let kind = url.pathExtension.lowercased()
-        let temporary = folder.appendingPathComponent(".skysheet-\(UUID().uuidString).\(kind)")
-        defer { try? FileManager.default.removeItem(at: temporary) }
-        var savedSheets: [String]
-        switch kind {
-        case "xlsx":
-            let result = try XLSXWriter.write(workbook, source: context.document.source, baseline: context.document.baseline)
-            try result.data.write(to: temporary)
-            _ = try SaveVerifier.verify(try Data(contentsOf: temporary), written: result, workbook: workbook,
-                                        source: context.document.source)
-            savedSheets = workbook.sheets.map(\.name)
-        case "csv", "tsv":
-            let index = try arguments.string("sheet").map(context.sheetIndex) ?? context.session.sheetIndex
-            var format = CSVFormat.standard
-            if kind == "tsv" { format.delimiter = "\t" }
-            let result = try CSVWriter.write(workbook.sheets[index], styles: workbook.styles,
-                                             dateSystem: workbook.dateSystem, format: format)
-            try result.data.write(to: temporary)
-            try CSVWriter.verify(try Data(contentsOf: temporary), written: result)
-            savedSheets = [workbook.sheets[index].name]
-        default:
-            throw AIToolError("save_copy writes .xlsx, .csv or .tsv files.")
-        }
-        // moveItem 碰到已经有的文件会失败：写的这一会儿别人放了一个同名文件，也不会被盖掉。
-        try FileManager.default.moveItem(at: temporary, to: url)
-        return .ok(["saved_to": .string(url.path), "sheets": .array(savedSheets.map { .string($0) }),
-                    "note": "The copy was saved. The open workbook continues using its original location and autosave settings."])
     }
 }

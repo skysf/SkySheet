@@ -24,7 +24,7 @@ Task { @MainActor in
         case "format": invalidFormatColorChecks()
         case "appearance": chromeContrastChecks()
         case "locale": sizeLocaleChecks()
-        case "ai": lockedFormulaRoundChecks(); aiSessionChecks(); lockedFormulaAIChecks()
+        case "ai": lockedFormulaRoundChecks(); aiSessionChecks(); lockedFormulaAIChecks(); saveCopyReplaceChecks()
         case "drawing":
             mergedPaneBorderChecks()
             centeredOverflowChecks()
