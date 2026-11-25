@@ -3,7 +3,7 @@
 #
 # CI 上没有签名身份：sign-app.sh 按它本来的设计退回 ad-hoc 签名，这是预期的。私钥只在作者那台机器的
 # ~/.config/skylu/signing/，绝不放到 CI 上，这里也不放任何证书或 secret。拿下来以后在本机用
-# scripts/signing/sign-app.sh 重签（CLAUDE.md「打包」）。DMG 不上传：里面是 ad-hoc 签的包，不能拿去给人。
+# scripts/signing/sign-app.sh 重签（AGENTS.md「打包」）。DMG 不上传：里面是 ad-hoc 签的包，不能拿去给人。
 #
 # 用法：
 #   gh workflow run build-app.yml -f version=x.y.z
