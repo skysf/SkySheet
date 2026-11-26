@@ -122,4 +122,14 @@ final class WorkbookUITests: XCTestCase {
         XCTAssertTrue(b1.waitForExistence(timeout: 10))
         XCTAssertTrue((b1.value as? String ?? "").isEmpty)
     }
+
+    // 临时：确认 Xcode 26 的 xcodebuild 真会重跑失败的同步 UI 用例（Apple 论坛 813680 说某些写法下不重跑）。看过 CI 就删。
+    @MainActor func testRetryProbe() {
+        continueAfterFailure = false
+        let marker = FileManager.default.temporaryDirectory.appendingPathComponent("skyfolio-retry-probe")
+        if !FileManager.default.fileExists(atPath: marker.path) {
+            FileManager.default.createFile(atPath: marker.path, contents: Data())
+            XCTFail("First attempt fails on purpose")
+        }
+    }
 }
