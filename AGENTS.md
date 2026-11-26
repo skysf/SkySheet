@@ -13,14 +13,18 @@
 - 作者选择朱红文档袋图标，目标是日后在 App Store 分发 Mac、iPad 和 iPhone 版。三端图标取同一母图，配色在 `SkyFolioTheme`。iPhone 和 iPad 共用 `Mobile/SkyFolio.xcodeproj` 里的应用目标。CI 用 `scripts/check-ios.sh` 构建并运行模拟器，本机只需命令行工具。
 - 三端共用按操作自动保存和本机历史。写回前先验证、存历史、检查外部改动并备份。重开文档后仍可恢复某一步。Mac 上 AI 在获准工作表的改动默认写回，可整轮撤销。
 - 本机装的是 Mac 版 SkyFolio 0.3.11（2026-11-26，PR #24），正式标识为 `ai.skylu.skyfolio`。这一版起 MCP 的 `save_copy` 传 `replace=true` 可以覆盖已有文件，装好后用 MCP 端到端验收过。2026-11-26 同一份包改用 Developer ID 重签、公证后重装，`spctl` 评估 accepted。Codex 通过 `skyfolio-mcp` 连接。仓库改名另行处理。
-- **发布渠道**（作者 2026-11-26 定）：Mac 版先在商店外发 DMG，用 Developer ID 签名并公证；iPhone、iPad 上 App Store，Mac 等沙盒改造后也上，上商店用 Apple Distribution 证书。商店外这一路已经做好（PR #26），App Store 还没做，见文末「Apple 开发者账号和签名」。
-- **还没做完的事都记在 `docs/plans/remaining-work.md`**。
+- **发布渠道**（作者 2026-11-26 定）：Mac 版先在商店外发 DMG，用 Developer ID 签名并公证；iPhone、iPad 上 App Store，Mac 等沙盒改造后也上，上商店用 Apple Distribution 证书。商店外这一路已经做好（PR #26），App Store 还没做，要做的事在 `TODO.md`「App Store 和真机」。
+- **所有没做完的事只记在仓库根目录的 `TODO.md`**（作者 2026-11-26 定：待办只维护这一份，别处不另列）。
   - 开工前先读一遍。
   - 第一次回复作者时，用两三句话提醒他还剩什么没做。
   - 做完一项就从那里删掉；新发现、暂时不修的问题也记到那里。
 
 ## 常用命令
 
+- **这台电脑资源有限**（16 GB 的 M1，作者同时还在跑别的项目）：
+  - **默认本机不编译、不测试**，全放 CI。
+  - 本机明显空闲时（`memory_pressure` 空闲 ≥ 30%，且 1 分钟负载 ≤ 4）可以本机编，一律 `nice -n 19`。
+  - GitHub 免费账号同一时间最多 5 台 macOS，所有项目共用，SkyCut 的 CI 常常占满。SkySheet 优先级最低，排队就等，不去动别的项目的 CI。
 - 编译：`swift build --arch arm64`。这台 M1 的终端跑在 Rosetta 下，不带 `--arch arm64` 会编成 x86_64。
 - 自检：`scripts/check-all.sh`（本机和 CI 跑同一个，耗时随合成表负载与机器变化）。本机没有 XCTest 和 Swift Testing，自检是 `SkySheetChecks`
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
@@ -82,7 +86,7 @@
 - 注释和文档用中文，写「为什么」；和作者沟通用中文。
 - 参考实现：SrtFlow（本机 `../srt_vtt/app_files`，或 `github.com/skysf/SrtFlow`）。签名、MCP 三段结构、自检程序的
   写法从那里搬，按设计删减。
-- 文档：`docs/plans/` 放方案和拍板，`docs/architecture/` 放长期约束（随模块落地补：`mcp.md`），`docs/testing/` 放真机清单。
+- 文档：`docs/plans/` 放方案和拍板，`docs/architecture/` 放长期约束（随模块落地补：`mcp.md`），`docs/testing/` 放真机清单；待办只记在根目录的 `TODO.md`。
 
 ## Apple 开发者账号和签名
 
@@ -94,7 +98,7 @@
 - 不再用自签名的「Skylu Signing」发版；新方案第 13 条「先不公证」作废。
 
 Mac 为什么先走商店外：Mac App Store 要求 App Sandbox。AI 按路径打开文件、MCP 的 socket、连接 Claude Code 时改它的配置，
-在沙盒里都得重做（`remaining-work.md` 第四节也记着「商店签名、Mac 沙盒里的文件访问和 AI 连接仍待验证」）。
+在沙盒里都得重做（记在 `TODO.md`「App Store 和真机」）。
 
 商店外的 Mac 版（2026-11-26 做好，PR #26）：
 - `sign-app.sh` 用仓库钉着的 Developer ID 证书（`packaging/signing-identity.sha1`）签，开强化运行时、带时间戳，
@@ -107,10 +111,7 @@ Mac 为什么先走商店外：Mac App Store 要求 App Sandbox。AI 按路径�
   以后同一个 Team 换版本、续证书都不用再给。
 - 证书 2027-12-25 到期。续了新证书，改 `packaging/signing-identity.sha1`。
 
-还没做完的（做完一项就改这里）：
-- App Store：
-  - 本机还没有 Apple Distribution 证书，也没有 SkyFolio 的 App Store 描述文件（本机那几个描述文件都是别的旧 App 的，早已过期）。
-  - 本机没有 Xcode，iPhone、iPad 的包怎么归档、签名、上传还没定。
+App Store 那一路还没做完的，记在 `TODO.md`「App Store 和真机」。
 
 现状：
 - **账号**：Apple Developer Program 已续费，个人账号。Team ID `26TVX3S9FR`，团队名 TIANYU LU。
