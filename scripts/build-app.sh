@@ -77,8 +77,11 @@ scripts/signing/sign-app.sh "${APP}"
 
 # 公证（docs/release.md）：Developer ID 签的包才能公证，公证过的才能发给别人。
 # NOTARIZE=0 跳过：离线、只给自己试的包。先公证 App 再装进 DMG：拷出 DMG 的 App 身上带着票据，离线也认。
+# 先存下 codesign 的输出再判断：直接 `codesign … | grep -q` 在 pipefail 下，grep 一匹配就退出，codesign 吃 SIGPIPE（141），
+# 整条判断算失败，悄悄跳过公证（2026-11-26 打 0.3.11 时碰到）。
 NOTARIZED=0
-if [ "${NOTARIZE:-1}" != "0" ] && codesign -dvv "${APP}" 2>&1 | grep -q '^Authority=Developer ID Application'; then
+SIGNATURE="$(codesign -dvv "${APP}" 2>&1 || true)"
+if [ "${NOTARIZE:-1}" != "0" ] && grep -q '^Authority=Developer ID Application' <<<"${SIGNATURE}"; then
   scripts/signing/notarize.sh "${APP}"
   NOTARIZED=1
 else
