@@ -31,7 +31,7 @@ if [ -z "${VERSION:-}" ]; then
   fi
 fi
 
-# 一律 --arch arm64：这台 M1 的终端跑在 Rosetta 下，不带就编成 x86_64（AGENTS.md）。
+# 一律 --arch arm64：这台 M1 的终端跑在 Rosetta 下，不带就编成 x86_64（docs/development.md）。
 echo "==> swift build -c release（arm64）"
 swift build -c release --arch arm64 --product "${SWIFT_PRODUCT}"
 # Claude Code 启动的 MCP 小程序，放进 Contents/Helpers（设计第三节、9.1 节）。
@@ -75,7 +75,7 @@ rm -rf "${ICON_WORK}"
 echo "==> codesign"
 scripts/signing/sign-app.sh "${APP}"
 
-# 公证（AGENTS.md「Apple 开发者账号和签名」）：Developer ID 签的包才能公证，公证过的才能发给别人。
+# 公证（docs/release.md）：Developer ID 签的包才能公证，公证过的才能发给别人。
 # NOTARIZE=0 跳过：离线、只给自己试的包。先公证 App 再装进 DMG：拷出 DMG 的 App 身上带着票据，离线也认。
 NOTARIZED=0
 if [ "${NOTARIZE:-1}" != "0" ] && codesign -dvv "${APP}" 2>&1 | grep -q '^Authority=Developer ID Application'; then

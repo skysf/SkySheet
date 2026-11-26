@@ -1,6 +1,6 @@
 # SkyFolio 总待办
 
-> 所有没做完的事只记在这一页（作者 2026-11-26 定：待办只维护这一份）。AGENTS.md 只放规矩和现状，设计文档和新方案只放决定和理由，都不另列待办。
+> 所有没做完的事只记在这一页（作者 2026-11-26 定：待办只维护这一份）。AGENTS.md 只放硬规矩、现状和文档目录，设计文档和新方案只放决定和理由，都不另列待办。
 >
 > **给打开这个仓库的 AI（Claude、Codex 或别的）**：
 > - 开工前先读这一页。
@@ -206,7 +206,7 @@ M6 改名 SkyFolio → M7 Markdown 只读和共用底层 → M8 Word 只读 → 
 
 ### App Store 和真机
 
-发布渠道（作者 2026-11-26 定）：iPhone、iPad 上 App Store；Mac 先在商店外发 Developer ID 签名、公证过的 DMG（PR #26 已做好），等沙盒改造完也上 App Store。证书和凭据的现状见 AGENTS.md「Apple 开发者账号和签名」。
+发布渠道（作者 2026-11-26 定）：iPhone、iPad 上 App Store；Mac 先在商店外发 Developer ID 签名、公证过的 DMG（PR #26 已做好），等沙盒改造完也上 App Store。证书和凭据的现状见 `docs/release.md`。
 
 - **建 Apple Distribution 证书和 SkyFolio 的 App Store 描述文件**（要作者在开发者网站操作）。本机那几个描述文件都是别的旧 App 的，早已过期。
 - **建一把 App Manager 权限的 App Store Connect API Key**（要作者操作）。上传、改商店页走 API 要用它；现有的 `skylu-notary` 只有 Developer 权限。App 记录「SkyFolio - AI Sheets & Docs」已在网页建好。

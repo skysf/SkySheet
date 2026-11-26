@@ -870,7 +870,7 @@ Tools by need:
   `dist/SkySheet-<版本>-arm64.dmg`，DMG 里带「首次打开必读」。
 - **2026-11-26 起改用 Developer ID 签名并公证**（作者定，这样的包才能发给别人）：`sign-app.sh` 用 login 钥匙串里的
   `Developer ID Application: TIANYU LU (26TVX3S9FR)`，开强化运行时、带时间戳；`notarize.sh` 公证、钉票据；
-  `create-identity.sh` 删了。商店外、App Store 各用哪把证书，见 AGENTS.md「Apple 开发者账号和签名」。下面是原来的做法，留作历史。
+  `create-identity.sh` 删了。商店外、App Store 各用哪把证书，见 `docs/release.md`。下面是原来的做法，留作历史。
 - 签名 `scripts/signing/`（`common.sh`、`create-identity.sh`、`sign-app.sh`）：从 SrtFlow 搬，改成：
   - 证书叫「Skylu Signing」：自签名、只能签代码、20 年；
   - 私钥在仓库外的 `~/.config/skylu/signing/`（专用钥匙串和它的密码文件，目录 700、文件 600），要进 Time Machine 备份；
@@ -889,6 +889,7 @@ Tools by need:
   - 保护规则要的 `check-all` 改成汇总 job：跑在 ubuntu 上不占 macOS 名额，`needs` 两边、`if: always()`，两边都是
     success 才过。不用 always() 的话，前面一失败它就被跳过，GitHub 把「跳过」的必过检查当成通过，就是假绿。
   - SkySheetChecks 不再分片：要改自检程序本身，只省几十秒，还要多占 SrtFlow 的名额。
+  - 2026-11-26 作者改定：默认在本机编译，只跑和改动相关的小测试；完整自检、UI 套件、模拟器这些重的照旧放 CI（`docs/development.md`）。
 - 打包也能在 CI 上编（`.github/workflows/build-app.yml`，2026-11-16）：只手动触发（`gh workflow run build-app.yml -f version=x.y.z`），
   PR 和 push 不跑。版本号先按 `x.y.z` 校验、只经环境变量进脚本（防注入）。CI 上没有签名身份，`sign-app.sh` 按设计
   退回 ad-hoc；产物用 `ditto` 打成 zip 传成 artifact（保留 7 天），拿下来在本机用 `sign-app.sh` 重签。DMG 不传：
