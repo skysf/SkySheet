@@ -69,7 +69,8 @@ final class WorkbookUITests: XCTestCase {
 
     @MainActor private func editExternalCSV(in app: XCUIApplication) {
         let input = app.textFields["formula-input"]
-        XCTAssertTrue(input.waitForExistence(timeout: 40), app.debugDescription)
+        // 消息开头「The workbook did not open」check-ios.sh 要认：模拟器「文件」交不出所选文件时，选文件那条停在这里。
+        XCTAssertTrue(input.waitForExistence(timeout: 40), "The workbook did not open\n\(app.debugDescription)")
         XCTAssertEqual(input.value as? String, "31")
         app.buttons["cell-B2"].tap()
         input.tap()
@@ -107,9 +108,10 @@ final class WorkbookUITests: XCTestCase {
         app.launch()
         app.buttons["file-Arithmetic.xlsx"].tap()
         XCTAssertTrue(b1.waitForExistence(timeout: 10))
-        XCTAssertEqual(b1.value as? String, "21")
+        XCTAssertTrue(awaitValue("21", of: b1), "B1 shows \(String(describing: b1.value))")
         b1.tap()
-        XCTAssertEqual(input.value as? String, "=A1*3")
+        // 点了格子，输入框要等界面刷新才换成这一格的公式。立刻去读，慢机器上读到的还是上一格的「7」（2026-11-25 iPad 失败过一次）。
+        XCTAssertTrue(awaitValue("=A1*3", of: input), "Formula bar shows \(String(describing: input.value))")
         app.buttons["workbook-options"].tap()
         app.buttons["Version History"].tap()
         app.buttons["Restore Edit Sheet1!A1"].tap()

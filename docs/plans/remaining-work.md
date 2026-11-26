@@ -148,11 +148,10 @@ PR #17（2026-11-16、17）修读文件、保存、恢复时留下的。都是�
 
 ### CI
 
-- **移动端 UI 测试偶发失败，拖慢每个 PR**。2026-11-25 四轮完整 CI 里有三轮各挂一条，都和改动无关：
-  - iPad `testEditReopenAndRestore`：点 B1 以后输入框还是 A1 的内容；
-  - iPhone `testSelectExternalWorkbookFromFiles`：40 秒没等到系统交付所选文件；
-  - iPad 启动 App 超时（"Timed out while launching application via Xcode"）。
-  每次都要整项重跑十几分钟。可以给 `scripts/check-ios.sh` 的 `xcodebuild` 加 `-retry-tests-on-failure -test-iterations 2`，只重试失败的那条。
+- **iPad 上「从文件打开」那条有时只记警告**：iPadOS 26.5 模拟器的「文件」服务偶尔建索引卡死，交不出所选文件。
+  2026-11-24 到 25 日，iPad 17 轮里有 5 轮这样，iPhone（iOS 18.6）约 16 轮里 1 轮。
+  `scripts/check-ios.sh` 认出这种情况只记警告，这一轮等于没验证「从文件打开外部文稿」，要靠另一台设备补上。
+  苹果修好或换了新 runtime 以后，看能不能去掉这条判定。
 - **只改 Mac 或文档的 PR 也跑模拟器**：一轮完整 CI 约 17 分钟，九成花在模拟器上，加移动端之前一轮约 3 分钟。可以只在改到 `Mobile/` 或三个共用库时才跑模拟器；`check-all` 是必需的检查，跳过时也要让它报成功。
 
 ## 三、M5 里还没做的
