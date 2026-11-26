@@ -1,6 +1,6 @@
 # 发布签名的公共部分（被 sign-app.sh、notarize.sh source，自己不单独跑）：用哪把证书、仓库钉着哪一把、公证用哪份凭据。
 #
-# 2026-11-26 起用 Developer ID 签名并公证（作者定，AGENTS.md「Apple 开发者账号和签名」）：这样的包才能发给别人，
+# 2026-11-26 起用 Developer ID 签名并公证（作者定，docs/release.md）：这样的包才能发给别人，
 # 从网上下载后打开，macOS 不再拦。本机自用的包也用它，免得签名换来换去、系统权限又要重给。
 # 以前的自签名「Skylu Signing」不再用来签 SkyFolio；作者别的个人工具还在用那把证书，永远不重建。
 #
@@ -13,7 +13,7 @@
 # 证书和私钥在 login 钥匙串里，不进仓库、不进 CI。按仓库钉着的 SHA-1 找，不按名字：名字可能对上好几把。
 SIGNING_TEAM_ID="26TVX3S9FR"
 SIGNING_PIN_FILE="packaging/signing-identity.sha1"
-# notarytool 存在钥匙串里的凭据（团队 API Key）。备用的另一份见 AGENTS.md。
+# notarytool 存在钥匙串里的凭据（团队 API Key）。备用的另一份见 docs/release.md。
 NOTARY_PROFILE="${SKYFOLIO_NOTARY_PROFILE:-skylu-notary}"
 
 # 仓库钉着的 SHA-1（小写）；文件不在或没有内容输出空。

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 把 Developer ID 签好的 App 或 DMG 交给 Apple 公证，通过以后把票据钉上（stapler），再让 Gatekeeper 评估一遍。
-# 公证过的包从网上下载后打开，macOS 只提示一句「从互联网下载」，不再拦（AGENTS.md「Apple 开发者账号和签名」）。
+# 公证过的包从网上下载后打开，macOS 只提示一句「从互联网下载」，不再拦（docs/release.md）。
 #
 # 凭据是 notarytool 存在钥匙串里的 profile（common.sh 的 NOTARY_PROFILE，默认 skylu-notary）。只在本机跑：
 # 凭据不进 CI、不进仓库。要联网，一次通常几分钟。
