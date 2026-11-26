@@ -26,6 +26,8 @@
   可执行程序：新功能就在 `Sources/SkySheetChecks/` 里加一个 `*Checks.swift`，再在 `main.swift` 里调用。
   CI 把它拆成两台 macOS 并行跑：`scripts/check-all.sh core`（编译、SkySheetChecks、SampleData 守卫）和
   `scripts/check-all.sh ui`（UI 自检）。两台还分别跑一个移动端配置，覆盖 iPadOS 26.5 和 iOS 18.6。汇总的 `check-all` 两边都 success 才绿。本机照旧不带参数跑全部 Mac 自检。
+  移动端失败的用例会在同一台模拟器上自动再跑一次，重跑才过的在 PR 上标黄色警告。模拟器的「文件」服务自己交不出所选文件时
+  （系统日志里 FP -1005），选文件那条只记警告、不判失败；怎么认定写在 `scripts/check-ios.sh`。
   后台 UI 自检用 `nice -n 10 scripts/check-ui.sh [editing|copy-limit|theme|format|appearance|locale|drawing|ai]`，不给套件就全跑。
   在 `Sources/SkySheetChecks/UI/` 加断言，再到唯一套件入口 `UI/main.swift` 注册；SPM 换入口编译同一份 App 源文件，
   不启动文档恢复或 MCP、不接系统剪贴板。

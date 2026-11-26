@@ -75,17 +75,24 @@ PY
   printf '31,93\n' > "$provider_file"
   mkdir -p "$container/Documents"
   cp Fixtures/IronCalc/arithmetic.xlsx "$container/Documents/Arithmetic.xlsx"
-  # 苹果自己的 Files 先建立副本；编辑与重开两个用例运行期间，由提供方完成索引。
+  # 苹果自己的 Files 先建立副本，选文件那条排在最后，给提供方留出建索引的时间（它偶尔卡死，见下面的判定）。
+  # 准备这条不重跑：重跑会再复制出一份。
   if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
     -only-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
     -collect-test-diagnostics never -resultBundlePath "$work/$family-prepare.xcresult" test-without-building; then
     failed=1
     xcrun xcresulttool export attachments --path "$work/$family-prepare.xcresult" --output-path "$results/$family-preparation"
   fi
-  if ! xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
+  # 失败的用例在同一台模拟器上再跑一次：Xcode 偶尔拉不起 App（2026-11-25 iPad「Timed out while launching」）。
+  # 编辑与重开那条重跑时文件已被上一次改过，输入会接成「77」，必然再失败，真问题不会被洗成通过。
+  tests="$work/$family-tests.log"
+  if xcodebuild "${settings[@]}" -destination "id=$device" -parallel-testing-enabled NO \
     -skip-testing:SkyFolioUITests/WorkbookUITests/testPrepareFileUsingSystemProvider \
-    -collect-test-diagnostics never -resultBundlePath "$work/$family.xcresult" test-without-building; then
-    failed=1
+    -retry-tests-on-failure -test-iterations 2 \
+    -collect-test-diagnostics never -resultBundlePath "$work/$family.xcresult" test-without-building 2>&1 | tee "$tests"; then
+    status=0
+  else
+    status=1
     container="$(xcrun simctl get_app_container "$device" ai.skylu.skyfolio data)"
     python3 - "$container" <<'PY'
 import json, pathlib, sys
@@ -96,7 +103,37 @@ PY
     xcrun simctl spawn "$device" log show --last 12m --info --style compact \
       --predicate '(subsystem BEGINSWITH "com.apple.FileProvider" OR subsystem BEGINSWITH "com.apple.DocumentManager") AND (messageType == error OR eventMessage CONTAINS[c] "pick" OR eventMessage CONTAINS[c] "materializ")' \
       > "$results/$family-files.log" || true
-  else
+  fi
+  # 0：全过，重跑才过的标警告；3：只是模拟器「文件」交不出所选文件，记警告；其余都算失败。
+  verdict=0
+  python3 - "$family" "$status" "$tests" "$results/$family-files.log" <<'PY' || verdict=$?
+import pathlib, re, sys
+family, status = sys.argv[1], int(sys.argv[2])
+output = pathlib.Path(sys.argv[3]).read_text(errors="replace")
+cases = re.findall(r"Test Case '-\[SkyFolioUITests\.WorkbookUITests (\w+)\]' (passed|failed)", output)
+failed = {name for name, result in cases if result == "failed"}
+passed = {name for name, result in cases if result == "passed"}
+for name in sorted(failed & passed):
+    print(f"::warning title={family} UI test passed on retry::{name} failed once and passed when run again. The first failure is in the log.")
+if status == 0:
+    sys.exit(0)
+# 模拟器本机「文件」提供方偶尔建索引卡死，被系统杀掉重启后查不到刚登记的文件（FP -1005），
+# 选了交不出来，SkyFolio 根本收不到文件。只认这一种：只有选文件那条失败、每次都停在「表格没打开」、
+# 系统日志里提供方说所选文件不存在。iPhone 和 iPad 走同一份代码，平时另一台照常验证这条路。
+picker = "testSelectExternalWorkbookFromFiles"
+messages = [message for name, message in re.findall(r"error: -\[SkyFolioUITests\.WorkbookUITests (\w+)\] : (.*)", output)
+            if name == picker]
+files = pathlib.Path(sys.argv[4])
+system = files.read_text(errors="replace") if files.exists() else ""
+lost = re.search(r"(Cannot get URL for item ID|Could not resolve bookmark).*NSFileProviderErrorNonExistentItemIdentifier", system)
+if failed - passed == {picker} and messages and lost \
+        and all(message.startswith("XCTAssertTrue failed - The workbook did not open") for message in messages):
+    print(f"::warning title={family} Files provider lost the picked file::The simulator's Files provider could not hand over "
+          f"the picked document (FP -1005), so SkyFolio never received it. Not counted as a failure; see {files.name}.")
+    sys.exit(3)
+sys.exit(1)
+PY
+  if [[ $verdict == 0 ]]; then
     python3 - "$provider_file" <<'PY'
 import csv, pathlib, sys
 seed = pathlib.Path(sys.argv[1])
@@ -106,6 +143,8 @@ assert len(copies) == 1, f"Expected one document created by Files, found {copies
 with copies[0].open(newline="", encoding="utf-8-sig") as file:
     assert list(csv.reader(file)) == [["31", "93"], ["", "47"]], "External provider did not receive the edit"
 PY
+  elif [[ $verdict != 3 ]]; then
+    failed=1
   fi
   xcrun xcresulttool export attachments --path "$work/$family.xcresult" --output-path "$results/$family"
   xcrun simctl shutdown "$device"
