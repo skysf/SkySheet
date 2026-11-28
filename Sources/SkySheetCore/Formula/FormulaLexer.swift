@@ -34,7 +34,7 @@ struct FormulaLexer {
         return tokens
     }
 
-    private mutating func next() throws(FormulaSyntaxError) -> FormulaToken? {
+    mutating func next() throws(FormulaSyntaxError) -> FormulaToken? {
         while position < scalars.count, Self.isWhitespace(scalars[position]) { position += 1 }
         guard position < scalars.count else { return nil }
         let start = position

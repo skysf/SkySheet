@@ -32,6 +32,16 @@ final class CellEditor: NSTextField, NSTextFieldDelegate {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("not used") }
 
+    // 长公式的格内编辑框会盖住右边几个格子，点到伸出去的部分仍然可以引用下面那一格。
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        if !isHidden, let spreadsheet, let edit = spreadsheet.session.editing,
+           let cell = spreadsheet.address(at: point), cell != edit.address,
+           spreadsheet.canvas?.merge(containing: cell)?.start != edit.address, spreadsheet.canPickReference {
+            return nil
+        }
+        return super.hitTest(point)
+    }
+
     /// 摆到格子上：`rect` 是格子在 SpreadsheetView 里的位置，`limit` 是最多能往右长到哪。
     func place(over rect: CGRect, limit: CGFloat, font: NSFont) {
         if self.font != font { self.font = font }
@@ -53,6 +63,8 @@ final class CellEditor: NSTextField, NSTextFieldDelegate {
         guard let spreadsheet else { return false }
         let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
         let typing = spreadsheet.session.editing?.origin == .typing
+        if (typing || spreadsheet.session.editing?.picked != nil),
+           spreadsheet.handleReferenceArrow(selector) { return true }
         switch selector {
         case #selector(insertNewline(_:)): spreadsheet.finishEditing(rows: shift ? -1 : 1, columns: 0)
         case #selector(insertTab(_:)): spreadsheet.finishEditing(rows: 0, columns: 1)
@@ -94,7 +106,8 @@ extension SpreadsheetView {
 
     /// session.editing 变了（开始、结束、公式栏那边在打字）：显示或藏起编辑框，文字跟上。
     func editingChanged() {
-        guard let edit = session.editing else {
+        updateReferenceOutline()
+        guard let edit = session.editing, edit.sheetID == session.sheet.id else {
             if !editor.isHidden {
                 editor.isHidden = true
                 editor.stringValue = ""
@@ -110,7 +123,7 @@ extension SpreadsheetView {
 
     /// 编辑框摆到正在编辑的格子上（滚动、缩放、打字变宽时都要重摆）。
     func placeEditor() {
-        guard let canvas, let edit = session.editing else { return }
+        guard let canvas, let edit = session.editing, edit.sheetID == canvas.sheet.id else { return }
         let range = canvas.merge(containing: edit.address) ?? CellRange(edit.address)
         let rect = viewRect(of: range)
         let style = canvas.styles.style(canvas.sheet.cells[edit.address]?.styleIndex ?? 0)

@@ -30,6 +30,8 @@ final class SpreadsheetView: NSView {
     private let cornerBox = CornerBox()
     /// 格内编辑框（CellEditor.swift）。不编辑时藏着。
     let editor = CellEditor()
+    weak var formulaField: NSTextField?
+    private var outlinedReference: CellRange?
     /// 拖边线时跟着鼠标的那个小牌子：「Width: 12.50 (92 px)」，和 Excel 一样。
     let sizeLabel = SizeLabel()
     /// 字体缓存，每次重建画布都接着用（拖边线时每动一下都要重建）。
@@ -137,6 +139,7 @@ final class SpreadsheetView: NSView {
             recentCanvases[oldest] = nil
         }
         canvas = SheetCanvas(session: session, fonts: fonts, previous: recentCanvases[session.sheet.id])
+        updateReferenceOutline()
         needsLayout = true
         if canvasKey?.sheet != session.sheet.id || canvasKey?.zoom != session.zoom { needsInitialScroll = true }
         canvasKey = (session.sheet.id, session.zoom)
@@ -226,8 +229,11 @@ final class SpreadsheetView: NSView {
 
     /// 让活动格露出来。冻结区里的格子本来就看得见，只在滚动的那个方向上挪。
     func scrollToCursor() {
+        scrollToCell(session.selection.cursor)
+    }
+
+    func scrollToCell(_ cursor: CellAddress) {
         guard let canvas else { return }
-        let cursor = session.selection.cursor
         let rect = canvas.rect(of: canvas.merge(containing: cursor) ?? CellRange(cursor))
         let visible = scrollView.contentView.bounds
         var target = visible
@@ -240,6 +246,28 @@ final class SpreadsheetView: NSView {
             target.size.height = rect.height
         }
         mainPane.scrollToVisible(target)
+    }
+
+    /// 公式还在原格编辑，另画一圈标出鼠标正在取哪块，避免改动选区和文档。
+    func updateReferenceOutline() {
+        let pick = session.editing?.picked
+        let next = pick?.sheetID == session.sheet.id ? pick?.selection.range : nil
+        guard next != outlinedReference else { return }
+        for range in [outlinedReference, next].compactMap({ $0 }) {
+            guard let rect = canvas?.rect(of: range) else { continue }
+            for pane in [cornerPane, frozenRowsPane, frozenColumnsPane, mainPane] {
+                pane.setNeedsDisplay(sheetTop: rect.minY - 3, bottom: rect.maxY + 3)
+            }
+        }
+        outlinedReference = next
+    }
+
+    func drawReferenceOutline(in context: CGContext) {
+        guard let outlinedReference, let rect = canvas?.rect(of: outlinedReference) else { return }
+        context.setStrokeColor(NSColor.systemBlue.cgColor)
+        context.setLineWidth(2)
+        context.setLineDash(phase: 0, lengths: [5, 3])
+        context.stroke(rect.insetBy(dx: 1, dy: 1))
     }
 
     /// SpreadsheetView 坐标里的一点落在哪一格（冻结区不加滚动距离，其余加上）。

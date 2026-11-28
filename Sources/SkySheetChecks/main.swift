@@ -14,6 +14,11 @@ if CommandLine.arguments.contains("--format-regressions") {
     formatRegressionChecks()
     finishChecks()
 }
+if CommandLine.arguments.contains("--formula-checks") {
+    formulaChecks()
+    functionChecks()
+    finishChecks()
+}
 if CommandLine.arguments.contains("--financial-regressions") {
     financialRegressionChecks()
     financialChecks()

@@ -7,6 +7,9 @@ import SkySheetDisplay
 struct WorkbookGrid: View {
     let book: MobileWorkbook
     @Binding var position: ScrollPosition
+    let picking: Bool
+    let tap: (CellAddress) -> Void
+    let pickRange: (CellRange) -> Void
     @State private var viewport = CGRect(x: 0, y: 0, width: 700, height: 900)
     static let gutter = 46.0
     static let header = 28.0
@@ -31,6 +34,13 @@ struct WorkbookGrid: View {
                             }
                         }
                         ForEach(merged, id: \.self) { cell($0) }
+                        if let range = book.pickedRange {
+                            let rect = grid.rect(of: range)
+                            Rectangle().strokeBorder(.blue, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                                .frame(width: rect.width, height: rect.height)
+                                .offset(x: Self.gutter + rect.minX, y: Self.header + rect.minY)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
                         ForEach(Array(cols), id: \.self) { col in
                             header(CellAddress.columnName(col), width: grid.columnWidth(col), height: Self.header)
                                 .offset(x: Self.gutter + grid.x(ofColumn: col), y: max(0, viewport.minY))
@@ -43,6 +53,7 @@ struct WorkbookGrid: View {
                             .offset(x: max(0, viewport.minX), y: max(0, viewport.minY))
                     }
                     .frame(width: grid.totalWidth + Self.gutter, height: grid.totalHeight + Self.header, alignment: .topLeading)
+                    .coordinateSpace(name: "workbook-cells")
                 }
         }
         .scrollPosition($position)
@@ -62,7 +73,7 @@ struct WorkbookGrid: View {
         let style = book.styles.style(value.styleIndex)
         let display = CellDisplay.content(of: value, style: style, dateSystem: book.workbook.dateSystem)
         let rect = book.geometry.rect(of: range)
-        let selected = address == book.address
+        let selected = book.showingEditedCell && address == book.address
         let alignment: Alignment = switch display.placement {
         case .left: .leading
         case .center: .center
@@ -70,7 +81,7 @@ struct WorkbookGrid: View {
         }
         let color = display.color
         return Button {
-            book.select(address)
+            tap(address)
         } label: {
             Text(verbatim: display.text).lineLimit(1)
                 .font(.system(size: 15, weight: style.font.bold ? .bold : .regular)).italic(style.font.italic)
@@ -82,6 +93,15 @@ struct WorkbookGrid: View {
         }
         .buttonStyle(.plain).accessibilityIdentifier("cell-\(address.a1)")
         .accessibilityLabel(Text(verbatim: address.a1)).accessibilityValue(Text(verbatim: display.text))
+        // 普通滑动仍能滚表；按住起点再拖，才把整块区域填进公式。
+        .highPriorityGesture(LongPressGesture(minimumDuration: 0.3)
+            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("workbook-cells")))
+            .onChanged { value in
+                guard case .second(true, let drag?) = value else { return }
+                let last = CellAddress(row: book.geometry.row(atY: max(0, drag.location.y - Self.header)),
+                                       column: book.geometry.column(atX: max(0, drag.location.x - Self.gutter)))
+                pickRange(CellRange(address, book.merges.merge(containing: last)?.start ?? last))
+            }, isEnabled: picking)
         .offset(x: Self.gutter + rect.minX, y: Self.header + rect.minY)
     }
 }

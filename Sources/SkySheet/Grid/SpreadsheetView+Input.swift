@@ -7,11 +7,12 @@ import SkySheetFiles
 extension SpreadsheetView {
     // MARK: - 鼠标
 
-    /// 点别的格子先提交正在编辑的；双击进入编辑（从格子里原来的写法开始）。
     override func mouseDown(with event: NSEvent) {
-        if session.editing != nil { finishEditing(rows: 0, columns: 0) }
-        window?.makeFirstResponder(self)
         guard let address = address(at: convert(event.locationInWindow, from: nil)) else { return }
+        if pickCellReference(address, extend: event.modifierFlags.contains(.shift)) { return }
+        let clickedSheet = session.sheetIndex
+        prepareForMouse()
+        session.showSheet(clickedSheet)
         // 选着整列时在格子上 Shift 点一下：变成从起点到这一格的一块格子（keepLines: false）。
         session.select(address, extend: event.modifierFlags.contains(.shift), keepLines: false)
         if event.clickCount == 2, !event.modifierFlags.contains(.shift) { beginEditing(.editing) }
@@ -19,9 +20,12 @@ extension SpreadsheetView {
 
     /// 拖着选一块。拖出主区时让主区自己往那边滚（autoscroll）。
     override func mouseDragged(with event: NSEvent) {
-        guard session.editing == nil else { return }
         mainPane.autoscroll(with: event)
         guard let address = address(at: convert(event.locationInWindow, from: nil)) else { return }
+        if session.editing != nil {
+            _ = pickCellReference(address, extend: true)
+            return
+        }
         session.select(address, extend: true)
     }
 

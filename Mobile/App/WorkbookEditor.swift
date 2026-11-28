@@ -8,6 +8,7 @@ struct WorkbookEditor: View {
     let close: () -> Void
     let openDocument: (URL) -> Void
     @FocusState private var typing: Bool
+    @State private var textSelection: TextSelection?
     @State private var position = ScrollPosition()
     @State private var choosingAddress = false
     @State private var addressInput = ""
@@ -25,17 +26,32 @@ struct WorkbookEditor: View {
                 Button(book.address.a1) { addressInput = book.address.a1; choosingAddress = true }
                     .font(.callout.monospaced().weight(.semibold)).accessibilityIdentifier("address")
                 Divider().frame(height: 24)
-                TextField(String(localized: "Value or formula"), text: $book.input)
+                TextField(String(localized: "Value or formula"), text: $book.input, selection: $textSelection)
                     .focused($typing).textInputAutocapitalization(.never).autocorrectionDisabled()
                     .submitLabel(.done).onSubmit { _ = book.commit(); typing = false }
                     .accessibilityIdentifier("formula-input")
+                if typing, book.input.hasPrefix("=") {
+                    Button {
+                        if let change = FormulaReferenceEdit.cyclingAnchors(in: book.input, selection: caret) {
+                            book.applyReference(change)
+                            placeCaret(after: change)
+                        }
+                    } label: { Text(verbatim: "$") }
+                    .accessibilityLabel(String(localized: "Cycle Reference Type"))
+                    Button { book.cancelInput(); typing = false } label: { Image(systemName: "xmark") }
+                        .accessibilityLabel(String(localized: "Cancel Formula"))
+                }
             }.padding(.horizontal, 14).frame(minHeight: 48).background(FolioTheme.paper.color)
-            WorkbookGrid(book: book, position: $position).id(book.sheetIndex)
+            WorkbookGrid(book: book, position: $position, picking: canPick, tap: tapCell, pickRange: pickRange).id(book.sheetIndex)
             HStack {
                 Menu {
                     ForEach(book.workbook.sheets.indices, id: \.self) { index in
                         if book.workbook.sheets[index].visibility == .visible {
-                            Button(book.workbook.sheets[index].name) { typing = false; book.showSheet(index) }
+                            Button(book.workbook.sheets[index].name) {
+                                let picking = canPick
+                                book.showSheet(index, pickingReference: picking)
+                                typing = picking
+                            }
                         }
                     }
                 } label: { Label(book.sheet.name, systemImage: "tablecells") }
@@ -113,5 +129,30 @@ struct WorkbookEditor: View {
         typing = false
         do { history = HistoryList(versions: try book.versions()) }
         catch { book.problem = error.localizedDescription }
+    }
+
+    private var caret: NSRange {
+        if case .selection(let range) = textSelection?.indices,
+           range.lowerBound >= book.input.startIndex, range.upperBound <= book.input.endIndex {
+            return NSRange(range, in: book.input)
+        }
+        return book.picked?.caret ?? NSRange(location: book.input.utf16.count, length: 0)
+    }
+
+    private var canPick: Bool {
+        typing && FormulaReferenceEdit.slot(in: book.input, selection: caret, previous: book.picked) != nil
+    }
+
+    private func tapCell(_ cell: CellAddress) {
+        if canPick { pickRange(CellRange(cell)) }
+        else { book.select(cell); typing = false }
+    }
+
+    private func pickRange(_ range: CellRange) {
+        if let change = book.pick(range, selection: caret) { placeCaret(after: change) }
+    }
+
+    private func placeCaret(after change: FormulaReferenceEdit) {
+        if let range = Range(change.caret, in: book.input) { textSelection = TextSelection(insertionPoint: range.lowerBound) }
     }
 }

@@ -17,7 +17,7 @@ Task { @MainActor in
     for suite in selected {
         switch suite {
         case "editing": sessionEditingChecks(); closeDecisionChecks(); dateSystemPasteChecks(); editingRenameChecks(); benchmarkModeChecks()
-            recoveryChecks(); lockedFormulaChecks(); formulaRecordChecks()
+            recoveryChecks(); lockedFormulaChecks(); formulaRecordChecks(); formulaReferenceChecks()
         case "copy-cost": sparseClipboardCostChecks()
         case "copy-limit": copyLimitChecks()
         case "theme": invalidThemeChecks()

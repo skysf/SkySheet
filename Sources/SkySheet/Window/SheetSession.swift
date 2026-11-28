@@ -81,12 +81,12 @@ final class SheetSession {
         workbook.sheets.indices.filter { workbook.sheets[$0].visibility == .visible }
     }
 
-    func showSheet(_ index: Int) {
+    func showSheet(_ index: Int, pickingReference: Bool = false) {
         guard workbook.sheets.indices.contains(index), index != sheetIndex else { return }
-        // 正在编辑的先提交：提交时按当前看的 sheet 写，换了 sheet 再提交就写错地方了。
-        commitEditing()
+        if !pickingReference { commitEditing() }
         sheetIndex = index
-        resetSelection()
+        if let edit = editing, sheet.id == edit.sheetID { selection = edit.originalSelection }
+        else { resetSelection() }
     }
 
     /// 选中一格；`extend` 时从原来的起点拉到这一格（按住 Shift）。碰到合并单元格就把整块框进来。

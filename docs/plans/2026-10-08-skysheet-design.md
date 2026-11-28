@@ -200,6 +200,7 @@ Sources/
 - 数学与统计：AVERAGE、MIN、MAX、COUNT、COUNTA、PRODUCT、SUMPRODUCT、ROUND、ROUNDUP、ROUNDDOWN、INT、ABS、MOD、
   SQRT、SUMIF、SUMIFS、COUNTIF、COUNTIFS、AVERAGEIF、AVERAGEIFS
 - 逻辑：AND、OR、NOT、IFERROR、IFS
+- 类型判断直接检查参数原来的类型，包括 ISNUMBER、ISTEXT、ISNONTEXT、ISBLANK、ISLOGICAL、ISERROR、ISERR、ISNA。
 - 查找：VLOOKUP、INDEX、MATCH、XLOOKUP
 - 日期：DATE、YEAR、MONTH、DAY、EDATE、EOMONTH、DATEDIF、DAYS
 - 文字：TEXT、CONCAT、LEFT、RIGHT、MID、LEN
@@ -416,6 +417,8 @@ Sources/
     （值类型），连同当时看的 sheet 和选区。
   - 格内编辑框是盖在格子上的 NSTextField，和公式栏读写同一份文字。直接打字是「输入」模式（方向键提交并移动），
     双击、F2 是「编辑」模式（方向键移光标）；Option+回车在格子里换行；编辑中 ⌘Z 是取消这次编辑。
+  - 写公式时点格子取引用，拖动取范围，Mac 也能点列标、行号取整列、整行，F4 切换固定行和列。
+    切页签可以取另一张表的数，回车写入开始编辑的那一格。iPhone、iPad 在公式栏里输入，按住格子再拖动取范围。
   - 中文输入法：开始打字的第一下按键要转给编辑框，拼音才从第一个字母就进输入法。第一下 Esc 取消拼音、第二下 Esc 取消编辑，
     和 Excel 一样（2026-10-08 打包后实测）。
   - 复制时放两份：显示的文字（给别的软件）和 SkySheet 自己的格式（原始写法，粘回来不丢精度、公式按位置平移引用）。

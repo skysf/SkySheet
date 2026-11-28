@@ -8,6 +8,7 @@ import SwiftUI
 /// 我们算不了的公式（设计 5.3 节「未重算」）在右边标出来，鼠标停上去看原因。
 struct FormulaBar: View {
     let session: SheetSession
+    let spreadsheet: SpreadsheetView
 
     var body: some View {
         let cursor = session.editing?.address ?? session.selection.cursor
@@ -23,7 +24,7 @@ struct FormulaBar: View {
                 .font(.system(size: 12, design: .serif).italic())
                 .foregroundStyle(FolioTheme.accent.color)
                 .padding(.horizontal, 8)
-            FormulaField(session: session)
+            FormulaField(session: session, spreadsheet: spreadsheet)
             Spacer(minLength: 8)
             if session.editing == nil, case .notRecalculated(let reason)? = cell?.formula?.status {
                 Label("Not recalculated", systemImage: "exclamationmark.triangle")
@@ -41,6 +42,7 @@ struct FormulaBar: View {
 /// 公式栏里的文字框。用 AppKit 的 NSTextField：回车、Tab、Esc 要和格内编辑框一样处理。
 private struct FormulaField: NSViewRepresentable {
     let session: SheetSession
+    let spreadsheet: SpreadsheetView
 
     func makeNSView(context: Context) -> NSTextField {
         let field = NSTextField()
@@ -56,6 +58,7 @@ private struct FormulaField: NSViewRepresentable {
         field.cell?.allowsUndo = false
         field.lineBreakMode = .byTruncatingTail
         field.delegate = context.coordinator
+        spreadsheet.formulaField = field
         return field
     }
 
@@ -66,14 +69,16 @@ private struct FormulaField: NSViewRepresentable {
         if !typingHere, field.stringValue != text { field.stringValue = text }
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(session: session) }
+    func makeCoordinator() -> Coordinator { Coordinator(session: session, spreadsheet: spreadsheet) }
 
     @MainActor
     final class Coordinator: NSObject, NSTextFieldDelegate {
         let session: SheetSession
+        weak var spreadsheet: SpreadsheetView?
 
-        init(session: SheetSession) {
+        init(session: SheetSession, spreadsheet: SpreadsheetView) {
             self.session = session
+            self.spreadsheet = spreadsheet
         }
 
         /// 开始打字（不是点进来那一下）：格内正在编辑的接着编，没有就从活动格开始。
@@ -92,6 +97,7 @@ private struct FormulaField: NSViewRepresentable {
         }
 
         func control(_ control: NSControl, textView: NSTextView, doCommandBy selector: Selector) -> Bool {
+            if session.editing?.picked != nil, spreadsheet?.handleReferenceArrow(selector) == true { return true }
             let shift = NSApp.currentEvent?.modifierFlags.contains(.shift) ?? false
             switch selector {
             case #selector(NSResponder.insertNewline(_:)): finish { $0.commitEditing(rows: shift ? -1 : 1) }
