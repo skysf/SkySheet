@@ -118,6 +118,11 @@ final class WorkbookUITests: XCTestCase {
         let b2 = app.buttons["cell-B2"]
         b2.tap()
         input.tap()
+        input.typeText("=SUM(")
+        app.buttons["cell-A2"].press(forDuration: 0.6, thenDragTo: app.buttons["cell-A3"])
+        XCTAssertTrue(awaitValue("=SUM(A2:A3", of: input), "Touch drag extends the reference")
+        app.buttons["Cancel Formula"].tap()
+        input.tap()
         input.typeText("=ISNUMBER(")
         app.buttons["sheet-picker"].tap()
         app.buttons["Sheet2"].tap()

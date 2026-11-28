@@ -7,10 +7,10 @@ import SkySheetDisplay
 struct WorkbookGrid: View {
     let book: MobileWorkbook
     @Binding var position: ScrollPosition
+    @Binding var viewport: CGRect
     let picking: Bool
     let tap: (CellAddress) -> Void
     let pickRange: (CellRange) -> Void
-    @State private var viewport = CGRect(x: 0, y: 0, width: 700, height: 900)
     static let gutter = 46.0
     static let header = 28.0
 

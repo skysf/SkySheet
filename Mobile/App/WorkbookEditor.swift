@@ -10,6 +10,8 @@ struct WorkbookEditor: View {
     @FocusState private var typing: Bool
     @State private var textSelection: TextSelection?
     @State private var position = ScrollPosition()
+    @State private var viewport = CGRect(x: 0, y: 0, width: 700, height: 900)
+    @State private var resultScroll: (sheet: Int, point: CGPoint)?
     @State private var choosingAddress = false
     @State private var addressInput = ""
     @State private var history: HistoryList?
@@ -42,13 +44,20 @@ struct WorkbookEditor: View {
                         .accessibilityLabel(String(localized: "Cancel Formula"))
                 }
             }.padding(.horizontal, 14).frame(minHeight: 48).background(FolioTheme.paper.color)
-            WorkbookGrid(book: book, position: $position, picking: canPick, tap: tapCell, pickRange: pickRange).id(book.sheetIndex)
+            WorkbookGrid(book: book, position: $position, viewport: $viewport, picking: canPick, tap: tapCell, pickRange: pickRange)
+                .id(book.sheetIndex)
             HStack {
                 Menu {
                     ForEach(book.workbook.sheets.indices, id: \.self) { index in
                         if book.workbook.sheets[index].visibility == .visible {
                             Button(book.workbook.sheets[index].name) {
                                 let picking = canPick
+                                if picking, book.showingEditedCell, index != book.sheetIndex {
+                                    let rect = book.geometry.rect(of: CellRange(book.address))
+                                    let visible = CGRect(origin: viewport.origin, size: CGSize(width: viewport.width - WorkbookGrid.gutter,
+                                                                                              height: viewport.height - WorkbookGrid.header))
+                                    resultScroll = (book.sheetIndex, visible.contains(rect) ? viewport.origin : rect.origin)
+                                }
                                 book.showSheet(index, pickingReference: picking)
                                 typing = picking
                             }
@@ -90,7 +99,16 @@ struct WorkbookEditor: View {
             }
         }
         .disabled(copying)
-        .onChange(of: book.sheetIndex) { _, _ in position.scrollTo(point: .zero) }
+        .onChange(of: book.sheetIndex) { _, index in
+            // 跨表提交或取消后回到原结果格所在的画面，即使它在大表的很远处。
+            if let saved = resultScroll, saved.sheet == index {
+                position.scrollTo(point: saved.point)
+                resultScroll = nil
+            } else {
+                position.scrollTo(point: .zero)
+                if !book.hasFormulaDraft { resultScroll = nil }
+            }
+        }
         // 系统页签菜单可以暂时拿走键盘焦点，仍在等引用的草稿要留给下一次点选。
         .onChange(of: typing) { _, active in if !active && !canPick { _ = book.commit() } }
         .alert(String(localized: "Go to Cell"), isPresented: $choosingAddress) {

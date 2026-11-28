@@ -102,6 +102,7 @@ final class MobileWorkbook {
             if referenceOrigin == nil { referenceOrigin = sheetIndex }
             sheetIndex = index
             resetGeometry()
+            if showingEditedCell { _ = geometry.include(address) }
             return
         }
         guard commit() else { return }
