@@ -29,7 +29,19 @@ final class MobileWorkbook {
     private(set) var geometry: SheetGeometry
     private(set) var merges: MergeIndex
     private(set) var address = CellAddress(row: 0, column: 0)
-    var input = ""
+    var input = "" {
+        didSet { if picked != nil, ExactText(input) != ExactText(oldValue) { picked = nil } }
+    }
+    private(set) var picked: FormulaReferenceEdit?
+    private var referenceOrigin: Int?
+    var hasFormulaDraft: Bool {
+        input.hasPrefix("=") && (picked != nil || referenceOrigin != nil || ExactText(input) != ExactText(initialInput))
+    }
+    var showingEditedCell: Bool { referenceOrigin == nil || referenceOrigin == sheetIndex }
+    var pickedRange: CellRange? {
+        guard let picked, picked.sheet.map({ $0 == sheet.name }) ?? showingEditedCell else { return nil }
+        return picked.cells
+    }
     var status = ""
     var problem: String?
     private(set) var externalConflict = false
@@ -76,19 +88,57 @@ final class MobileWorkbook {
     }
 
     func select(_ cell: CellAddress) {
+        let tappedSheet = sheetIndex
         guard commit() else { return }
+        showSheet(tappedSheet)
         address = merges.merge(containing: cell)?.start ?? cell
         _ = geometry.include(address)
         refreshInput()
     }
 
-    func showSheet(_ index: Int) {
-        guard index != sheetIndex, workbook.sheets.indices.contains(index), commit() else { return }
+    func showSheet(_ index: Int, pickingReference: Bool = false) {
+        guard index != sheetIndex, workbook.sheets.indices.contains(index) else { return }
+        if pickingReference {
+            if referenceOrigin == nil { referenceOrigin = sheetIndex }
+            sheetIndex = index
+            resetGeometry()
+            if showingEditedCell { _ = geometry.include(address) }
+            return
+        }
+        guard commit() else { return }
         sheetIndex = index
         resetGrid()
     }
 
+    func pick(_ range: CellRange, selection: NSRange) -> FormulaReferenceEdit? {
+        let change = FormulaReferenceEdit.picking(range, sheet: showingEditedCell ? nil : sheet.name,
+                                                  in: input, selection: selection, previous: picked)
+        if let change { applyReference(change) }
+        return change
+    }
+
+    func applyReference(_ change: FormulaReferenceEdit) {
+        input = change.text
+        picked = change
+    }
+
+    func cancelInput() {
+        endReferenceSelection()
+        refreshInput()
+    }
+
+    private func endReferenceSelection() {
+        picked = nil
+        if let index = referenceOrigin, index != sheetIndex {
+            sheetIndex = index
+            resetGeometry()
+            _ = geometry.include(address)
+        }
+        referenceOrigin = nil
+    }
+
     @discardableResult func commit() -> Bool {
+        endReferenceSelection()
         guard ExactText(input) != ExactText(initialInput) else { return true }
         var changed = workbook
         changed.enter(CellInput.parse(input, dateSystem: workbook.dateSystem), at: address, sheet: sheetIndex)
@@ -208,10 +258,14 @@ final class MobileWorkbook {
     }
 
     private func resetGrid() {
-        geometry = SheetGeometry(sheet: sheet, baseFontSize: styles.baseFontSize, zoom: 1.7)
-        merges = MergeIndex(sheet.merges)
+        resetGeometry()
         address = CellAddress(row: 0, column: 0)
         refreshInput()
+    }
+
+    private func resetGeometry() {
+        geometry = SheetGeometry(sheet: sheet, baseFontSize: styles.baseFontSize, zoom: 1.7)
+        merges = MergeIndex(sheet.merges)
     }
 
     private func refreshInput() {

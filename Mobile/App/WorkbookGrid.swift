@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
@@ -7,7 +8,10 @@ import SkySheetDisplay
 struct WorkbookGrid: View {
     let book: MobileWorkbook
     @Binding var position: ScrollPosition
-    @State private var viewport = CGRect(x: 0, y: 0, width: 700, height: 900)
+    @Binding var viewport: CGRect
+    let picking: Bool
+    let tap: (CellAddress) -> Void
+    let pickRange: (CellRange) -> Void
     static let gutter = 46.0
     static let header = 28.0
 
@@ -31,6 +35,24 @@ struct WorkbookGrid: View {
                             }
                         }
                         ForEach(merged, id: \.self) { cell($0) }
+                        if let range = book.pickedRange {
+                            let rect = grid.rect(of: range)
+                            Rectangle().strokeBorder(.blue, style: StrokeStyle(lineWidth: 2, dash: [5, 3]))
+                                .frame(width: rect.width, height: rect.height)
+                                .offset(x: Self.gutter + rect.minX, y: Self.header + rect.minY)
+                                .allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                        if picking {
+                            let x = max(0, viewport.minX), y = max(0, viewport.minY)
+                            FormulaTouches(addressAt: { point in
+                                let address = CellAddress(row: grid.row(atY: max(0, y + point.y)),
+                                                          column: grid.column(atX: max(0, x + point.x)))
+                                return book.merges.merge(containing: address)?.start ?? address
+                            }, pick: pickRange)
+                            .frame(width: max(0, viewport.width - Self.gutter), height: max(0, viewport.height - Self.header))
+                            .offset(x: x + Self.gutter, y: y + Self.header)
+                            .accessibilityHidden(true)
+                        }
                         ForEach(Array(cols), id: \.self) { col in
                             header(CellAddress.columnName(col), width: grid.columnWidth(col), height: Self.header)
                                 .offset(x: Self.gutter + grid.x(ofColumn: col), y: max(0, viewport.minY))
@@ -62,7 +84,7 @@ struct WorkbookGrid: View {
         let style = book.styles.style(value.styleIndex)
         let display = CellDisplay.content(of: value, style: style, dateSystem: book.workbook.dateSystem)
         let rect = book.geometry.rect(of: range)
-        let selected = address == book.address
+        let selected = book.showingEditedCell && address == book.address
         let alignment: Alignment = switch display.placement {
         case .left: .leading
         case .center: .center
@@ -70,7 +92,7 @@ struct WorkbookGrid: View {
         }
         let color = display.color
         return Button {
-            book.select(address)
+            tap(address)
         } label: {
             Text(verbatim: display.text).lineLimit(1)
                 .font(.system(size: 15, weight: style.font.bold ? .bold : .regular)).italic(style.font.italic)
@@ -83,5 +105,60 @@ struct WorkbookGrid: View {
         .buttonStyle(.plain).accessibilityIdentifier("cell-\(address.a1)")
         .accessibilityLabel(Text(verbatim: address.a1)).accessibilityValue(Text(verbatim: display.text))
         .offset(x: Self.gutter + rect.minX, y: Self.header + rect.minY)
+    }
+}
+
+/// 编辑公式时在可见单元格上区分轻点、按住拖选和滚动。每个按钮各挂长按手势会吞掉普通轻点。
+private struct FormulaTouches: UIViewRepresentable {
+    let addressAt: (CGPoint) -> CellAddress
+    let pick: (CellRange) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        let handler = context.coordinator
+        let hold = UILongPressGestureRecognizer(target: handler, action: #selector(Coordinator.dragged(_:)))
+        hold.minimumPressDuration = 0.3
+        hold.delegate = handler
+        let tap = UITapGestureRecognizer(target: handler, action: #selector(Coordinator.tapped(_:)))
+        tap.require(toFail: hold)
+        view.addGestureRecognizer(hold)
+        view.addGestureRecognizer(tap)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.surface = self }
+
+    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var surface: FormulaTouches
+        private var anchor: CellAddress?
+
+        init(_ surface: FormulaTouches) { self.surface = surface }
+
+        @objc func tapped(_ tap: UITapGestureRecognizer) {
+            surface.pick(CellRange(surface.addressAt(tap.location(in: tap.view))))
+        }
+
+        @objc func dragged(_ hold: UILongPressGestureRecognizer) {
+            let address = surface.addressAt(hold.location(in: hold.view))
+            switch hold.state {
+            case .began:
+                anchor = address
+                surface.pick(CellRange(address))
+            case .changed, .ended:
+                if let anchor { surface.pick(CellRange(anchor, address)) }
+                if hold.state == .ended { anchor = nil }
+            default:
+                anchor = nil
+            }
+        }
+
+        // 手指直接移动时长按会失败，滚动便可开始；先按住则由同一次触摸完成区域选择。
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let scroll = otherGestureRecognizer.view as? UIScrollView else { return false }
+            return otherGestureRecognizer === scroll.panGestureRecognizer
+        }
     }
 }

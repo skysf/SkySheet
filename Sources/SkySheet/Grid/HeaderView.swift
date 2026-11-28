@@ -27,6 +27,7 @@ final class HeaderView: NSView {
 
     private enum Tracking {
         case selecting
+        case pickingReference
         case resizing(lines: ClosedRange<Int>, startSize: CGFloat, startPosition: CGFloat)
     }
 
@@ -293,8 +294,13 @@ final class HeaderView: NSView {
 
     override func mouseDown(with event: NSEvent) {
         guard let spreadsheet else { return }
-        spreadsheet.prepareForMouse()
         let point = convert(event.locationInWindow, from: nil)
+        if edge(at: point) == nil, let index = line(at: point),
+           spreadsheet.pickLineReference(axis, index: index, extend: event.modifierFlags.contains(.shift)) {
+            tracking = .pickingReference
+            return
+        }
+        spreadsheet.prepareForMouse()
         if let item = edge(at: point) {
             // 拖的是选着的整列里的一列：一起改。
             let selection = spreadsheet.session.selection
@@ -317,6 +323,9 @@ final class HeaderView: NSView {
         guard let spreadsheet else { return }
         let point = convert(event.locationInWindow, from: nil)
         switch tracking {
+        case .pickingReference:
+            spreadsheet.autoscroll(along: axis, with: event)
+            if let index = line(at: point) { _ = spreadsheet.pickLineReference(axis, index: index, extend: true) }
         case .resizing(let lines, let startSize, let startPosition):
             spreadsheet.previewResize(axis, lines: lines, pixels: max(0, startSize + position(of: point) - startPosition),
                                       near: convert(point, to: spreadsheet))

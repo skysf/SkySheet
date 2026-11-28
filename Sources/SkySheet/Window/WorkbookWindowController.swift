@@ -27,7 +27,7 @@ final class WorkbookWindowController: NSWindowController {
 }
 
 @MainActor
-final class WorkbookViewController: NSViewController {
+final class WorkbookViewController: NSViewController, NSMenuItemValidation {
     let session: SheetSession
     private(set) var spreadsheet: SpreadsheetView?
 
@@ -41,15 +41,15 @@ final class WorkbookViewController: NSViewController {
 
     override func loadView() {
         let container = NSView(frame: NSRect(x: 0, y: 0, width: 1100, height: 720))
-        let formulaBar = NSHostingView(rootView: FormulaBar(session: session))
+        let spreadsheet = SpreadsheetView(session: session)
+        let formulaBar = NSHostingView(rootView: FormulaBar(session: session, spreadsheet: spreadsheet))
         // AI 在改的时候才有内容；平时高度是 0（设计 8.3 节）。只让内容决定它的高度：默认的 sizingOptions 还会把
         // SwiftUI 内容的最大宽度变成约束，空横幅的最大宽度是 0，整个窗口被拉成 130 点宽（2026-10-09 端到端时抓到的）。
         let banner = NSHostingView(rootView: AIBanner(session: session))
         banner.sizingOptions = [.intrinsicContentSize]
         banner.setContentHuggingPriority(.defaultLow, for: .horizontal)
         banner.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
-        let spreadsheet = SpreadsheetView(session: session)
-        let bottomBar = NSHostingView(rootView: BottomBar(session: session))
+        let bottomBar = NSHostingView(rootView: BottomBar(session: session, selectSheet: spreadsheet.selectSheetTab))
         let topLine = Self.separator()
         let bottomLine = Self.separator()
         for view in [formulaBar, banner, topLine, spreadsheet, bottomLine, bottomBar] as [NSView] {
@@ -84,6 +84,12 @@ final class WorkbookViewController: NSViewController {
     override func viewDidAppear() {
         super.viewDidAppear()
         view.window?.makeFirstResponder(spreadsheet)
+    }
+
+    @objc func cycleFormulaReference(_ sender: Any?) { spreadsheet?.cycleFormulaReference() }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        item.action != #selector(cycleFormulaReference(_:)) || spreadsheet?.canCycleReference == true
     }
 
     private static func separator() -> NSView {

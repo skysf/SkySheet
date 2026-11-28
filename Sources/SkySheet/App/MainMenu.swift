@@ -38,6 +38,8 @@ enum MainMenu {
             item(String(localized: "Paste"), #selector(SpreadsheetView.paste(_:)), key: "v"),
             item(String(localized: "Delete"), #selector(SpreadsheetView.delete(_:))),
             item(String(localized: "Select All"), #selector(NSResponder.selectAll(_:)), key: "a"),
+            item(String(localized: "Cycle Reference Type"), #selector(WorkbookViewController.cycleFormulaReference(_:)),
+                 key: String(UnicodeScalar(NSF4FunctionKey)!), modifiers: []),
             .separator(),
             // 标题按选区现算：「Delete Rows 3–5」。
             item(String(localized: "Delete Rows"), #selector(SpreadsheetView.deleteRows(_:))),

@@ -1,5 +1,6 @@
 import Foundation
 import SkySheetCore
+import SkySheetFiles
 
 /// 第一版的函数（设计 5.3 节）：数学、统计、条件、逻辑、查找、日期、文字。财务函数在 FinancialChecks.swift。
 @MainActor
@@ -7,12 +8,37 @@ func functionChecks() {
     group("functions: every listed function is registered") {
         let expected = ["ABS", "AND", "AVERAGE", "AVERAGEIF", "AVERAGEIFS", "COLUMN", "COLUMNS", "CONCAT", "CONCATENATE",
                         "COUNT", "COUNTA", "COUNTIF", "COUNTIFS", "CUMIPMT", "CUMPRINC", "DATE", "DATEDIF", "DAY", "DAYS",
-                        "EDATE", "EFFECT", "EOMONTH", "FV", "IF", "IFERROR", "IFS", "INDEX", "INT", "IPMT", "IRR", "LEFT",
+                        "EDATE", "EFFECT", "EOMONTH", "FV", "IF", "IFERROR", "IFS", "INDEX", "INT", "IPMT", "IRR",
+                        "ISBLANK", "ISERR", "ISERROR", "ISLOGICAL", "ISNA", "ISNONTEXT", "ISNUMBER", "ISTEXT", "LEFT",
                         "LEN", "MATCH", "MAX", "MID", "MIN", "MOD", "MONTH", "NOMINAL", "NOT", "NPER", "NPV", "OR", "PMT",
                         "POWER", "PPMT", "PRODUCT", "PV", "RANK", "RANK.EQ", "RATE", "RIGHT", "ROUND", "ROUNDDOWN",
                         "ROUNDUP", "ROW", "ROWS", "SQRT", "SUM", "SUMIF", "SUMIFS", "SUMPRODUCT", "TEXT", "TODAY",
                         "VLOOKUP", "XIRR", "XLOOKUP", "XNPV", "YEAR"]
         checkEqual(FunctionLibrary.names, expected, "function list")
+    }
+
+    group("functions: information tests keep original types") {
+        let cells = ["A1": "50", "A2": "'50", "A3": "TRUE", "A4": "=1/0", "A5": "=#N/A", "A6": "=\"\""]
+        checkValue("ISNUMBER(A1)", cells, .bool(true))
+        for ref in ["A2", "A3", "A4", "A7", "\"50\""] { checkValue("ISNUMBER(\(ref))", cells, .bool(false)) }
+        checkValue("ISTEXT(A2)", cells, .bool(true))
+        checkValue("ISTEXT(A6)", cells, .bool(true))
+        checkValue("ISNONTEXT(A7)", cells, .bool(true))
+        checkValue("ISBLANK(A7)", cells, .bool(true))
+        checkValue("ISBLANK(A6)", cells, .bool(false))
+        checkValue("ISLOGICAL(A3)", cells, .bool(true))
+        checkValue("ISERROR(A5)", cells, .bool(true))
+        checkValue("ISERR(A5)", cells, .bool(false))
+        checkValue("ISERR(A4)", cells, .bool(true))
+        checkValue("ISNA(A5)", cells, .bool(true))
+        checkValue("ISNA(A4)", cells, .bool(false))
+        var imported = try XLSXReader.read(contentsOf: fixtureURL("IronCalc/arithmetic.xlsx"))
+        let b1 = CellAddress(a1: "B1")!
+        checkEqual(imported.sheets[1].cells[b1]?.formula?.source, "ISNUMBER(A1)", "Excel fixture formula")
+        imported.enter(.value(.number(50)), at: CellAddress(a1: "A1")!, sheet: 1)
+        Recalculator.recalculate(&imported)
+        checkEqual(imported.sheets[1].cells[b1]?.value, .bool(true), "imported formula replaces its false cache")
+        checkEqual(imported.sheets[1].cells[b1]?.formula?.status, .calculated, "imported formula recalculates")
     }
 
     group("functions: math") {

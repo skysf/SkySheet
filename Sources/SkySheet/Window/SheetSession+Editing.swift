@@ -14,10 +14,31 @@ struct CellEditing: Equatable {
 
     var sheetID: Int
     var address: CellAddress
-    var text: String
+    var text: String {
+        didSet { if picked != nil, ExactText(text) != ExactText(oldValue) { picked = nil } }
+    }
     var origin: Origin
-    let originalText: String
-    let sheetNames: [Int: String]
+    var originalText: String
+    var sheetNames: [Int: String]
+    var referenceRevision: Int
+    let originalSelection: Selection
+    var picked: Pick?
+
+    struct Pick: Equatable {
+        let sheetID: Int
+        let selection: Selection
+        let insertion: FormulaReferenceEdit
+    }
+
+    /// 文本里的名字按上次绑定的表编号解释，同名新表也有自己的编号。
+    func sheetRewriter(to current: [Int: String]) -> (String) -> String {
+        let renames = sheetNames.compactMap { id, old -> (from: String, to: String)? in
+            guard let new = current[id], new != old else { return nil }
+            return (old, new)
+        }
+        let removed = sheetNames.compactMap { id, old in current[id] == nil ? old : nil }
+        return { FormulaRewriter.renameSheets(in: $0, renames: renames, removed: removed) }
+    }
 }
 
 /// 编辑（设计第 16 条）。改工作簿只有 `apply` 一个入口：改一份副本，整本重算，换上去，再登记撤销。
@@ -91,7 +112,8 @@ extension SheetSession {
         let address = sheet.merges.first { $0.contains(cursor) }?.start ?? cursor
         let original = rawText(at: address)
         editing = CellEditing(sheetID: sheet.id, address: address, text: text ?? original, origin: origin,
-                              originalText: original, sheetNames: Dictionary(uniqueKeysWithValues: workbook.sheets.map { ($0.id, $0.name) }))
+                              originalText: original, sheetNames: Dictionary(uniqueKeysWithValues: workbook.sheets.map { ($0.id, $0.name) }),
+                              referenceRevision: revision, originalSelection: selection)
     }
 
     /// 提交编辑，然后光标挪 `rows` 行、`columns` 列（回车往下，Tab 往右）。文字没变就不算一次修改。
@@ -100,15 +122,14 @@ extension SheetSession {
         editing = nil
         // AI 可在输入期间删表或让数组下标挪动；编号消失就丢弃，绝不能落到后继表。
         guard let index = workbook.sheets.firstIndex(where: { $0.id == edit.sheetID }) else { return }
+        returnToEditedSheet(edit, index: index)
         // 没改字就保留后台已重写的格子；改过的公式按开始编辑时的表编号跟随改名。
-        if edit.text != edit.originalText {
+        if ExactText(edit.text) != ExactText(edit.originalText) {
             var input = CellInput.parse(edit.text, dateSystem: workbook.dateSystem)
             if case .formula(let formula) = input {
-                let renames = workbook.sheets.compactMap { sheet -> (from: String, to: String)? in
-                    guard let old = edit.sheetNames[sheet.id], old != sheet.name else { return nil }
-                    return (old, sheet.name)
-                }
-                input = .formula(FormulaRewriter.renameSheets(in: formula, renames: renames))
+                let current = Dictionary(uniqueKeysWithValues: workbook.sheets.map { ($0.id, $0.name) })
+                let rewrite = edit.sheetRewriter(to: current)
+                input = .formula(rewrite(formula))
             }
             let label = String(localized: "Edit \(workbook.sheets[index].name)!\(edit.address.a1)")
             apply(String(localized: "Typing"), groupUndo: groupUndo, historyTitle: label) { workbook in
@@ -119,19 +140,32 @@ extension SheetSession {
     }
 
     func cancelEditing() {
+        if let edit = editing, let index = workbook.sheets.firstIndex(where: { $0.id == edit.sheetID }) {
+            returnToEditedSheet(edit, index: index)
+        }
         editing = nil
+    }
+
+    /// 跨表点选只是暂时看另一张表。回车、Esc 和撤销记录都应落在开始编辑的那一格。
+    private func returnToEditedSheet(_ edit: CellEditing, index: Int) {
+        guard sheetIndex != index, workbook.sheets[index].visibility == .visible else { return }
+        sheetIndex = index
+        selection = edit.originalSelection
     }
 
     /// 光标挪几格。从合并单元格往外走时跳过整块；藏起来的行、列跳过去，和 Excel 一样。
     func moveCursor(rows: Int, columns: Int, extend: Bool = false) {
         guard rows != 0 || columns != 0 else { return }
-        let from = selection.cursor
+        select(adjacent(to: selection.cursor, rows: rows, columns: columns), extend: extend)
+    }
+
+    func adjacent(to from: CellAddress, rows: Int, columns: Int) -> CellAddress {
         let merge = sheet.merges.first { $0.contains(from) }
         var row = max(rows > 0 ? (merge?.end.row ?? from.row) + rows : from.row + rows, 0)
         var column = max(columns > 0 ? (merge?.end.column ?? from.column) + columns : from.column + columns, 0)
         if rows != 0 { row = visibleLine(.rows, from: row, step: rows > 0 ? 1 : -1) ?? from.row }
         if columns != 0 { column = visibleLine(.columns, from: column, step: columns > 0 ? 1 : -1) ?? from.column }
-        select(CellAddress(row: row, column: column), extend: extend)
+        return CellAddress(row: min(row, CellAddress.maxRows - 1), column: min(column, CellAddress.maxColumns - 1))
     }
 
     /// 从 `index` 起往 `step` 那边找第一行（列）没藏起来的；一直到表的边上都藏着就是 nil（光标不动）。

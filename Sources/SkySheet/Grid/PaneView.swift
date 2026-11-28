@@ -88,6 +88,7 @@ class PaneView: NSView {
         RegionRenderer(canvas: canvas, geometry: geometry, rows: dirty.rows, columns: dirty.columns, visibleRows: visible.rows,
                        visibleColumns: visible.columns, paneColumns: bounds.columns, reach: reach, clip: sheetRect)
             .draw(selection: spreadsheet.session.selection)
+        spreadsheet.drawReferenceOutline(in: context)
         context.restoreGState()
 
         // 冻结线：冻结区靠滚动区的那一边画深一点的线，和 Excel 一样。

@@ -21,7 +21,7 @@ struct FunctionSpec: Sendable {
 public enum FunctionLibrary {
     static let specs: [String: FunctionSpec] = {
         let groups = [MathFunctions.all, StatisticalFunctions.all, ConditionalFunctions.all, LogicalFunctions.all,
-                      LookupFunctions.all, DateFunctions.all, TextFunctions.all, FinancialFunctions.all]
+                      LookupFunctions.all, DateFunctions.all, TextFunctions.all, FinancialFunctions.all, InformationFunctions.all]
         var table: [String: FunctionSpec] = [:]
         for spec in groups.joined() {
             precondition(table[spec.name] == nil, "function \(spec.name) registered twice")
