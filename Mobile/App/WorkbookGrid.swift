@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 import SkyFolioTheme
 import SkySheetCore
 import SkySheetDisplay
@@ -41,6 +42,17 @@ struct WorkbookGrid: View {
                                 .offset(x: Self.gutter + rect.minX, y: Self.header + rect.minY)
                                 .allowsHitTesting(false).accessibilityHidden(true)
                         }
+                        if picking {
+                            let x = max(0, viewport.minX), y = max(0, viewport.minY)
+                            FormulaTouches(addressAt: { point in
+                                let address = CellAddress(row: grid.row(atY: max(0, y + point.y)),
+                                                          column: grid.column(atX: max(0, x + point.x)))
+                                return book.merges.merge(containing: address)?.start ?? address
+                            }, pick: pickRange)
+                            .frame(width: max(0, viewport.width - Self.gutter), height: max(0, viewport.height - Self.header))
+                            .offset(x: x + Self.gutter, y: y + Self.header)
+                            .accessibilityHidden(true)
+                        }
                         ForEach(Array(cols), id: \.self) { col in
                             header(CellAddress.columnName(col), width: grid.columnWidth(col), height: Self.header)
                                 .offset(x: Self.gutter + grid.x(ofColumn: col), y: max(0, viewport.minY))
@@ -53,7 +65,6 @@ struct WorkbookGrid: View {
                             .offset(x: max(0, viewport.minX), y: max(0, viewport.minY))
                     }
                     .frame(width: grid.totalWidth + Self.gutter, height: grid.totalHeight + Self.header, alignment: .topLeading)
-                    .coordinateSpace(name: "workbook-cells")
                 }
         }
         .scrollPosition($position)
@@ -93,15 +104,61 @@ struct WorkbookGrid: View {
         }
         .buttonStyle(.plain).accessibilityIdentifier("cell-\(address.a1)")
         .accessibilityLabel(Text(verbatim: address.a1)).accessibilityValue(Text(verbatim: display.text))
-        // 普通滑动仍能滚表；按住起点再拖，才把整块区域填进公式。
-        .highPriorityGesture(LongPressGesture(minimumDuration: 0.3)
-            .sequenced(before: DragGesture(minimumDistance: 0, coordinateSpace: .named("workbook-cells")))
-            .onChanged { value in
-                guard case .second(true, let drag?) = value else { return }
-                let last = CellAddress(row: book.geometry.row(atY: max(0, drag.location.y - Self.header)),
-                                       column: book.geometry.column(atX: max(0, drag.location.x - Self.gutter)))
-                pickRange(CellRange(address, book.merges.merge(containing: last)?.start ?? last))
-            }, isEnabled: picking)
         .offset(x: Self.gutter + rect.minX, y: Self.header + rect.minY)
+    }
+}
+
+/// 编辑公式时在可见单元格上区分轻点、按住拖选和滚动。每个按钮各挂长按手势会吞掉普通轻点。
+private struct FormulaTouches: UIViewRepresentable {
+    let addressAt: (CGPoint) -> CellAddress
+    let pick: (CellRange) -> Void
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        let handler = context.coordinator
+        let hold = UILongPressGestureRecognizer(target: handler, action: #selector(Coordinator.dragged(_:)))
+        hold.minimumPressDuration = 0.3
+        hold.delegate = handler
+        let tap = UITapGestureRecognizer(target: handler, action: #selector(Coordinator.tapped(_:)))
+        tap.require(toFail: hold)
+        view.addGestureRecognizer(hold)
+        view.addGestureRecognizer(tap)
+        return view
+    }
+
+    func updateUIView(_ view: UIView, context: Context) { context.coordinator.surface = self }
+
+    @MainActor final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var surface: FormulaTouches
+        private var anchor: CellAddress?
+
+        init(_ surface: FormulaTouches) { self.surface = surface }
+
+        @objc func tapped(_ tap: UITapGestureRecognizer) {
+            surface.pick(CellRange(surface.addressAt(tap.location(in: tap.view))))
+        }
+
+        @objc func dragged(_ hold: UILongPressGestureRecognizer) {
+            let address = surface.addressAt(hold.location(in: hold.view))
+            switch hold.state {
+            case .began:
+                anchor = address
+                surface.pick(CellRange(address))
+            case .changed, .ended:
+                if let anchor { surface.pick(CellRange(anchor, address)) }
+                if hold.state == .ended { anchor = nil }
+            default:
+                anchor = nil
+            }
+        }
+
+        // 手指直接移动时长按会失败，滚动便可开始；先按住则由同一次触摸完成区域选择。
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                               shouldBeRequiredToFailBy otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            guard let scroll = otherGestureRecognizer.view as? UIScrollView else { return false }
+            return otherGestureRecognizer === scroll.panGestureRecognizer
+        }
     }
 }

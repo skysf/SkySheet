@@ -31,7 +31,7 @@ struct WorkbookEditor: View {
                     .font(.callout.monospaced().weight(.semibold)).accessibilityIdentifier("address")
                 Divider().frame(height: 24)
                 MobileFormulaField(text: $book.input, focused: $typing, selection: formulaSelection) { _ = book.commit() }
-                    .frame(maxWidth: .infinity)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity)
                 if typing, book.input.hasPrefix("=") {
                     Button {
                         if let change = FormulaReferenceEdit.cyclingAnchors(in: book.input, selection: caret) {
