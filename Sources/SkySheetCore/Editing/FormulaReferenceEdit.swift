@@ -3,8 +3,8 @@ import Foundation
 /// 点选后保留刚插入的那段文字。继续点或拖只替换这一段，打出运算符后才开始下一个引用。
 /// 两端的系统文本框都用 UTF-16 选区，不能用字符数算光标（表名和字符串里可以有 emoji）。
 public struct FormulaReferenceEdit: Equatable, Sendable {
-    public let text: String
-    public let span: NSRange
+    public private(set) var text: String
+    public private(set) var span: NSRange
     public var caret: NSRange { NSRange(location: NSMaxRange(span), length: 0) }
     private let reference: ReferenceToken
     public var cells: CellRange { reference.range }
@@ -18,7 +18,16 @@ public struct FormulaReferenceEdit: Equatable, Sendable {
     }
 
     private func isCurrent(in text: String, selection: NSRange) -> Bool {
-        self.text == text && (selection == caret || selection == span)
+        (selection == caret || selection == span) && ExactText(self.text) == ExactText(text)
+    }
+
+    /// 拾取引用期间若后台改过表名，旧草稿按旧表编号更新；刚点的引用已按当前页签生成，保留它并重定位光标。
+    public mutating func rewriteSurroundingText(_ rewrite: (String) -> String) {
+        let source = text as NSString
+        let before = rewrite(source.substring(to: span.location))
+        let after = rewrite(source.substring(from: NSMaxRange(span)))
+        text = before + source.substring(with: span) + after
+        span.location = before.utf16.count
     }
 
     /// 只有光标处能填操作数时，点击才属于公式。普通文字、字符串内部、已经打完的数值沿用原来的选格操作。
@@ -46,7 +55,17 @@ public struct FormulaReferenceEdit: Equatable, Sendable {
             reference.end?.copyAnchors(from: previous.reference.end ?? previous.reference.start)
         }
         reference.sheet = sheet
-        let prefix = sheet.map { FormulaRewriter.quotedSheetName($0) + "!" } ?? ""
+        var prefix = sheet.map { FormulaRewriter.quotedSheetName($0) + "!" } ?? ""
+        if let sheet, range.location > 0 {
+            let left = (text as NSString).substring(to: range.location)
+            // 在另一张表先点 A1、打冒号、再点 A10，区域只在第一个端点写表名。
+            if left.last == ":", let tokens = try? FormulaLexer.tokenize(left),
+               case .reference(let start)? = tokens.dropLast().last?.kind,
+               start.sheet?.caseInsensitiveCompare(sheet) == .orderedSame { prefix = "" }
+            if left.last == "!", let tokens = try? FormulaLexer.tokenize(left + "A1"),
+               case .reference(let qualified)? = tokens.last?.kind,
+               qualified.sheet?.caseInsensitiveCompare(sheet) == .orderedSame { prefix = "" }
+        }
         return Self(in: text, replacing: range, reference: reference, prefix: prefix)
     }
 

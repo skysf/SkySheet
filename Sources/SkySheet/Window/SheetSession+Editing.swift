@@ -15,11 +15,12 @@ struct CellEditing: Equatable {
     var sheetID: Int
     var address: CellAddress
     var text: String {
-        didSet { if text != oldValue { picked = nil } }
+        didSet { if picked != nil, ExactText(text) != ExactText(oldValue) { picked = nil } }
     }
     var origin: Origin
-    let originalText: String
-    let sheetNames: [Int: String]
+    var originalText: String
+    var sheetNames: [Int: String]
+    var referenceRevision: Int
     let originalSelection: Selection
     var picked: Pick?
 
@@ -27,6 +28,16 @@ struct CellEditing: Equatable {
         let sheetID: Int
         let selection: Selection
         let insertion: FormulaReferenceEdit
+    }
+
+    /// 文本里的名字按上次绑定的表编号解释，同名新表也有自己的编号。
+    func sheetRewriter(to current: [Int: String]) -> (String) -> String {
+        let renames = sheetNames.compactMap { id, old -> (from: String, to: String)? in
+            guard let new = current[id], new != old else { return nil }
+            return (old, new)
+        }
+        let removed = sheetNames.compactMap { id, old in current[id] == nil ? old : nil }
+        return { FormulaRewriter.renameSheets(in: $0, renames: renames, removed: removed) }
     }
 }
 
@@ -102,7 +113,7 @@ extension SheetSession {
         let original = rawText(at: address)
         editing = CellEditing(sheetID: sheet.id, address: address, text: text ?? original, origin: origin,
                               originalText: original, sheetNames: Dictionary(uniqueKeysWithValues: workbook.sheets.map { ($0.id, $0.name) }),
-                              originalSelection: selection)
+                              referenceRevision: revision, originalSelection: selection)
     }
 
     /// 提交编辑，然后光标挪 `rows` 行、`columns` 列（回车往下，Tab 往右）。文字没变就不算一次修改。
@@ -113,14 +124,12 @@ extension SheetSession {
         guard let index = workbook.sheets.firstIndex(where: { $0.id == edit.sheetID }) else { return }
         returnToEditedSheet(edit, index: index)
         // 没改字就保留后台已重写的格子；改过的公式按开始编辑时的表编号跟随改名。
-        if edit.text != edit.originalText {
+        if ExactText(edit.text) != ExactText(edit.originalText) {
             var input = CellInput.parse(edit.text, dateSystem: workbook.dateSystem)
             if case .formula(let formula) = input {
-                let renames = workbook.sheets.compactMap { sheet -> (from: String, to: String)? in
-                    guard let old = edit.sheetNames[sheet.id], old != sheet.name else { return nil }
-                    return (old, sheet.name)
-                }
-                input = .formula(FormulaRewriter.renameSheets(in: formula, renames: renames))
+                let current = Dictionary(uniqueKeysWithValues: workbook.sheets.map { ($0.id, $0.name) })
+                let rewrite = edit.sheetRewriter(to: current)
+                input = .formula(rewrite(formula))
             }
             let label = String(localized: "Edit \(workbook.sheets[index].name)!\(edit.address.a1)")
             apply(String(localized: "Typing"), groupUndo: groupUndo, historyTitle: label) { workbook in

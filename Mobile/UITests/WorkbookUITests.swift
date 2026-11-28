@@ -115,6 +115,18 @@ final class WorkbookUITests: XCTestCase {
         b1.tap()
         // 点了格子，输入框要等界面刷新才换成这一格的公式。立刻去读，慢机器上读到的还是上一格的「7」（2026-11-25 iPad 失败过一次）。
         XCTAssertTrue(awaitValue("=A1*3", of: input), "Formula bar shows \(String(describing: input.value))")
+        let b2 = app.buttons["cell-B2"]
+        b2.tap()
+        input.tap()
+        input.typeText("=ISNUMBER(")
+        app.buttons["sheet-picker"].tap()
+        app.buttons["Sheet2"].tap()
+        app.buttons["cell-A1"].tap()
+        XCTAssertTrue(awaitValue("=ISNUMBER(Sheet2!A1", of: input))
+        input.typeText(")\n")
+        XCTAssertTrue(awaitValue("FALSE", of: b2), "Cross-sheet pick committed to Sheet1!B2")
+        b2.tap()
+        XCTAssertTrue(awaitValue("=ISNUMBER(Sheet2!A1)", of: input))
         app.buttons["workbook-options"].tap()
         app.buttons["Version History"].tap()
         app.buttons["Restore Edit Sheet1!A1"].tap()

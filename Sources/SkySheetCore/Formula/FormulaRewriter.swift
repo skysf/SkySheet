@@ -8,20 +8,19 @@ public enum FormulaRewriter {
     }
 
     /// 按编辑开始时的表编号一次映射，避免多张表交换名字时把前一次改名的结果再次改掉。
-    public static func renameSheets(in formula: String, renames: [(from: String, to: String)]) -> String {
-        rewriteReferences(in: formula) { reference, original in
-            guard let sheet = reference.sheet,
-                  let rename = renames.first(where: { sheet.caseInsensitiveCompare($0.from) == .orderedSame }) else { return nil }
+    public static func renameSheets(in formula: String, renames: [(from: String, to: String)], removed: [String] = []) -> String {
+        guard !renames.isEmpty || !removed.isEmpty else { return formula }
+        return rewriteReferences(in: formula) { reference, original in
+            guard let sheet = reference.sheet else { return nil }
+            if removed.contains(where: { sheet.caseInsensitiveCompare($0) == .orderedSame }) { return "#REF!" }
+            guard let rename = renames.first(where: { sheet.caseInsensitiveCompare($0.from) == .orderedSame }) else { return nil }
             return quotedSheetName(rename.to) + "!" + String(original[original.index(after: original.lastIndex(of: "!")!)...])
         }
     }
 
     /// sheet 删掉后，指向它的引用变成 #REF!（Excel 也这样：=Loan!A1 变成 =#REF!）。
     public static func removeSheet(in formula: String, named name: String) -> String {
-        rewriteReferences(in: formula) { reference, _ in
-            guard let sheet = reference.sheet, sheet.caseInsensitiveCompare(name) == .orderedSame else { return nil }
-            return "#REF!"
-        }
+        renameSheets(in: formula, renames: [], removed: [name])
     }
 
     /// 插删行列以后改公式里的引用（设计第 11 条）：指向 `sheet` 的引用按 `shift` 挪，指向被删掉的格子的变成 #REF!

@@ -1,5 +1,6 @@
 import Foundation
 import SkySheetCore
+import SkySheetFiles
 
 /// 第一版的函数（设计 5.3 节）：数学、统计、条件、逻辑、查找、日期、文字。财务函数在 FinancialChecks.swift。
 @MainActor
@@ -31,6 +32,13 @@ func functionChecks() {
         checkValue("ISERR(A4)", cells, .bool(true))
         checkValue("ISNA(A5)", cells, .bool(true))
         checkValue("ISNA(A4)", cells, .bool(false))
+        var imported = try XLSXReader.read(contentsOf: fixtureURL("IronCalc/arithmetic.xlsx"))
+        let b1 = CellAddress(a1: "B1")!
+        checkEqual(imported.sheets[1].cells[b1]?.formula?.source, "ISNUMBER(A1)", "Excel fixture formula")
+        imported.enter(.value(.number(50)), at: CellAddress(a1: "A1")!, sheet: 1)
+        Recalculator.recalculate(&imported)
+        checkEqual(imported.sheets[1].cells[b1]?.value, .bool(true), "imported formula replaces its false cache")
+        checkEqual(imported.sheets[1].cells[b1]?.formula?.status, .calculated, "imported formula recalculates")
     }
 
     group("functions: math") {

@@ -7,7 +7,11 @@ import SkySheetDisplay
 extension SpreadsheetView {
     /// 鼠标按下之前：正在编辑的先提交，键盘交回表格。
     func prepareForMouse() {
-        if session.editing != nil { finishEditing(rows: 0, columns: 0) }
+        if session.editing != nil {
+            let clickedSheet = session.sheetIndex
+            finishEditing(rows: 0, columns: 0)
+            session.showSheet(clickedSheet)
+        }
         window?.makeFirstResponder(self)
     }
 

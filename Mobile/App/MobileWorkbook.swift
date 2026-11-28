@@ -30,10 +30,13 @@ final class MobileWorkbook {
     private(set) var merges: MergeIndex
     private(set) var address = CellAddress(row: 0, column: 0)
     var input = "" {
-        didSet { if input != oldValue { picked = nil } }
+        didSet { if picked != nil, ExactText(input) != ExactText(oldValue) { picked = nil } }
     }
     private(set) var picked: FormulaReferenceEdit?
     private var referenceOrigin: Int?
+    var hasFormulaDraft: Bool {
+        input.hasPrefix("=") && (picked != nil || referenceOrigin != nil || ExactText(input) != ExactText(initialInput))
+    }
     var showingEditedCell: Bool { referenceOrigin == nil || referenceOrigin == sheetIndex }
     var pickedRange: CellRange? {
         guard let picked, picked.sheet.map({ $0 == sheet.name }) ?? showingEditedCell else { return nil }

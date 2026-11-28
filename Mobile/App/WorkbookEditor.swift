@@ -55,6 +55,7 @@ struct WorkbookEditor: View {
                         }
                     }
                 } label: { Label(book.sheet.name, systemImage: "tablecells") }
+                .accessibilityIdentifier("sheet-picker")
                 Spacer()
                 Text(book.status).font(.caption).foregroundStyle(FolioTheme.secondaryInk.color).accessibilityIdentifier("save-status")
             }.padding(.horizontal, 14).frame(minHeight: 44).background(FolioTheme.header.color)
@@ -90,7 +91,8 @@ struct WorkbookEditor: View {
         }
         .disabled(copying)
         .onChange(of: book.sheetIndex) { _, _ in position.scrollTo(point: .zero) }
-        .onChange(of: typing) { _, active in if !active { _ = book.commit() } }
+        // 系统页签菜单可以暂时拿走键盘焦点，仍在等引用的草稿要留给下一次点选。
+        .onChange(of: typing) { _, active in if !active && !canPick { _ = book.commit() } }
         .alert(String(localized: "Go to Cell"), isPresented: $choosingAddress) {
             TextField(String(localized: "Cell address"), text: $addressInput).textInputAutocapitalization(.characters)
             Button(String(localized: "Go")) {
@@ -140,7 +142,7 @@ struct WorkbookEditor: View {
     }
 
     private var canPick: Bool {
-        typing && FormulaReferenceEdit.slot(in: book.input, selection: caret, previous: book.picked) != nil
+        (typing || book.hasFormulaDraft) && FormulaReferenceEdit.slot(in: book.input, selection: caret, previous: book.picked) != nil
     }
 
     private func tapCell(_ cell: CellAddress) {
@@ -153,6 +155,7 @@ struct WorkbookEditor: View {
     }
 
     private func placeCaret(after change: FormulaReferenceEdit) {
+        typing = true
         if let range = Range(change.caret, in: book.input) { textSelection = TextSelection(insertionPoint: range.lowerBound) }
     }
 }

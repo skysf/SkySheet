@@ -10,9 +10,7 @@ extension SpreadsheetView {
     override func mouseDown(with event: NSEvent) {
         guard let address = address(at: convert(event.locationInWindow, from: nil)) else { return }
         if pickCellReference(address, extend: event.modifierFlags.contains(.shift)) { return }
-        let clickedSheet = session.sheetIndex
         prepareForMouse()
-        session.showSheet(clickedSheet)
         // 选着整列时在格子上 Shift 点一下：变成从起点到这一格的一块格子（keepLines: false）。
         session.select(address, extend: event.modifierFlags.contains(.shift), keepLines: false)
         if event.clickCount == 2, !event.modifierFlags.contains(.shift) { beginEditing(.editing) }
